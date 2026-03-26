@@ -18,6 +18,10 @@ __pycache__/
 # Logs
 *.log
 
+# Database local replica
+data/local_replica.db
+data/local_replica.db-*
+
 # Environment
 .env
 
