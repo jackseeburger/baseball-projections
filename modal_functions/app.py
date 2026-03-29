@@ -8,6 +8,7 @@ Usage:
     modal run modal_functions/app.py::upload_data       # upload parquet data
     modal run modal_functions/app.py::run_training      # run training (placeholder)
     modal run modal_functions/app.py::run_simulation    # run simulation (placeholder)
+    modal run modal_functions/app.py::run_wandb_test    # test wandb integration
 """
 import json
 import os
@@ -30,10 +31,12 @@ VOLUME_MOUNTS = {
     "/models": models_volume,
 }
 
-# Secrets
-turso_secret = modal.Secret.from_name("turso-baseball")
+# Secrets — Turso DB + Weights & Biases
+_turso = modal.Secret.from_name("turso-baseball")
+_wandb = modal.Secret.from_name("wandb-baseball")
+ALL_SECRETS = [_turso, _wandb]
 
-# Container image — PyMC + data stack + Turso client
+# Container image — PyMC + data stack + Turso client + wandb
 pymc_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -64,7 +67,7 @@ pymc_image = (
 @app.function(
     image=pymc_image,
     volumes=VOLUME_MOUNTS,
-    secrets=[turso_secret],
+    secrets=ALL_SECRETS,
     timeout=600,
     memory=4096,
 )
@@ -125,6 +128,14 @@ def smoke_test():
     # 5. Models volume
     results["models_volume"] = Path("/models").exists()
 
+    # 6. wandb connectivity
+    try:
+        import wandb
+        results["wandb_version"] = wandb.__version__
+        results["wandb_api_key"] = "configured" if os.environ.get("WANDB_API_KEY") else "MISSING"
+    except Exception as e:
+        results["wandb"] = f"FAILED: {e}"
+
     return results
 
 
@@ -180,7 +191,7 @@ def upload_data():
 @app.function(
     image=pymc_image,
     volumes=VOLUME_MOUNTS,
-    secrets=[turso_secret],
+    secrets=ALL_SECRETS,
     timeout=3600,
     memory=8192,
     cpu=4.0,
@@ -240,7 +251,7 @@ def train_hitter_model(
 @app.function(
     image=pymc_image,
     volumes=VOLUME_MOUNTS,
-    secrets=[turso_secret],
+    secrets=ALL_SECRETS,
     timeout=3600,
     memory=8192,
     cpu=4.0,
@@ -276,7 +287,118 @@ def simulate_season(
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# VPS Trigger Helper — call from VPS scripts to kick off training
+# W&B Integration Test
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.function(
+    image=pymc_image,
+    volumes=VOLUME_MOUNTS,
+    secrets=ALL_SECRETS,
+    timeout=600,
+    memory=4096,
+)
+def wandb_integration_test():
+    """End-to-end test of wandb tracking with a tiny PyMC model."""
+    import wandb
+    import pymc as pm
+    import arviz as az
+    import numpy as np
+    import matplotlib
+    matplotlib.use("Agg")
+
+    results = {}
+
+    # 1. Init wandb run
+    run = wandb.init(
+        project="baseball-projections",
+        entity="jseeburger",
+        name="integration-test",
+        config={
+            "model_type": "test",
+            "n_samples": 500,
+            "n_chains": 2,
+            "test": True,
+        },
+        tags=["test", "integration"],
+        notes="Automated integration test — validates wandb logging from Modal",
+        reinit=True,
+    )
+    results["wandb_run_url"] = run.url
+
+    # 2. Run tiny PyMC model
+    observed_ba = np.array([0.250, 0.270, 0.265, 0.280, 0.245])
+    with pm.Model() as model:
+        mu = pm.Normal("mu_ba", mu=0.260, sigma=0.05)
+        sigma = pm.HalfNormal("sigma_ba", sigma=0.03)
+        pm.Normal("obs", mu=mu, sigma=sigma, observed=observed_ba)
+        trace = pm.sample(500, cores=1, chains=2,
+                         progressbar=False, return_inferencedata=True)
+
+    # 3. Log MCMC diagnostics
+    rhat = az.rhat(trace)
+    ess = az.ess(trace, method="bulk")
+    summary = az.summary(trace)
+
+    wandb.log({
+        "diagnostics/rhat/mu_ba": float(rhat["mu_ba"].values),
+        "diagnostics/rhat/sigma_ba": float(rhat["sigma_ba"].values),
+        "diagnostics/ess/mu_ba_bulk": float(ess["mu_ba"].values),
+        "diagnostics/ess/sigma_ba_bulk": float(ess["sigma_ba"].values),
+    })
+
+    # Check for divergences
+    div = trace.sample_stats.get("diverging")
+    n_div = int(div.values.sum()) if div is not None else 0
+    wandb.log({"diagnostics/divergences": n_div})
+
+    # 4. Log summary table
+    table = wandb.Table(dataframe=summary.reset_index())
+    wandb.log({"diagnostics/summary": table})
+
+    # 5. Log posterior plots
+    import matplotlib.pyplot as plt
+
+    ax = az.plot_posterior(trace)
+    fig = ax.ravel()[0].figure
+    wandb.log({"posterior/plot": wandb.Image(fig)})
+    plt.close(fig)
+
+    ax = az.plot_trace(trace, compact=True)
+    fig = ax.ravel()[0].figure
+    wandb.log({"posterior/trace_plot": wandb.Image(fig)})
+    plt.close(fig)
+
+    # 6. Log a sample projections table
+    import pandas as pd
+    sample_proj = pd.DataFrame({
+        "player": ["Test Player A", "Test Player B", "Test Player C"],
+        "projected_ba": [0.265, 0.280, 0.250],
+        "projected_obp": [0.340, 0.360, 0.320],
+        "projected_slg": [0.420, 0.480, 0.400],
+    })
+    proj_table = wandb.Table(dataframe=sample_proj)
+    wandb.log({"projections_preview": proj_table})
+
+    # 7. Save model artifact
+    import tempfile
+    artifact = wandb.Artifact("integration-test-model", type="model",
+                               metadata={"test": True})
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as f:
+        trace.to_netcdf(f.name)
+        artifact.add_file(f.name, name="trace.nc")
+    wandb.log_artifact(artifact, aliases=["test"])
+
+    results["mu_ba_mean"] = round(float(trace.posterior["mu_ba"].mean()), 4)
+    results["rhat_mu"] = round(float(rhat["mu_ba"].values), 4)
+    results["divergences"] = n_div
+    results["status"] = "success"
+
+    wandb.finish()
+    return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# VPS Trigger Helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.local_entrypoint()
@@ -308,3 +430,21 @@ def run_simulation(year: int = 2026, seasons: int = 10_000):
     print("\nResults:")
     for k, v in result.items():
         print(f"  {k}: {v}")
+
+
+@app.local_entrypoint()
+def run_wandb_test():
+    """Test wandb integration end-to-end on Modal."""
+    print("🧪 Testing wandb integration on Modal...")
+    results = wandb_integration_test.remote()
+    print("\n" + "=" * 60)
+    print("WANDB INTEGRATION TEST RESULTS")
+    print("=" * 60)
+    for k, v in results.items():
+        print(f"  {k}: {v}")
+    print("=" * 60)
+    if results.get("status") == "success":
+        print("\n✅ wandb integration working! Check your dashboard:")
+        print(f"   {results.get('wandb_run_url', 'https://wandb.ai/jseeburger/baseball-projections')}")
+    else:
+        print("\n⚠️  Something went wrong — review above.")
