@@ -52,6 +52,10 @@ pymc_image = (
         "libsql-experimental>=0.0.50",
         # Experiment tracking
         "wandb>=0.19",
+        # JAX MCMC backend
+        "numpyro>=0.15",
+        # Visualization
+        "matplotlib>=3.9",
         # Utilities
         "scipy>=1.14",
         "scikit-learn>=1.5",
@@ -395,6 +399,377 @@ def wandb_integration_test():
 
     wandb.finish()
     return results
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Hitter K% Model (BAS-30)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.function(
+    image=pymc_image,
+    volumes=VOLUME_MOUNTS,
+    secrets=ALL_SECRETS,
+    timeout=3600,
+    memory=8192,
+    cpu=4.0,
+)
+def train_k_rate_model(
+    projection_year: int = 2026,
+    n_samples: int = 2000,
+    n_chains: int = 4,
+    target_accept: float = 0.9,
+    min_pa: int = 50,
+    train_seasons: tuple = (2000, 2025),
+    run_name: str = "",
+):
+    """Train hierarchical Bayesian K% model with full wandb tracking."""
+    import numpy as np
+    import pandas as pd
+    import pymc as pm
+    import arviz as az
+    import wandb
+    import libsql_experimental as libsql
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import pytensor.tensor as pt
+    from datetime import datetime
+    from scipy.special import expit
+
+    if not run_name:
+        run_name = f"k-rate-v1-{projection_year}-{datetime.now():%Y%m%d-%H%M%S}"
+
+    print(f"🎯 K% Model Training: {run_name}")
+    print(f"   Projection year: {projection_year}")
+    print(f"   Samples: {n_samples} × {n_chains} chains")
+    print(f"   Training data: {train_seasons[0]}-{train_seasons[1]}, min PA={min_pa}")
+
+    # ── Connect to Turso ──
+    conn = libsql.connect("baseball.db",
+        sync_url=os.environ["TURSO_DATABASE_URL"],
+        auth_token=os.environ["TURSO_AUTH_TOKEN"])
+    conn.sync()
+
+    # ── Load data ──
+    rows = conn.execute(f"""
+        SELECT b.player_id, b.season, b.pa, b.so, b.k_pct, b.team,
+               p.name, p.primary_position, p.birth_date
+        FROM batting_stats b
+        JOIN player_metadata p ON b.player_id = p.player_id
+        WHERE b.pa >= {min_pa}
+          AND b.season BETWEEN {train_seasons[0]} AND {train_seasons[1]}
+        ORDER BY b.season, b.player_id
+    """).fetchall()
+    cols = ['player_id', 'season', 'pa', 'so', 'k_pct', 'team',
+            'name', 'position', 'birth_date']
+    df = pd.DataFrame(rows, columns=cols)
+
+    # Calculate age — birth_date may be NULL, estimate from debut
+    df['birth_year'] = pd.to_datetime(df['birth_date'], errors='coerce').dt.year
+    # If birth_date is missing, estimate: debut_year - 23 (average debut age)
+    if df['birth_year'].isna().all():
+        debut_years = df.groupby('player_id')['season'].min().rename('debut_year')
+        df = df.merge(debut_years, on='player_id')
+        df['birth_year'] = df['debut_year'] - 23
+        df = df.drop(columns=['debut_year'])
+    else:
+        df['birth_year'] = df['birth_year'].fillna(
+            df.groupby('player_id')['season'].transform('min') - 23)
+    df['age'] = df['season'] - df['birth_year']
+    df = df[(df['age'] >= 18) & (df['age'] <= 45)]
+    df['so'] = df['so'].fillna((df['k_pct'] * df['pa']).round().astype(int)).astype(int)
+
+    # Create indices
+    player_ids = df['player_id'].unique()
+    player_map = {pid: i for i, pid in enumerate(player_ids)}
+    df['player_idx'] = df['player_id'].map(player_map)
+    season_vals = sorted(df['season'].unique())
+    season_map = {s: i for i, s in enumerate(season_vals)}
+    df['season_idx'] = df['season'].map(season_map)
+
+    # Marcel projections
+    marcel_rows = conn.execute(
+        "SELECT player_id, projected_value FROM marcel_projections WHERE stat_name = 'k_pct' AND season = ?",
+        (projection_year,)).fetchall()
+    marcel = pd.DataFrame(marcel_rows, columns=['player_id', 'marcel_k_pct'])
+
+    print(f"   Loaded {len(df)} player-seasons, {df['player_idx'].nunique()} players")
+    print(f"   Marcel projections: {len(marcel)}")
+
+    # ── Init wandb ──
+    run = wandb.init(
+        project="baseball-projections",
+        entity="jseeburger",
+        name=run_name,
+        config={
+            "model": "hitter_k_rate",
+            "version": "v1",
+            "projection_year": projection_year,
+            "n_samples": n_samples,
+            "n_chains": n_chains,
+            "target_accept": target_accept,
+            "min_pa": min_pa,
+            "train_seasons": list(train_seasons),
+            "n_player_seasons": len(df),
+            "n_players": int(df['player_idx'].nunique()),
+            "n_seasons": int(df['season_idx'].nunique()),
+        },
+        tags=["hitter", "k-rate", "v1"],
+        group="hitter-k-rate",
+        job_type="train",
+        reinit=True,
+    )
+
+    # Log data summary
+    wandb.log({
+        "data/n_player_seasons": len(df),
+        "data/n_players": int(df['player_idx'].nunique()),
+        "data/n_seasons": int(df['season_idx'].nunique()),
+        "data/mean_pa": float(df['pa'].mean()),
+        "data/mean_k_pct": float(df['k_pct'].mean()),
+        "data/k_pct_std": float(df['k_pct'].std()),
+    })
+
+    # ── Build & sample model ──
+    print("🔨 Building model...")
+    n_players = df['player_idx'].nunique()
+    n_seasons_model = df['season_idx'].nunique()
+    AGE_CENTER = 28.0
+    age_centered = (df['age'].values - AGE_CENTER) / 5.0
+
+    with pm.Model() as model:
+        player_idx_data = pm.Data("player_idx", df['player_idx'].values.astype(np.int64))
+        season_idx_data = pm.Data("season_idx", df['season_idx'].values.astype(np.int64))
+        pa_data = pm.Data("pa", df['pa'].values.astype(np.int64))
+        age_z = pm.Data("age_z", age_centered.astype(np.float64))
+
+        # League K% per season (random walk — captures rising trend)
+        mu_league_init = pm.Normal("mu_league_init", mu=-1.2, sigma=0.3)
+        mu_league_drift = pm.Normal("mu_league_drift", mu=0, sigma=0.1,
+                                     shape=n_seasons_model - 1)
+        mu_league = pm.Deterministic("mu_league",
+            pt.concatenate([pt.stack([mu_league_init]),
+                           mu_league_init + pt.cumsum(mu_league_drift)]))
+
+        # Player ability (partial pooling)
+        sigma_player = pm.HalfNormal("sigma_player", sigma=0.5)
+        player_offset_raw = pm.Normal("player_offset_raw", mu=0, sigma=1, shape=n_players)
+        player_offset = pm.Deterministic("player_offset", player_offset_raw * sigma_player)
+
+        # Age curve (quadratic on logit scale)
+        age_linear = pm.Normal("age_linear", mu=0, sigma=0.2)
+        age_quad = pm.Normal("age_quad", mu=0.05, sigma=0.1)
+        age_effect = age_linear * age_z + age_quad * age_z**2
+
+        # Likelihood
+        logit_k = mu_league[season_idx_data] + player_offset[player_idx_data] + age_effect
+        p_k = pm.Deterministic("p_k", pm.math.invlogit(logit_k))
+        pm.Binomial("obs_k", n=pa_data, p=p_k, observed=df['so'].values.astype(np.int64))
+
+    print(f"   Model variables: {[v.name for v in model.free_RVs]}")
+
+    print(f"⚡ Sampling ({n_samples} draws × {n_chains} chains)...")
+    with model:
+        trace = pm.sample(draws=n_samples, tune=1000, chains=n_chains, cores=1,
+                         target_accept=target_accept, return_inferencedata=True,
+                         progressbar=True, nuts_sampler="numpyro")
+    print("   Sampling complete!")
+
+    # ── Log MCMC diagnostics ──
+    print("📊 Logging diagnostics...")
+    rhat = az.rhat(trace)
+    ess_bulk = az.ess(trace, method="bulk")
+    summary = az.summary(trace, var_names=["mu_league_init", "sigma_player",
+                                            "age_linear", "age_quad"])
+
+    # R-hat
+    for var in ["mu_league_init", "sigma_player", "age_linear", "age_quad"]:
+        if var in rhat:
+            val = float(rhat[var].values) if rhat[var].values.ndim == 0 else float(rhat[var].values.max())
+            wandb.log({f"diagnostics/rhat/{var}": val})
+
+    # ESS
+    for var in ["mu_league_init", "sigma_player", "age_linear", "age_quad"]:
+        if var in ess_bulk:
+            val = float(ess_bulk[var].values) if ess_bulk[var].values.ndim == 0 else float(ess_bulk[var].values.min())
+            wandb.log({f"diagnostics/ess_bulk/{var}": val})
+
+    # Divergences
+    div = trace.sample_stats.get("diverging")
+    n_div = int(div.values.sum()) if div is not None else 0
+    wandb.log({"diagnostics/divergences": n_div})
+
+    # Summary table
+    wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
+
+    # ── Posterior plots ──
+    print("📈 Generating plots...")
+
+    # Trace plot
+    ax = az.plot_trace(trace, var_names=["mu_league_init", "sigma_player",
+                                          "age_linear", "age_quad"], compact=True)
+    fig = ax.ravel()[0].figure
+    wandb.log({"posterior/trace_plot": wandb.Image(fig)})
+    plt.close(fig)
+
+    # League K% trend
+    mu_league = trace.posterior["mu_league"].values
+    league_k = expit(mu_league.reshape(-1, mu_league.shape[-1]))
+    seasons = sorted(df['season'].unique())
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.fill_between(seasons, np.percentile(league_k, 5, axis=0),
+                    np.percentile(league_k, 95, axis=0), alpha=0.2, color='steelblue')
+    ax.fill_between(seasons, np.percentile(league_k, 25, axis=0),
+                    np.percentile(league_k, 75, axis=0), alpha=0.4, color='steelblue')
+    ax.plot(seasons, np.median(league_k, axis=0), 'b-', linewidth=2, label='Model median')
+    # Actual league averages
+    actual_league = df.groupby('season')['k_pct'].mean()
+    ax.plot(actual_league.index, actual_league.values, 'ro', markersize=4, label='Actual')
+    ax.set_xlabel("Season")
+    ax.set_ylabel("K%")
+    ax.set_title("League K% Trend (posterior)")
+    ax.legend()
+    wandb.log({"posterior/league_k_trend": wandb.Image(fig)})
+    plt.close(fig)
+
+    # Age curve
+    ages = np.linspace(20, 40, 50)
+    age_z = (ages - 28.0) / 5.0
+    al = trace.posterior["age_linear"].values.flatten()
+    aq = trace.posterior["age_quad"].values.flatten()
+    age_effects = np.array([al * z + aq * z**2 for z in age_z])  # (50, n_samples)
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.fill_between(ages, np.percentile(age_effects, 5, axis=1),
+                    np.percentile(age_effects, 95, axis=1), alpha=0.2, color='coral')
+    ax.plot(ages, np.median(age_effects, axis=1), 'r-', linewidth=2)
+    ax.axhline(0, color='gray', linestyle='--', alpha=0.5)
+    ax.axvline(28, color='gray', linestyle=':', alpha=0.5, label='Age 28 (center)')
+    ax.set_xlabel("Age")
+    ax.set_ylabel("Effect on logit(K%)")
+    ax.set_title("Age Effect on K% (logit scale)")
+    ax.legend()
+    wandb.log({"posterior/age_curve": wandb.Image(fig)})
+    plt.close(fig)
+
+    # ── Generate projections ──
+    print("🔮 Generating projections...")
+    mu_league_post = trace.posterior["mu_league"].values
+    player_offset_post = trace.posterior["player_offset"].values
+    al_post = trace.posterior["age_linear"].values
+    aq_post = trace.posterior["age_quad"].values
+
+    # Flatten chains
+    mu_league_flat = mu_league_post.reshape(-1, mu_league_post.shape[-1])
+    player_offset_flat = player_offset_post.reshape(-1, player_offset_post.shape[-1])
+    al_flat = al_post.flatten()
+    aq_flat = aq_post.flatten()
+    league_baseline = mu_league_flat[:, -1]  # last season as projection baseline
+
+    latest = df.sort_values('season').groupby('player_id').last().reset_index()
+    n_posterior_samples = min(500, len(league_baseline))
+    proj_results = []
+    for _, row in latest.iterrows():
+        pid = row['player_idx']
+        proj_age = projection_year - row['birth_year']
+        az_val = (proj_age - 28.0) / 5.0
+        idx = np.random.choice(len(league_baseline), size=n_posterior_samples, replace=False)
+        logit_k_samples = (league_baseline[idx] + player_offset_flat[idx, pid] +
+                           al_flat[idx] * az_val + aq_flat[idx] * az_val**2)
+        k_samples = expit(logit_k_samples)
+        proj_results.append({
+            'player_id': row['player_id'], 'name': row['name'],
+            'position': row['position'], 'age': int(proj_age),
+            'last_season': int(row['season']), 'last_k_pct': round(float(row['k_pct']), 3),
+            'last_pa': int(row['pa']),
+            'projected_k_pct': round(float(np.mean(k_samples)), 4),
+            'k_pct_std': round(float(np.std(k_samples)), 4),
+            'k_pct_5': round(float(np.percentile(k_samples, 5)), 4),
+            'k_pct_50': round(float(np.percentile(k_samples, 50)), 4),
+            'k_pct_95': round(float(np.percentile(k_samples, 95)), 4),
+        })
+    proj = pd.DataFrame(proj_results).sort_values('projected_k_pct')
+    print(f"   Projected {len(proj)} players")
+
+    # Log projections table
+    wandb.log({"projections/k_rate": wandb.Table(dataframe=proj.head(200))})
+
+    # Top/bottom K% projections
+    print("\n🏆 Lowest projected K% (best contact):")
+    for _, r in proj.head(10).iterrows():
+        print(f"   {r['name']:25s} {r['projected_k_pct']:.1%} ({r['k_pct_5']:.1%}-{r['k_pct_95']:.1%})")
+
+    print("\n💨 Highest projected K% (most Ks):")
+    for _, r in proj.tail(10).iterrows():
+        print(f"   {r['name']:25s} {r['projected_k_pct']:.1%} ({r['k_pct_5']:.1%}-{r['k_pct_95']:.1%})")
+
+    # ── Compare to Marcel ──
+    if len(marcel) > 0:
+        comparison = proj.merge(marcel, on='player_id', how='inner')
+        if len(comparison) > 0:
+            diff = comparison['projected_k_pct'] - comparison['marcel_k_pct']
+            wandb.log({
+                "vs_marcel/n_players_compared": len(comparison),
+                "vs_marcel/mean_abs_diff": float(diff.abs().mean()),
+                "vs_marcel/correlation": float(comparison['projected_k_pct'].corr(comparison['marcel_k_pct'])),
+            })
+            print(f"\n📊 vs Marcel ({len(comparison)} players):")
+            print(f"   Correlation: {comparison['projected_k_pct'].corr(comparison['marcel_k_pct']):.4f}")
+            print(f"   Mean absolute difference: {diff.abs().mean():.4f}")
+
+    # ── Save artifacts ──
+    print("💾 Saving artifacts...")
+
+    # Save trace
+    import tempfile
+    artifact = wandb.Artifact(f"k-rate-model-{projection_year}", type="model",
+                               metadata={"projection_year": projection_year,
+                                         "n_samples": n_samples, "n_chains": n_chains})
+    with tempfile.NamedTemporaryFile(suffix=".nc", delete=False) as f:
+        trace.to_netcdf(f.name)
+        artifact.add_file(f.name, name="trace.nc")
+    wandb.log_artifact(artifact, aliases=["latest"])
+
+    # Save projections to Modal volume
+    proj_path = Path(f"/models/projections/k_rate_{projection_year}.parquet")
+    proj_path.parent.mkdir(parents=True, exist_ok=True)
+    proj.to_parquet(str(proj_path), index=False)
+    models_volume.commit()
+
+    results = {
+        "run_name": run_name,
+        "wandb_url": run.url,
+        "projection_year": projection_year,
+        "n_players_projected": len(proj),
+        "divergences": n_div,
+        "status": "success",
+    }
+
+    wandb.finish()
+    print(f"\n✅ Done! wandb run: {results['wandb_url']}")
+    return results
+
+
+@app.local_entrypoint()
+def run_k_rate_model(
+    year: int = 2026,
+    samples: int = 2000,
+    chains: int = 4,
+):
+    """Train the K% model from the VPS."""
+    print(f"🎯 Launching K% model training for {year}...")
+    result = train_k_rate_model.remote(
+        projection_year=year,
+        n_samples=samples,
+        n_chains=chains,
+    )
+    print("\n" + "=" * 60)
+    print("K% MODEL RESULTS")
+    print("=" * 60)
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    print("=" * 60)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
