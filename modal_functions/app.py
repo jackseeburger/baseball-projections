@@ -44,6 +44,7 @@ pymc_image = (
         "pymc>=5.21",
         "arviz>=0.20",
         "jax[cpu]",
+        "numpyro>=0.15",
         # Data
         "pandas>=2.2",
         "pyarrow>=18",
@@ -177,7 +178,7 @@ def upload_data():
                 files.append((str(lp), rp))
 
     print(f"📦 Uploading {len(files)} parquet files...")
-    with data_volume.batch_upload() as batch:
+    with data_volume.batch_upload(force=True) as batch:
         for local_path, remote_path in files:
             batch.put_file(local_path, remote_path)
             print(f"  ↑ {remote_path}")
@@ -398,6 +399,443 @@ def wandb_integration_test():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# PA-level K-Rate Bayesian Model
+# ═══════════════════════════════════════════════════════════════════════════
+
+@app.function(
+    image=pymc_image,
+    volumes=VOLUME_MOUNTS,
+    secrets=ALL_SECRETS,
+    timeout=7200,
+    memory=8192,
+    cpu=4.0,
+)
+def train_pa_k_rate(
+    n_draws: int = 2000,
+    n_tune: int = 1500,
+    n_chains: int = 4,
+    target_accept: float = 0.9,
+    min_pa: int = 50,
+    projection_year: int = 2026,
+    log_wandb: bool = True,
+    fast_mode: bool = False,
+):
+    """Batter-season Bayesian K-rate model (Binomial aggregation).
+
+    Hierarchical Binomial model: each batter-season is K ~ Binomial(n_pa, p).
+    logit(p_K) = league_trend[season] + player[batter] + hand + park + age_curve
+
+    Mathematically equivalent to per-PA Bernoulli but ~100x faster (~18K rows
+    instead of ~1.9M).
+
+    All model code is inlined (Modal requirement — no cross-module imports).
+    """
+    import gc
+    import time
+    import logging
+    import tempfile
+
+    import numpy as np
+    import pandas as pd
+    import pymc as pm
+    import pytensor.tensor as pt
+    import arviz as az
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logger = logging.getLogger("pa_k_rate")
+
+    REFERENCE_AGE = 27.0
+    PARQUET_DIR = Path("/data/parquet")
+
+    if fast_mode:
+        n_draws, n_tune, n_chains = 200, 200, 2
+        logger.info("⚡ FAST MODE enabled")
+
+    # ─── 1. Load data ───────────────────────────────────────────────────
+    logger.info("Loading PA outcomes...")
+    pa_dir = PARQUET_DIR / "pa_outcomes"
+    keep_cols = ["batter", "game_year", "stand", "is_k", "home_team", "away_team", "inning_topbot"]
+    frames = []
+    for f in sorted(pa_dir.glob("*.parquet")):
+        frames.append(pd.read_parquet(f, columns=keep_cols))
+    df = pd.concat(frames, ignore_index=True)
+    logger.info(f"Loaded {len(df):,} PAs ({df['game_year'].min()}-{df['game_year'].max()})")
+    del frames
+    gc.collect()
+
+    # Load park factors
+    pf_path = PARQUET_DIR / "park_factors.parquet"
+    park_factors = pd.read_parquet(pf_path) if pf_path.exists() else None
+    if park_factors is not None:
+        logger.info(f"Park factors: {len(park_factors)} rows")
+
+    # ─── 2. Prepare data ────────────────────────────────────────────────
+    # Batting team from inning_topbot
+    df["bat_team"] = np.where(df["inning_topbot"] == "Top", df["away_team"], df["home_team"])
+
+    # Filter low-PA batters (pitchers / cup-of-coffee)
+    pa_counts = df.groupby("batter").size()
+    qualified = pa_counts[pa_counts >= min_pa].index
+    n_before = df["batter"].nunique()
+    df = df[df["batter"].isin(qualified)].copy()
+    logger.info(f"Batters: {n_before} → {df['batter'].nunique()} (>= {min_pa} PA)")
+
+    # Integer indices
+    seasons = np.sort(df["game_year"].unique())
+    season_map = {yr: i for i, yr in enumerate(seasons)}
+    df["season_idx"] = df["game_year"].map(season_map).astype(np.int64)
+
+    batters = np.sort(df["batter"].unique())
+    batter_map = {b: i for i, b in enumerate(batters)}
+    df["batter_idx"] = df["batter"].map(batter_map).astype(np.int64)
+
+    teams = np.sort(df["bat_team"].unique())
+    team_map = {t: i for i, t in enumerate(teams)}
+    df["team_idx"] = df["bat_team"].map(team_map).astype(np.int64)
+
+    df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
+
+    # Age estimation
+    first_year = df.groupby("batter")["game_year"].min()
+    birth_year = (first_year - 23).to_dict()
+    df["birth_year"] = df["batter"].map(birth_year).astype(np.float64)
+    df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
+    df["age_centered"] = (df["age"] - REFERENCE_AGE).astype(np.float64)
+
+    # Park factor lookup (team_idx, season_idx) → log(pf_k)
+    n_teams = len(teams)
+    n_seasons = len(seasons)
+    log_pf = np.zeros((n_teams, n_seasons), dtype=np.float64)
+    if park_factors is not None:
+        # Handle both old schema (year, pf_k) and new (game_year, k_park_factor)
+        yr_col = "game_year" if "game_year" in park_factors.columns else "year"
+        pf_col = "k_park_factor" if "k_park_factor" in park_factors.columns else "pf_k"
+        logger.info(f"Park factor columns: year={yr_col}, k={pf_col}")
+        for _, row in park_factors.iterrows():
+            t = team_map.get(row["team"])
+            s = season_map.get(int(row[yr_col]))
+            if t is not None and s is not None:
+                log_pf[t, s] = np.log(float(row[pf_col]))
+    df["log_pf_k"] = log_pf[df["team_idx"].values, df["season_idx"].values].astype(np.float64)
+
+    # Batter metadata for projections (computed before aggregation)
+    batter_meta = (
+        df.groupby("batter")
+        .agg(stand=("stand", "first"), birth_year=("birth_year", "first"),
+             last_season=("game_year", "max"), total_pa=("is_k", "size"),
+             career_k_rate=("is_k", "mean"))
+        .reset_index()
+    )
+
+    # ─── 2b. Aggregate to batter-season level (Binomial) ────────────────
+    # For team_idx: use team where batter had most PAs that season (mode)
+    team_mode = (
+        df.groupby(["batter", "game_year", "team_idx"])
+        .size()
+        .reset_index(name="pa_count")
+        .sort_values("pa_count", ascending=False)
+        .drop_duplicates(subset=["batter", "game_year"], keep="first")
+        .set_index(["batter", "game_year"])["team_idx"]
+    )
+
+    agg_df = (
+        df.groupby(["batter", "game_year"])
+        .agg(
+            n_k=("is_k", "sum"),
+            n_pa=("is_k", "size"),
+            stand_idx=("stand_idx", "first"),
+            batter_idx=("batter_idx", "first"),
+            season_idx=("season_idx", "first"),
+            age_centered=("age_centered", "first"),
+            log_pf_k=("log_pf_k", "mean"),
+        )
+        .reset_index()
+    )
+
+    # Attach team mode via merge
+    team_mode_df = team_mode.reset_index()
+    team_mode_df.columns = ["batter", "game_year", "team_idx"]
+    agg_df = agg_df.merge(team_mode_df, on=["batter", "game_year"], how="left")
+
+    # Ensure integer types
+    agg_df["n_k"] = agg_df["n_k"].astype(np.int64)
+    agg_df["n_pa"] = agg_df["n_pa"].astype(np.int64)
+    agg_df["team_idx"] = agg_df["team_idx"].astype(np.int64)
+
+    n_obs = len(agg_df)
+    n_batters = len(batters)
+    n_total_pa = int(agg_df["n_pa"].sum())
+    logger.info(f"Aggregated to {n_obs:,} batter-seasons ({n_total_pa:,} total PAs)")
+    logger.info(f"Model data: {n_obs:,} obs, {n_batters:,} batters, {n_seasons} seasons, {n_teams} teams")
+
+    # Free PA-level dataframe
+    del df
+    gc.collect()
+
+    # ─── 3. Build PyMC model ────────────────────────────────────────────
+    coords = {
+        "batter": batters,
+        "season": seasons,
+        "team": teams,
+        "obs_id": np.arange(n_obs),
+    }
+
+    with pm.Model(coords=coords) as model:
+        # Data containers
+        batter_idx_d = pm.Data("batter_idx", agg_df["batter_idx"].values, dims="obs_id")
+        season_idx_d = pm.Data("season_idx", agg_df["season_idx"].values, dims="obs_id")
+        team_idx_d = pm.Data("team_idx", agg_df["team_idx"].values, dims="obs_id")
+        stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
+        age_c = pm.Data("age_centered", agg_df["age_centered"].values, dims="obs_id")
+        log_pf_d = pm.Data("log_pf_k", agg_df["log_pf_k"].values, dims="obs_id")
+        n_pa_d = pm.Data("n_pa", agg_df["n_pa"].values, dims="obs_id")
+
+        # League trend: random walk
+        league_init = pm.Normal("league_init", mu=-1.27, sigma=0.3)
+        league_innovations = pm.Normal("league_innovations", mu=0, sigma=0.05, dims="season")
+        league_trend = pm.Deterministic("league_trend",
+            league_init + pt.cumsum(league_innovations), dims="season")
+
+        # Player ability: non-centered partial pooling
+        mu_ability = pm.Normal("mu_ability", mu=0.0, sigma=0.3)
+        sigma_ability = pm.HalfNormal("sigma_ability", sigma=0.4)
+        z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
+        player_ability = pm.Deterministic("player_ability",
+            mu_ability + sigma_ability * z_ability, dims="batter")
+
+        # Handedness
+        beta_hand = pm.Normal("beta_hand", mu=0.0, sigma=0.2)
+
+        # Park effects: zero-sum
+        park_effect = pm.ZeroSumNormal("park_effect", sigma=0.05, dims="team")
+
+        # Age curve: quadratic
+        beta_age = pm.Normal("beta_age", mu=0.0, sigma=0.02)
+        beta_age2 = pm.Normal("beta_age2", mu=0.005, sigma=0.01)
+
+        # Linear predictor
+        eta = (
+            league_trend[season_idx_d]
+            + player_ability[batter_idx_d]
+            + beta_hand * stand_idx_d
+            + park_effect[team_idx_d]
+            + beta_age * age_c
+            + beta_age2 * (age_c ** 2)
+            + log_pf_d
+        )
+
+        # Likelihood: Binomial on aggregated batter-season counts
+        p = pm.math.invlogit(eta)
+        pm.Binomial("obs_k", n=n_pa_d, p=p, observed=agg_df["n_k"].values, dims="obs_id")
+
+    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + 2
+    logger.info(f"Model built: ~{n_params:,} free parameters")
+
+    # Free the aggregated dataframe to save memory
+    del agg_df
+    gc.collect()
+
+    # ─── 4. Sample ──────────────────────────────────────────────────────
+    logger.info(f"Sampling: {n_chains} chains × {n_draws} draws (tune={n_tune})")
+    t0 = time.time()
+    with model:
+        trace = pm.sample(
+            draws=n_draws, tune=n_tune, chains=n_chains, cores=1,
+            target_accept=target_accept, nuts_sampler="numpyro",
+            random_seed=42, idata_kwargs={"log_likelihood": False},
+        )
+    elapsed = time.time() - t0
+    logger.info(f"Sampling done in {elapsed:.0f}s")
+
+    # Diagnostics
+    rhat = az.rhat(trace)
+    max_rhat = max(
+        float(rhat[v].values.max()) if rhat[v].values.ndim > 0 else float(rhat[v].values)
+        for v in rhat.data_vars
+    )
+    divergences = 0
+    if hasattr(trace, "sample_stats"):
+        div = trace.sample_stats.get("diverging")
+        if div is not None:
+            divergences = int(div.values.sum())
+    logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
+
+    # ─── 5. Generate projections ────────────────────────────────────────
+    post = trace.posterior
+    lt = post["league_trend"].values
+    pa_vals = post["player_ability"].values
+    bh = post["beta_hand"].values
+    ba = post["beta_age"].values
+    ba2 = post["beta_age2"].values
+    innov = post["league_innovations"].values
+
+    nc, nd = lt.shape[:2]
+    ns = nc * nd
+    lt_flat = lt.reshape(ns, -1)
+    pa_flat = pa_vals.reshape(ns, -1)
+    bh_flat = bh.reshape(ns)
+    ba_flat = ba.reshape(ns)
+    ba2_flat = ba2.reshape(ns)
+    innov_flat = innov.reshape(ns, -1)
+
+    # Extrapolate league trend
+    last_trend = lt_flat[:, -1]
+    innov_std = innov_flat.std(axis=1)
+    rng = np.random.default_rng(42)
+    years_ahead = projection_year - int(seasons[-1])
+    projected_trend = last_trend.copy()
+    for _ in range(years_ahead):
+        projected_trend += rng.normal(0, innov_std)
+
+    # Project recently active batters
+    cutoff_year = int(seasons[-1]) - 2  # active in last 3 years
+    active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
+    logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
+
+    results = []
+    for _, row in active.iterrows():
+        batter_id = int(row["batter"])
+        b_idx = batter_map[batter_id]
+        proj_age = projection_year - float(row["birth_year"])
+        age_c_val = proj_age - REFERENCE_AGE
+        s_idx = 1 if row["stand"] == "R" else 0
+
+        eta_proj = (
+            projected_trend
+            + pa_flat[:, b_idx]
+            + bh_flat * s_idx
+            + ba_flat * age_c_val
+            + ba2_flat * (age_c_val ** 2)
+        )
+        p_k_proj = 1.0 / (1.0 + np.exp(-eta_proj))
+
+        results.append({
+            "batter": batter_id,
+            "stand": row["stand"],
+            "age": proj_age,
+            "projected_k_rate": float(np.mean(p_k_proj)),
+            "k_rate_std": float(np.std(p_k_proj)),
+            "k_rate_lower": float(np.percentile(p_k_proj, 5)),
+            "k_rate_upper": float(np.percentile(p_k_proj, 95)),
+            "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
+            "total_pa": int(row["total_pa"]),
+            "career_k_rate": float(row["career_k_rate"]),
+            "last_season": int(row["last_season"]),
+        })
+
+    proj_df = pd.DataFrame(results).sort_values("projected_k_rate").reset_index(drop=True)
+    logger.info(f"Projections: median K% = {proj_df['projected_k_rate'].median():.3f}")
+
+    # Save projections to volume
+    proj_dir = Path("/models/projections")
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    proj_path = proj_dir / f"k_rate_projections_{projection_year}.parquet"
+    proj_df.to_parquet(str(proj_path), index=False)
+
+    # Save trace
+    trace_dir = Path("/models/traces")
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = trace_dir / f"k_rate_trace_{projection_year}.nc"
+    trace.to_netcdf(str(trace_path))
+    models_volume.commit()
+    logger.info(f"Saved projections + trace to /models volume")
+
+    # ─── 6. wandb logging ───────────────────────────────────────────────
+    if log_wandb:
+        try:
+            import wandb
+            from datetime import datetime
+
+            run_name = f"pa-k-rate-{projection_year}-{datetime.now():%Y%m%d_%H%M}"
+            run = wandb.init(
+                project="baseball-projections", entity="jseeburger",
+                name=run_name,
+                config={
+                    "model": "pa_k_rate_binomial",
+                    "likelihood": "binomial_batter_season",
+                    "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
+                    "target_accept": target_accept, "min_pa": min_pa,
+                    "projection_year": projection_year,
+                    "n_obs": n_obs, "n_batters": n_batters,
+                    "n_seasons": n_seasons, "n_teams": n_teams,
+                    "n_total_pa": n_total_pa,
+                    "reference_age": REFERENCE_AGE,
+                },
+                tags=["k-rate", "bayesian", "binomial", "batter-season"],
+                group="hitter-k-rate",
+                job_type="train",
+                reinit=True,
+            )
+
+            # Diagnostics
+            wandb.log({
+                "diagnostics/max_rhat": max_rhat,
+                "diagnostics/divergences": divergences,
+                "diagnostics/sampling_time_s": elapsed,
+                "diagnostics/n_params": n_params,
+            })
+
+            # Summary table
+            summary = az.summary(trace, var_names=[
+                "league_init", "mu_ability", "sigma_ability",
+                "beta_hand", "beta_age", "beta_age2",
+            ])
+            wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
+
+            # Posterior plots
+            for var_group, var_names in [
+                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand", "beta_age", "beta_age2"]),
+                ("league_trend", ["league_trend"]),
+            ]:
+                ax = az.plot_trace(trace, var_names=var_names, compact=True)
+                fig = ax.ravel()[0].figure
+                wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
+                plt.close(fig)
+
+            # Projections table
+            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
+
+            # Projections artifact
+            artifact = wandb.Artifact(f"k-rate-projections-{projection_year}", type="projections",
+                                       metadata={"n_batters": len(proj_df),
+                                                  "median_k_rate": float(proj_df["projected_k_rate"].median())})
+            with tempfile.TemporaryDirectory() as tmpdir:
+                p = os.path.join(tmpdir, "projections.parquet")
+                proj_df.to_parquet(p, index=False)
+                artifact.add_file(p, name="projections.parquet")
+            wandb.log_artifact(artifact, aliases=["latest"])
+
+            # Trace artifact
+            trace_artifact = wandb.Artifact(f"k-rate-trace-{projection_year}", type="model",
+                                              metadata={"max_rhat": max_rhat, "divergences": divergences})
+            trace_artifact.add_file(str(trace_path), name="trace.nc")
+            wandb.log_artifact(trace_artifact, aliases=["latest"])
+
+            logger.info(f"wandb run: {run.url}")
+            wandb.finish()
+        except Exception as e:
+            logger.warning(f"wandb logging failed: {e}")
+
+    # Return summary
+    return {
+        "status": "complete",
+        "n_obs": n_obs,
+        "n_batters": n_batters,
+        "n_seasons": n_seasons,
+        "max_rhat": round(max_rhat, 4),
+        "divergences": divergences,
+        "sampling_time_s": round(elapsed, 1),
+        "n_projections": len(proj_df),
+        "median_k_rate": round(float(proj_df["projected_k_rate"].median()), 4),
+        "top_5_lowest_k": proj_df.head(5)[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+        "top_5_highest_k": proj_df.tail(5)[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+    }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # VPS Trigger Helpers
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -430,6 +868,34 @@ def run_simulation(year: int = 2026, seasons: int = 10_000):
     print("\nResults:")
     for k, v in result.items():
         print(f"  {k}: {v}")
+
+
+@app.local_entrypoint()
+def run_k_rate_model(
+    draws: int = 2000,
+    tune: int = 1500,
+    chains: int = 4,
+    fast: bool = False,
+    no_wandb: bool = False,
+):
+    """Train the PA-level K-rate Bayesian model on Modal."""
+    mode = "⚡ FAST" if fast else "🔬 FULL"
+    print(f"{mode} — PA-level K-rate model")
+    print(f"   {chains} chains × {draws} draws (tune={tune})")
+    result = train_pa_k_rate.remote(
+        n_draws=draws, n_tune=tune, n_chains=chains,
+        log_wandb=not no_wandb, fast_mode=fast,
+    )
+    print("\n" + "=" * 60)
+    print("K-RATE MODEL RESULTS")
+    print("=" * 60)
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+    print("=" * 60)
+    if result.get("divergences", -1) == 0 and result.get("max_rhat", 2.0) < 1.05:
+        print("\n✅ Model converged! Check wandb for full diagnostics.")
+    else:
+        print("\n⚠️  Check diagnostics — divergences or high R-hat detected.")
 
 
 @app.local_entrypoint()
