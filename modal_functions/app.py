@@ -455,6 +455,8 @@ def train_pa_k_rate(
         logger.info("⚡ FAST MODE enabled")
 
     # ─── 1. Load data ───────────────────────────────────────────────────
+    # Reload volume to pick up any recent uploads
+    data_volume.reload()
     logger.info("Loading PA outcomes...")
     pa_dir = PARQUET_DIR / "pa_outcomes"
     keep_cols = ["batter", "game_year", "stand", "is_k", "home_team", "away_team", "inning_topbot"]
