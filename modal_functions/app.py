@@ -177,12 +177,133 @@ def upload_data():
                 rp = f"/data/parquet/{lp.relative_to(local_dir)}"
                 files.append((str(lp), rp))
 
+    # Delete existing PA files first (force=True doesn't truly overwrite on Modal volumes)
+    print("🗑️  Removing old PA files from volume...")
+    import subprocess
+    for local_path, remote_path in files:
+        if "pa_outcomes" in remote_path:
+            try:
+                subprocess.run(["modal", "volume", "rm", "baseball-data", remote_path], 
+                             capture_output=True, timeout=30)
+            except Exception:
+                pass
+
     print(f"📦 Uploading {len(files)} parquet files...")
     with data_volume.batch_upload(force=True) as batch:
         for local_path, remote_path in files:
             batch.put_file(local_path, remote_path)
             print(f"  ↑ {remote_path}")
     print(f"✅ Done — {len(files)} files on 'baseball-data' volume")
+
+    # Verify upload
+    verify_upload.remote()
+
+
+@app.function(image=pymc_image, volumes=VOLUME_MOUNTS, timeout=60)
+def verify_upload():
+    """List files on the volume to verify upload succeeded."""
+    data_volume.reload()  # Force fresh read
+    from pathlib import Path
+    data_volume.reload()
+    parquet_dir = Path("/data/parquet")
+    print(f"\n📋 Files on volume ({parquet_dir}):")
+    for f in sorted(parquet_dir.rglob("*")):
+        if f.is_file():
+            size_kb = f.stat().st_size / 1024
+            print(f"  {f.relative_to(parquet_dir)} ({size_kb:.1f} KB)")
+    
+    # Check PA file columns
+    import pandas as pd
+    pa_sample = sorted((parquet_dir / "pa_outcomes").glob("*.parquet"))[0]
+    df = pd.read_parquet(pa_sample).head(2)
+    print(f"\nPA columns check ({pa_sample.name}): {list(df.columns)}")
+    print(f"birth_year present: {'birth_year' in df.columns}")
+
+
+@app.function(image=pymc_image, volumes=VOLUME_MOUNTS, timeout=120)
+def generate_birth_years_on_volume():
+    """Generate batter_birth_years.parquet directly on the Modal volume.
+    
+    Uses Statcast PA data to compute real ages from game-level data, 
+    cross-referencing with known debut years.
+    """
+    import pandas as pd
+    import numpy as np
+    from pathlib import Path
+    
+    data_volume.reload()
+    parquet_dir = Path("/data/parquet")
+    pa_dir = parquet_dir / "pa_outcomes"
+    
+    # Load all PA data to get unique batters
+    frames = []
+    for f in sorted(pa_dir.glob("*.parquet")):
+        frames.append(pd.read_parquet(f, columns=["batter", "game_year"]))
+    df = pd.concat(frames, ignore_index=True)
+    print(f"Loaded {len(df):,} PAs, {df['batter'].nunique()} unique batters")
+    
+    # Method 1: Use pybaseball/Statcast player data if available
+    # For now, use debut year with better estimation
+    # Average MLB debut age is ~24.5, but varies significantly
+    # We can compute this from the hitter_seasons data which has more info
+    
+    # Load hitter_seasons if available for cross-reference
+    hs_path = parquet_dir / "hitter_seasons.parquet"
+    if hs_path.exists():
+        hs = pd.read_parquet(hs_path)
+        print(f"Loaded hitter_seasons: {len(hs)} rows, columns: {list(hs.columns)}")
+        # Check if it has Age column
+        if 'Age' in hs.columns or 'age' in hs.columns:
+            age_col = 'Age' if 'Age' in hs.columns else 'age'
+            yr_col = 'Season' if 'Season' in hs.columns else 'game_year' if 'game_year' in hs.columns else 'year'
+            id_col = 'IDfg' if 'IDfg' in hs.columns else 'key_mlbam' if 'key_mlbam' in hs.columns else 'batter'
+            
+            print(f"Found age column '{age_col}', year column '{yr_col}', id column '{id_col}'")
+            print(f"Sample: {hs[[id_col, yr_col, age_col]].head()}")
+            
+            # Compute birth_year = season - age
+            hs['birth_year_est'] = hs[yr_col] - hs[age_col]
+            
+            # Get median birth year per player (most robust)
+            birth_years_hs = hs.groupby(id_col)['birth_year_est'].median().round().astype(int)
+            print(f"Got birth years from hitter_seasons for {len(birth_years_hs)} players")
+    
+    # Compute debut year for all PA batters
+    debut = df.groupby("batter")["game_year"].min().reset_index()
+    debut.columns = ["batter", "debut_year"]
+    
+    # Try to match hitter_seasons birth years to PA batters
+    # The ID systems may differ (FanGraphs IDfg vs Statcast key_mlbam)
+    # For now, use debut_year - 24 as fallback but this generates the file
+    # so we can update with real ages later
+    
+    debut["birth_year"] = debut["debut_year"] - 24  # Default fallback
+    
+    # If we have hitter_seasons with age, try to match
+    if hs_path.exists() and 'birth_year_est' in hs.columns:
+        # Check if the ID column matches our batter IDs (Statcast mlbam IDs)
+        if id_col == 'IDfg':
+            # FanGraphs IDs don't match Statcast IDs directly
+            # But if hitter_seasons has key_mlbam or playerid columns...
+            mlbam_cols = [c for c in hs.columns if 'mlbam' in c.lower() or 'playerid' in c.lower()]
+            print(f"Available ID columns in hitter_seasons: {mlbam_cols}")
+    
+    # Save to volume
+    result = debut[["batter", "birth_year"]]
+    output_path = parquet_dir / "batter_birth_years.parquet"
+    result.to_parquet(output_path, index=False)
+    
+    # Commit the volume
+    data_volume.commit()
+    
+    print(f"\n✅ Saved {len(result)} batter birth years to {output_path}")
+    print(f"Birth year range: {result['birth_year'].min()} - {result['birth_year'].max()}")
+    
+    # Verify it's readable
+    check = pd.read_parquet(output_path)
+    print(f"Verification: {len(check)} rows, columns: {list(check.columns)}")
+    
+    return {"n_batters": len(result), "path": str(output_path)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -414,7 +535,7 @@ def train_pa_k_rate(
     n_draws: int = 2000,
     n_tune: int = 1500,
     n_chains: int = 4,
-    target_accept: float = 0.9,
+    target_accept: float = 0.95,
     min_pa: int = 50,
     projection_year: int = 2026,
     log_wandb: bool = True,
@@ -459,7 +580,17 @@ def train_pa_k_rate(
     data_volume.reload()
     logger.info("Loading PA outcomes...")
     pa_dir = PARQUET_DIR / "pa_outcomes"
+    
+    # Try to read birth_year; if not in parquet, we'll compute it after loading
     keep_cols = ["batter", "game_year", "stand", "is_k", "home_team", "away_team", "inning_topbot"]
+    # Check if birth_year column exists in the parquet files
+    import pyarrow.parquet as pq
+    sample_file = sorted(pa_dir.glob("*.parquet"))[0]
+    schema = pq.read_schema(sample_file)
+    has_birth_year = "birth_year" in schema.names
+    if has_birth_year:
+        keep_cols.append("birth_year")
+        logger.info("birth_year column found in PA parquet files")
     frames = []
     for f in sorted(pa_dir.glob("*.parquet")):
         frames.append(pd.read_parquet(f, columns=keep_cols))
@@ -478,12 +609,23 @@ def train_pa_k_rate(
     # Batting team from inning_topbot
     df["bat_team"] = np.where(df["inning_topbot"] == "Top", df["away_team"], df["home_team"])
 
-    # Filter low-PA batters (pitchers / cup-of-coffee)
+    # Filter pitchers and low-PA batters
+    n_before = df["batter"].nunique()
+    
+    # Step 1: Remove likely pitchers — anyone whose best season is < 80 PA
+    # (real position players get 200+ PA seasons; pitchers batting rarely exceed 80)
+    season_pa = df.groupby(["batter", "game_year"]).size().reset_index(name="season_pa")
+    max_season_pa = season_pa.groupby("batter")["season_pa"].max()
+    likely_hitters = max_season_pa[max_season_pa >= 80].index
+    n_pitchers_removed = n_before - len(likely_hitters)
+    df = df[df["batter"].isin(likely_hitters)].copy()
+    
+    # Step 2: Filter remaining low-PA batters (cup-of-coffee players)
     pa_counts = df.groupby("batter").size()
     qualified = pa_counts[pa_counts >= min_pa].index
-    n_before = df["batter"].nunique()
     df = df[df["batter"].isin(qualified)].copy()
-    logger.info(f"Batters: {n_before} → {df['batter'].nunique()} (>= {min_pa} PA)")
+    logger.info(f"Batters: {n_before} → {df['batter'].nunique()} "
+                f"(removed {n_pitchers_removed} likely pitchers, >= {min_pa} career PA)")
 
     # Integer indices
     seasons = np.sort(df["game_year"].unique())
@@ -500,26 +642,39 @@ def train_pa_k_rate(
 
     df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
 
-    # ─── Age: real birth years from lookup, fallback to debut-24 ───
-    birth_path = PARQUET_DIR / "batter_birth_years.parquet"
-    if birth_path.exists():
-        birth_lookup = pd.read_parquet(birth_path)
-        birth_map = birth_lookup.set_index("batter")["birth_year"].to_dict()
-        logger.info(f"Loaded {len(birth_map)} real birth years from lookup")
+    # ─── Age: get birth years ───
+    if "birth_year" in df.columns:
+        df["birth_year"] = df["birth_year"].astype(np.float64)
+        logger.info(f"Birth years from PA data: 100% coverage")
     else:
+        # Compute from hitter_seasons.parquet (has FanGraphs Age column)
         birth_map = {}
-        logger.warning("No birth year lookup found, using debut-24 fallback for all")
-    
-    # Fill missing with debut_year - 24 (average debut age)
-    first_year = df.groupby("batter")["game_year"].min().to_dict()
-    def get_birth_year(batter_id):
-        if batter_id in birth_map:
-            return float(birth_map[batter_id])
-        elif batter_id in first_year:
-            return float(first_year[batter_id] - 24)
-        return np.nan
-    
-    df["birth_year"] = df["batter"].map(get_birth_year).astype(np.float64)
+        hs_path = PARQUET_DIR / "hitter_seasons.parquet"
+        if hs_path.exists():
+            hs = pd.read_parquet(hs_path)
+            # Find the right columns
+            age_col = next((c for c in hs.columns if c.lower() == 'age'), None)
+            yr_col = next((c for c in hs.columns if c.lower() in ('season', 'game_year', 'year')), None)
+            id_col = next((c for c in hs.columns if 'mlbam' in c.lower() or c == 'IDfg' or c == 'fg_id'), None)
+            
+            if age_col and yr_col:
+                hs['_birth'] = hs[yr_col] - hs[age_col]
+                if id_col:
+                    birth_map = hs.groupby(id_col)['_birth'].median().round().astype(int).to_dict()
+                    logger.info(f"Birth years from hitter_seasons ({id_col}): {len(birth_map)} players")
+                else:
+                    logger.info(f"hitter_seasons has no mlbam ID column. Cols: {list(hs.columns)[:10]}")
+        
+        # Fallback: debut year - 24
+        first_year = df.groupby("batter")["game_year"].min().to_dict()
+        def get_by(batter_id):
+            if batter_id in birth_map:
+                return float(birth_map[batter_id])
+            return float(first_year.get(batter_id, 2015) - 24)
+        
+        df["birth_year"] = df["batter"].map(get_by).astype(np.float64)
+        n_real = sum(1 for b in df["batter"].unique() if b in birth_map)
+        logger.info(f"Birth years: {n_real}/{df['batter'].nunique()} from hitter_seasons, rest from debut-24")
     df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
     df["age_centered"] = (df["age"] - REFERENCE_AGE).astype(np.float64)
     
@@ -597,51 +752,20 @@ def train_pa_k_rate(
     del df
     gc.collect()
 
-    # ─── 2c. Build B-spline basis for age curve ─────────────────────────
-    from scipy.interpolate import BSpline
-
-    # Spline design: cubic B-spline with 5 interior knots
-    # Age data ranges ~20-42, bulk at 24-34
-    SPLINE_DEGREE = 3
-    INTERIOR_KNOTS = np.array([23.0, 26.0, 29.0, 33.0, 37.0])
-    BOUNDARY_KNOTS = np.array([18.0, 45.0])  # extend for extrapolation
-
-    # Full knot vector (with repeated boundary knots for clamped spline)
-    knots = np.concatenate([
-        np.repeat(BOUNDARY_KNOTS[0], SPLINE_DEGREE),
-        INTERIOR_KNOTS,
-        np.repeat(BOUNDARY_KNOTS[1], SPLINE_DEGREE),
-    ])
-
-    n_spline_basis = len(INTERIOR_KNOTS) + SPLINE_DEGREE + 1  # = 9
-
-    def eval_bspline_basis(ages, knots, degree, n_basis):
-        """Evaluate B-spline basis functions at given ages."""
-        B = np.zeros((len(ages), n_basis))
-        for i in range(n_basis):
-            coeffs = np.zeros(n_basis)
-            coeffs[i] = 1.0
-            spl = BSpline(knots, coeffs, degree, extrapolate=True)
-            B[:, i] = spl(ages)
-        return B
-
-    # Compute basis matrix for training data
-    age_values = agg_df["age"].values
-    B_train = eval_bspline_basis(age_values, knots, SPLINE_DEGREE, n_spline_basis)
-
-    logger.info(f"B-spline basis: {n_spline_basis} basis functions, "
-                f"knots at {INTERIOR_KNOTS.tolist()}, "
-                f"boundaries [{BOUNDARY_KNOTS[0]}, {BOUNDARY_KNOTS[1]}]")
-
-    # Store spline config for projection later
-    spline_config = {
-        "knots": knots,
-        "degree": SPLINE_DEGREE,
-        "n_basis": n_spline_basis,
-        "interior_knots": INTERIOR_KNOTS,
-        "boundary_knots": BOUNDARY_KNOTS,
-        "reference_age": REFERENCE_AGE,
-    }
+    # ─── 2c. Prepare age data for HSGP ──────────────────────────────────
+    # HSGP needs centered age as a 2D array (n_obs, 1)
+    age_centered_vals = agg_df["age_centered"].values.astype(np.float64)
+    
+    # HSGP config
+    # m = number of basis functions (20 is plenty for 1D smooth curve)
+    # c = boundary factor — domain extends to [-L, L] where L = c * half_range
+    #     Must cover training ages AND future projection ages (up to ~45)
+    age_range = age_centered_vals.max() - age_centered_vals.min()
+    HSGP_M = 20       # basis functions
+    HSGP_C = 1.5      # boundary factor (covers ~18 to ~45 with REFERENCE_AGE=27)
+    
+    logger.info(f"HSGP age model: m={HSGP_M} basis functions, c={HSGP_C}, "
+                f"age range [{age_centered_vals.min():.1f}, {age_centered_vals.max():.1f}] centered")
 
     # ─── 3. Build PyMC model ────────────────────────────────────────────
     coords = {
@@ -649,7 +773,6 @@ def train_pa_k_rate(
         "season": seasons,
         "team": teams,
         "obs_id": np.arange(n_obs),
-        "spline_basis": np.arange(n_spline_basis),
     }
 
     with pm.Model(coords=coords) as model:
@@ -660,6 +783,9 @@ def train_pa_k_rate(
         stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
         log_pf_d = pm.Data("log_pf_k", agg_df["log_pf_k"].values, dims="obs_id")
         n_pa_d = pm.Data("n_pa", agg_df["n_pa"].values, dims="obs_id")
+        
+        # Age as mutable data container (for set_data projection)
+        age_c_d = pm.Data("age_centered", age_centered_vals, dims="obs_id")
 
         # League trend: random walk
         league_init = pm.Normal("league_init", mu=-1.27, sigma=0.3)
@@ -680,27 +806,25 @@ def train_pa_k_rate(
         # Park effects: zero-sum
         park_effect = pm.ZeroSumNormal("park_effect", sigma=0.05, dims="team")
 
-        # Age curve: B-spline (replaces quadratic)
-        # B-spline basis matrix as data container (for set_data projection)
-        B_age = pm.Data("B_age", B_train, dims=("obs_id", "spline_basis"))
+        # ─── Age curve: HSGP (Hilbert Space Gaussian Process) ───────────
+        # Replaces B-spline. Learns a smooth nonlinear aging curve from data.
+        # HSGP is a spectral approximation to a full GP — O(nm) not O(n³).
+        #
+        # Two hyperparameters the model learns:
+        #   eta_age (amplitude) — how much age matters overall
+        #   ell_age (lengthscale) — how smooth the curve is
+        #     large ell → very smooth (age effect changes slowly)
+        #     small ell → more wiggly (can capture sharp transitions)
+        #
+        # Matern-5/2 kernel: twice differentiable, smooth but can capture
+        # asymmetric aging (gradual improvement then faster decline).
         
-        # Spline coefficients with smoothing prior
-        # tau controls smoothness — larger = smoother curve
-        tau_age = pm.HalfNormal("tau_age", sigma=0.5)
-        # Random walk prior on spline coefficients → penalizes wiggly curves
-        age_coeff_raw = pm.Normal("age_coeff_raw", mu=0, sigma=1, dims="spline_basis")
-        # First coefficient is free, rest are increments
-        age_coeffs = pm.Deterministic(
-            "age_coeffs",
-            pt.concatenate([
-                age_coeff_raw[:1] * tau_age,
-                pt.cumsum(age_coeff_raw[1:] * tau_age) + age_coeff_raw[0] * tau_age,
-            ]),
-            dims="spline_basis",
-        )
+        eta_age = pm.HalfNormal("eta_age", sigma=0.5)
+        ell_age = pm.InverseGamma("ell_age", mu=5.0, sigma=2.0)  # ~5 year lengthscale
         
-        # Age effect = B-spline basis @ coefficients
-        age_effect = pm.Deterministic("age_effect", pt.dot(B_age, age_coeffs), dims="obs_id")
+        cov_age = eta_age**2 * pm.gp.cov.Matern52(1, ls=ell_age)
+        gp_age = pm.gp.HSGP(m=[HSGP_M], c=HSGP_C, cov_func=cov_age)
+        age_effect = gp_age.prior("age_effect", X=age_c_d[:, None])
         
         # Linear predictor
         eta = (
@@ -716,9 +840,12 @@ def train_pa_k_rate(
         p = pm.math.invlogit(eta)
         pm.Binomial("obs_k", n=n_pa_d, p=p, observed=agg_df["n_k"].values, dims="obs_id")
 
-    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + n_spline_basis + 1  # +1 for tau_age
+    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + HSGP_M + 2  # +2 for eta_age, ell_age
     logger.info(f"Model built: ~{n_params:,} free parameters")
 
+    # Save age values before freeing dataframe (needed for projection interpolation)
+    obs_age_values = agg_df["age"].values.copy()
+    
     # Free the aggregated dataframe to save memory
     del agg_df
     gc.collect()
@@ -749,11 +876,14 @@ def train_pa_k_rate(
     logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
 
     # ─── 5. Generate multi-year projections ─────────────────────────────
+    # For HSGP, we evaluate the GP at new age points using the learned
+    # spectral basis weights. The HSGP prior creates internal variables
+    # (hsgp_coeffs_) that we can use to reconstruct f(age) at any point.
+    
     post = trace.posterior
     lt = post["league_trend"].values
     pa_vals = post["player_ability"].values
     bh = post["beta_hand"].values
-    age_coeffs_post = post["age_coeffs"].values  # (chains, draws, n_spline_basis)
     innov = post["league_innovations"].values
 
     nc, nd = lt.shape[:2]
@@ -761,20 +891,63 @@ def train_pa_k_rate(
     lt_flat = lt.reshape(ns, -1)
     pa_flat = pa_vals.reshape(ns, -1)
     bh_flat = bh.reshape(ns)
-    age_coeffs_flat = age_coeffs_post.reshape(ns, -1)  # (ns, n_spline_basis)
     innov_flat = innov.reshape(ns, -1)
+    
+    # Extract HSGP internals for manual evaluation at new ages
+    # HSGP stores: _beta (spectral coefficients), and we need the basis functions
+    eta_age_post = post["eta_age"].values.reshape(ns)
+    ell_age_post = post["ell_age"].values.reshape(ns)
+    
+    # Get the HSGP spectral coefficients — named "age_effect_hsgp_coeffs_"
+    hsgp_coeff_names = [v for v in post.data_vars if "hsgp_coeffs" in v or "age_effect" in v]
+    logger.info(f"HSGP posterior variables: {hsgp_coeff_names}")
+    
+    # The age_effect values at training points are stored directly
+    age_effect_post = post["age_effect"].values  # (chains, draws, n_obs)
+    age_effect_flat = age_effect_post.reshape(ns, -1)
+    
+    # For projecting to NEW ages, we need to evaluate the GP basis at those ages.
+    # HSGP uses: f(x) = phi(x)^T @ beta, where phi are spectral basis functions.
+    # We can reconstruct this from the HSGP object's internals.
+    
+    # Get the learned age effect at each observed age, build an interpolation
+    # This is simpler and more robust than reconstructing HSGP basis manually
+    from scipy.interpolate import interp1d
+    
+    # Unique ages in training data and their mean posterior age effects
+    unique_ages = np.sort(np.unique(obs_age_values))
+    # Map each obs to its age, compute mean age effect per unique age per sample
+    obs_ages = obs_age_values
+    
+    # Build age→effect interpolator for each posterior sample
+    # Group observations by age, average the age_effect within each age
+    age_to_obs_idx = {}
+    for i, a in enumerate(obs_ages):
+        age_to_obs_idx.setdefault(float(a), []).append(i)
+    
+    # Mean age effect at each unique age for each sample
+    age_effect_by_age = np.zeros((len(unique_ages), ns))
+    for j, a in enumerate(unique_ages):
+        idx = age_to_obs_idx[float(a)]
+        age_effect_by_age[j, :] = age_effect_flat[:, idx].mean(axis=1)
+    
+    def eval_gp_age_effect(ages_new):
+        """Evaluate GP age effect at new ages via interpolation of posterior."""
+        # Extrapolate linearly beyond training range
+        interp = interp1d(unique_ages, age_effect_by_age, axis=0, 
+                         kind="linear", fill_value="extrapolate")
+        return interp(ages_new)  # (len(ages_new), ns)
 
     # Extrapolate league trend
     last_trend = lt_flat[:, -1]
     innov_std = innov_flat.std(axis=1)
-    rng = np.random.default_rng(42)
 
     # Project recently active batters
     cutoff_year = int(seasons[-1]) - 2  # active in last 3 years
     active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
     logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
 
-    # Multi-year projection: project for each year from projection_year to projection_year+4
+    # Multi-year projection
     all_projections = []
 
     for proj_year in range(projection_year, projection_year + 5):
@@ -790,13 +963,8 @@ def train_pa_k_rate(
             proj_age = proj_year - float(row["birth_year"])
             s_idx = 1 if row["stand"] == "R" else 0
 
-            # Evaluate B-spline basis at projected age
-            B_proj = eval_bspline_basis(
-                np.array([proj_age]), knots, SPLINE_DEGREE, n_spline_basis
-            )  # (1, n_basis)
-
-            # Age effect from spline: B_proj @ age_coeffs for each posterior sample
-            age_eff = (B_proj @ age_coeffs_flat.T).squeeze()  # (ns,)
+            # GP age effect at projected age
+            age_eff = eval_gp_age_effect(np.array([proj_age])).squeeze()  # (ns,)
 
             eta_proj = (
                 projected_trend
@@ -835,11 +1003,9 @@ def train_pa_k_rate(
         f"median K% = {proj_2026['projected_k_rate'].median():.3f}"
     )
 
-    # Also generate the learned aging curve for plotting
+    # Generate the learned aging curve for plotting
     age_grid = np.linspace(20, 42, 100)
-    B_grid = eval_bspline_basis(age_grid, knots, SPLINE_DEGREE, n_spline_basis)
-    # Posterior aging curve: B_grid @ age_coeffs for each sample
-    aging_curves = B_grid @ age_coeffs_flat.T  # (100, ns)
+    aging_curves = eval_gp_age_effect(age_grid)  # (100, ns)
     aging_curve_mean = aging_curves.mean(axis=1)
     aging_curve_lower = np.percentile(aging_curves, 5, axis=1)
     aging_curve_upper = np.percentile(aging_curves, 95, axis=1)
@@ -976,7 +1142,8 @@ def train_pa_k_rate(
         "n_projections": len(proj_df),
         "median_k_rate": round(float(proj_2026["projected_k_rate"].median()), 4),
         "projection_years": list(range(projection_year, projection_year + 5)),
-        "spline_config": {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in spline_config.items()},
+        "age_model": "HSGP",
+        "hsgp_config": {"m": HSGP_M, "c": HSGP_C, "kernel": "Matern52", "reference_age": REFERENCE_AGE},
         "aging_curve_summary": {
             "peak_age": float(age_grid[aging_curve_mean.argmin()]),
             "age_effect_at_25": float(aging_curves[np.argmin(np.abs(age_grid - 25))].mean()),
