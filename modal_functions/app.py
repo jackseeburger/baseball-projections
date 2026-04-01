@@ -1047,7 +1047,9 @@ def train_pa_k_rate(
                 name=run_name,
                 config={
                     "model": "pa_k_rate_binomial",
-                    "age_model": "bspline",
+                    "age_model": "HSGP",
+                    "hsgp_m": HSGP_M, "hsgp_c": HSGP_C,
+                    "kernel": "Matern52",
                     "likelihood": "binomial_batter_season",
                     "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
                     "target_accept": target_accept, "min_pa": min_pa,
@@ -1057,7 +1059,7 @@ def train_pa_k_rate(
                     "n_total_pa": n_total_pa,
                     "reference_age": REFERENCE_AGE,
                 },
-                tags=["k-rate", "bayesian", "binomial", "batter-season"],
+                tags=["k-rate", "bayesian", "binomial", "hsgp", "batter-season"],
                 group="hitter-k-rate",
                 job_type="train",
                 reinit=True,
@@ -1074,38 +1076,102 @@ def train_pa_k_rate(
             # Summary table
             summary = az.summary(trace, var_names=[
                 "league_init", "mu_ability", "sigma_ability", "beta_hand",
-                "tau_age",
+                "eta_age", "ell_age",
             ])
             wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
+            
+            # Log GP hyperparameters
+            eta_age_mean = float(trace.posterior["eta_age"].mean())
+            ell_age_mean = float(trace.posterior["ell_age"].mean())
+            wandb.log({
+                "gp/eta_age_mean": eta_age_mean,
+                "gp/ell_age_mean": ell_age_mean,
+            })
 
-            # Posterior plots
+            # Posterior plots — scalars + GP hyperparams
             for var_group, var_names in [
-                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand", "tau_age"]),
+                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand"]),
+                ("gp_hyperparams", ["eta_age", "ell_age"]),
                 ("league_trend", ["league_trend"]),
             ]:
-                ax = az.plot_trace(trace, var_names=var_names, compact=True)
-                fig = ax.ravel()[0].figure
-                wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
-                plt.close(fig)
+                try:
+                    ax = az.plot_trace(trace, var_names=var_names, compact=True)
+                    fig = ax.ravel()[0].figure
+                    wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
+                    plt.close(fig)
+                except Exception as e:
+                    logger.warning(f"Failed to plot {var_group}: {e}")
 
-            # Projections table
-            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
-
-            # Log aging curve plot
+            # ── Aging curve plot ──
             fig, ax = plt.subplots(figsize=(10, 6))
             ax.plot(aging_df["age"], aging_df["age_effect_mean"], "b-", linewidth=2, label="Mean")
             ax.fill_between(aging_df["age"], aging_df["age_effect_lower"], aging_df["age_effect_upper"],
                            alpha=0.3, color="blue", label="90% CI")
             ax.set_xlabel("Age")
             ax.set_ylabel("Age Effect (logit scale)")
-            ax.set_title("Learned K% Aging Curve (B-spline)")
+            ax.set_title(f"Learned K% Aging Curve (HSGP Matern-5/2, ℓ={ell_age_mean:.1f} yr)")
             ax.legend()
             ax.grid(True, alpha=0.3)
             ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+            # Mark peak age
+            peak_idx = aging_curve_mean.argmin()
+            ax.axvline(x=age_grid[peak_idx], color="red", linestyle=":", alpha=0.5, 
+                       label=f"Peak: {age_grid[peak_idx]:.1f}")
+            ax.legend()
             wandb.log({"aging_curve": wandb.Image(fig)})
             plt.close(fig)
             
-            # Log aging curve as table
+            # ── K% distribution plot (2026 projections) ──
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.hist(proj_2026["projected_k_rate"], bins=50, alpha=0.7, color="steelblue", edgecolor="white")
+            ax.axvline(x=proj_2026["projected_k_rate"].median(), color="red", linestyle="--", 
+                       label=f"Median: {proj_2026['projected_k_rate'].median():.1%}")
+            ax.set_xlabel("Projected K%")
+            ax.set_ylabel("Count")
+            ax.set_title(f"K% Projections Distribution ({projection_year}, n={len(proj_2026)})")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            wandb.log({"projections/k_rate_distribution": wandb.Image(fig)})
+            plt.close(fig)
+            
+            # ── Projected vs Career K% scatter ──
+            fig, ax = plt.subplots(figsize=(8, 8))
+            ax.scatter(proj_2026["career_k_rate"], proj_2026["projected_k_rate"], 
+                      alpha=0.3, s=10, color="steelblue")
+            lims = [0, 0.45]
+            ax.plot(lims, lims, "r--", alpha=0.5, label="y=x")
+            ax.set_xlabel("Career K%")
+            ax.set_ylabel(f"Projected K% ({projection_year})")
+            ax.set_title("Projected vs Career K%")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.set_xlim(lims)
+            ax.set_ylim(lims)
+            wandb.log({"projections/career_vs_projected": wandb.Image(fig)})
+            plt.close(fig)
+            
+            # ── Multi-year trajectory examples (top 5 + bottom 5) ──
+            fig, axes = plt.subplots(1, 2, figsize=(14, 6))
+            for ax_i, (title, ascending) in enumerate([("Lowest K% (Best Contact)", True), ("Highest K%", False)]):
+                ax = axes[ax_i]
+                top5 = proj_2026.sort_values("projected_k_rate", ascending=ascending).head(5)["batter"].values
+                for batter_id in top5:
+                    bdf = proj_df[proj_df["batter"] == batter_id]
+                    career_k = bdf["career_k_rate"].iloc[0]
+                    ax.plot(bdf["projection_year"], bdf["projected_k_rate"], "o-", markersize=4,
+                           label=f"{batter_id} (career: {career_k:.1%})")
+                    ax.fill_between(bdf["projection_year"], bdf["k_rate_lower"], bdf["k_rate_upper"], alpha=0.1)
+                ax.set_xlabel("Year")
+                ax.set_ylabel("K%")
+                ax.set_title(title)
+                ax.legend(fontsize=7)
+                ax.grid(True, alpha=0.3)
+            plt.tight_layout()
+            wandb.log({"projections/multi_year_trajectories": wandb.Image(fig)})
+            plt.close(fig)
+            
+            # Tables
+            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
             wandb.log({"aging_curve_data": wandb.Table(dataframe=aging_df)})
 
             # Projections artifact
