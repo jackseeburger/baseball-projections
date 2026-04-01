@@ -498,12 +498,31 @@ def train_pa_k_rate(
 
     df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
 
-    # Age estimation
-    first_year = df.groupby("batter")["game_year"].min()
-    birth_year = (first_year - 23).to_dict()
-    df["birth_year"] = df["batter"].map(birth_year).astype(np.float64)
+    # ─── Age: real birth years from lookup, fallback to debut-24 ───
+    birth_path = PARQUET_DIR / "batter_birth_years.parquet"
+    if birth_path.exists():
+        birth_lookup = pd.read_parquet(birth_path)
+        birth_map = birth_lookup.set_index("batter")["birth_year"].to_dict()
+        logger.info(f"Loaded {len(birth_map)} real birth years from lookup")
+    else:
+        birth_map = {}
+        logger.warning("No birth year lookup found, using debut-24 fallback for all")
+    
+    # Fill missing with debut_year - 24 (average debut age)
+    first_year = df.groupby("batter")["game_year"].min().to_dict()
+    def get_birth_year(batter_id):
+        if batter_id in birth_map:
+            return float(birth_map[batter_id])
+        elif batter_id in first_year:
+            return float(first_year[batter_id] - 24)
+        return np.nan
+    
+    df["birth_year"] = df["batter"].map(get_birth_year).astype(np.float64)
     df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
     df["age_centered"] = (df["age"] - REFERENCE_AGE).astype(np.float64)
+    
+    logger.info(f"Age range: {df['age'].min():.0f}-{df['age'].max():.0f}, "
+                f"mean={df['age'].mean():.1f}")
 
     # Park factor lookup (team_idx, season_idx) → log(pf_k)
     n_teams = len(teams)
@@ -549,6 +568,7 @@ def train_pa_k_rate(
             stand_idx=("stand_idx", "first"),
             batter_idx=("batter_idx", "first"),
             season_idx=("season_idx", "first"),
+            age=("age", "first"),
             age_centered=("age_centered", "first"),
             log_pf_k=("log_pf_k", "mean"),
         )
@@ -575,12 +595,59 @@ def train_pa_k_rate(
     del df
     gc.collect()
 
+    # ─── 2c. Build B-spline basis for age curve ─────────────────────────
+    from scipy.interpolate import BSpline
+
+    # Spline design: cubic B-spline with 5 interior knots
+    # Age data ranges ~20-42, bulk at 24-34
+    SPLINE_DEGREE = 3
+    INTERIOR_KNOTS = np.array([23.0, 26.0, 29.0, 33.0, 37.0])
+    BOUNDARY_KNOTS = np.array([18.0, 45.0])  # extend for extrapolation
+
+    # Full knot vector (with repeated boundary knots for clamped spline)
+    knots = np.concatenate([
+        np.repeat(BOUNDARY_KNOTS[0], SPLINE_DEGREE),
+        INTERIOR_KNOTS,
+        np.repeat(BOUNDARY_KNOTS[1], SPLINE_DEGREE),
+    ])
+
+    n_spline_basis = len(INTERIOR_KNOTS) + SPLINE_DEGREE + 1  # = 9
+
+    def eval_bspline_basis(ages, knots, degree, n_basis):
+        """Evaluate B-spline basis functions at given ages."""
+        B = np.zeros((len(ages), n_basis))
+        for i in range(n_basis):
+            coeffs = np.zeros(n_basis)
+            coeffs[i] = 1.0
+            spl = BSpline(knots, coeffs, degree, extrapolate=True)
+            B[:, i] = spl(ages)
+        return B
+
+    # Compute basis matrix for training data
+    age_values = agg_df["age"].values
+    B_train = eval_bspline_basis(age_values, knots, SPLINE_DEGREE, n_spline_basis)
+
+    logger.info(f"B-spline basis: {n_spline_basis} basis functions, "
+                f"knots at {INTERIOR_KNOTS.tolist()}, "
+                f"boundaries [{BOUNDARY_KNOTS[0]}, {BOUNDARY_KNOTS[1]}]")
+
+    # Store spline config for projection later
+    spline_config = {
+        "knots": knots,
+        "degree": SPLINE_DEGREE,
+        "n_basis": n_spline_basis,
+        "interior_knots": INTERIOR_KNOTS,
+        "boundary_knots": BOUNDARY_KNOTS,
+        "reference_age": REFERENCE_AGE,
+    }
+
     # ─── 3. Build PyMC model ────────────────────────────────────────────
     coords = {
         "batter": batters,
         "season": seasons,
         "team": teams,
         "obs_id": np.arange(n_obs),
+        "spline_basis": np.arange(n_spline_basis),
     }
 
     with pm.Model(coords=coords) as model:
@@ -589,7 +656,6 @@ def train_pa_k_rate(
         season_idx_d = pm.Data("season_idx", agg_df["season_idx"].values, dims="obs_id")
         team_idx_d = pm.Data("team_idx", agg_df["team_idx"].values, dims="obs_id")
         stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
-        age_c = pm.Data("age_centered", agg_df["age_centered"].values, dims="obs_id")
         log_pf_d = pm.Data("log_pf_k", agg_df["log_pf_k"].values, dims="obs_id")
         n_pa_d = pm.Data("n_pa", agg_df["n_pa"].values, dims="obs_id")
 
@@ -612,18 +678,35 @@ def train_pa_k_rate(
         # Park effects: zero-sum
         park_effect = pm.ZeroSumNormal("park_effect", sigma=0.05, dims="team")
 
-        # Age curve: quadratic
-        beta_age = pm.Normal("beta_age", mu=0.0, sigma=0.02)
-        beta_age2 = pm.Normal("beta_age2", mu=0.005, sigma=0.01)
-
+        # Age curve: B-spline (replaces quadratic)
+        # B-spline basis matrix as data container (for set_data projection)
+        B_age = pm.Data("B_age", B_train, dims=("obs_id", "spline_basis"))
+        
+        # Spline coefficients with smoothing prior
+        # tau controls smoothness — larger = smoother curve
+        tau_age = pm.HalfNormal("tau_age", sigma=0.5)
+        # Random walk prior on spline coefficients → penalizes wiggly curves
+        age_coeff_raw = pm.Normal("age_coeff_raw", mu=0, sigma=1, dims="spline_basis")
+        # First coefficient is free, rest are increments
+        age_coeffs = pm.Deterministic(
+            "age_coeffs",
+            pt.concatenate([
+                age_coeff_raw[:1] * tau_age,
+                pt.cumsum(age_coeff_raw[1:] * tau_age) + age_coeff_raw[0] * tau_age,
+            ]),
+            dims="spline_basis",
+        )
+        
+        # Age effect = B-spline basis @ coefficients
+        age_effect = pm.Deterministic("age_effect", pt.dot(B_age, age_coeffs), dims="obs_id")
+        
         # Linear predictor
         eta = (
             league_trend[season_idx_d]
             + player_ability[batter_idx_d]
             + beta_hand * stand_idx_d
             + park_effect[team_idx_d]
-            + beta_age * age_c
-            + beta_age2 * (age_c ** 2)
+            + age_effect
             + log_pf_d
         )
 
@@ -631,7 +714,7 @@ def train_pa_k_rate(
         p = pm.math.invlogit(eta)
         pm.Binomial("obs_k", n=n_pa_d, p=p, observed=agg_df["n_k"].values, dims="obs_id")
 
-    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + 2
+    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + n_spline_basis + 1  # +1 for tau_age
     logger.info(f"Model built: ~{n_params:,} free parameters")
 
     # Free the aggregated dataframe to save memory
@@ -663,13 +746,12 @@ def train_pa_k_rate(
             divergences = int(div.values.sum())
     logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
 
-    # ─── 5. Generate projections ────────────────────────────────────────
+    # ─── 5. Generate multi-year projections ─────────────────────────────
     post = trace.posterior
     lt = post["league_trend"].values
     pa_vals = post["player_ability"].values
     bh = post["beta_hand"].values
-    ba = post["beta_age"].values
-    ba2 = post["beta_age2"].values
+    age_coeffs_post = post["age_coeffs"].values  # (chains, draws, n_spline_basis)
     innov = post["league_innovations"].values
 
     nc, nd = lt.shape[:2]
@@ -677,57 +759,95 @@ def train_pa_k_rate(
     lt_flat = lt.reshape(ns, -1)
     pa_flat = pa_vals.reshape(ns, -1)
     bh_flat = bh.reshape(ns)
-    ba_flat = ba.reshape(ns)
-    ba2_flat = ba2.reshape(ns)
+    age_coeffs_flat = age_coeffs_post.reshape(ns, -1)  # (ns, n_spline_basis)
     innov_flat = innov.reshape(ns, -1)
 
     # Extrapolate league trend
     last_trend = lt_flat[:, -1]
     innov_std = innov_flat.std(axis=1)
     rng = np.random.default_rng(42)
-    years_ahead = projection_year - int(seasons[-1])
-    projected_trend = last_trend.copy()
-    for _ in range(years_ahead):
-        projected_trend += rng.normal(0, innov_std)
 
     # Project recently active batters
     cutoff_year = int(seasons[-1]) - 2  # active in last 3 years
     active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
     logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
 
-    results = []
-    for _, row in active.iterrows():
-        batter_id = int(row["batter"])
-        b_idx = batter_map[batter_id]
-        proj_age = projection_year - float(row["birth_year"])
-        age_c_val = proj_age - REFERENCE_AGE
-        s_idx = 1 if row["stand"] == "R" else 0
+    # Multi-year projection: project for each year from projection_year to projection_year+4
+    all_projections = []
 
-        eta_proj = (
-            projected_trend
-            + pa_flat[:, b_idx]
-            + bh_flat * s_idx
-            + ba_flat * age_c_val
-            + ba2_flat * (age_c_val ** 2)
-        )
-        p_k_proj = 1.0 / (1.0 + np.exp(-eta_proj))
+    for proj_year in range(projection_year, projection_year + 5):
+        years_ahead = proj_year - int(seasons[-1])
+        projected_trend = last_trend.copy()
+        rng_year = np.random.default_rng(42 + proj_year)
+        for _ in range(years_ahead):
+            projected_trend = projected_trend + rng_year.normal(0, innov_std)
 
-        results.append({
-            "batter": batter_id,
-            "stand": row["stand"],
-            "age": proj_age,
-            "projected_k_rate": float(np.mean(p_k_proj)),
-            "k_rate_std": float(np.std(p_k_proj)),
-            "k_rate_lower": float(np.percentile(p_k_proj, 5)),
-            "k_rate_upper": float(np.percentile(p_k_proj, 95)),
-            "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
-            "total_pa": int(row["total_pa"]),
-            "career_k_rate": float(row["career_k_rate"]),
-            "last_season": int(row["last_season"]),
-        })
+        for _, row in active.iterrows():
+            batter_id = int(row["batter"])
+            b_idx = batter_map[batter_id]
+            proj_age = proj_year - float(row["birth_year"])
+            s_idx = 1 if row["stand"] == "R" else 0
 
-    proj_df = pd.DataFrame(results).sort_values("projected_k_rate").reset_index(drop=True)
-    logger.info(f"Projections: median K% = {proj_df['projected_k_rate'].median():.3f}")
+            # Evaluate B-spline basis at projected age
+            B_proj = eval_bspline_basis(
+                np.array([proj_age]), knots, SPLINE_DEGREE, n_spline_basis
+            )  # (1, n_basis)
+
+            # Age effect from spline: B_proj @ age_coeffs for each posterior sample
+            age_eff = (B_proj @ age_coeffs_flat.T).squeeze()  # (ns,)
+
+            eta_proj = (
+                projected_trend
+                + pa_flat[:, b_idx]
+                + bh_flat * s_idx
+                + age_eff
+            )
+
+            p_k = 1.0 / (1.0 + np.exp(-eta_proj))
+
+            all_projections.append({
+                "batter": batter_id,
+                "projection_year": proj_year,
+                "projected_age": proj_age,
+                "stand": row["stand"],
+                "projected_k_rate": float(np.mean(p_k)),
+                "k_rate_std": float(np.std(p_k)),
+                "k_rate_lower": float(np.percentile(p_k, 5)),
+                "k_rate_upper": float(np.percentile(p_k, 95)),
+                "k_rate_10": float(np.percentile(p_k, 10)),
+                "k_rate_90": float(np.percentile(p_k, 90)),
+                "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
+                "total_pa": int(row["total_pa"]),
+                "career_k_rate": float(row["career_k_rate"]),
+                "last_season": int(row["last_season"]),
+            })
+
+    proj_df = pd.DataFrame(all_projections)
+    proj_df = proj_df.sort_values(["batter", "projection_year"]).reset_index(drop=True)
+
+    # Summary stats
+    proj_2026 = proj_df[proj_df["projection_year"] == projection_year]
+    logger.info(
+        f"Projections generated: {len(proj_df)} total rows "
+        f"({len(proj_2026)} for {projection_year}), "
+        f"median K% = {proj_2026['projected_k_rate'].median():.3f}"
+    )
+
+    # Also generate the learned aging curve for plotting
+    age_grid = np.linspace(20, 42, 100)
+    B_grid = eval_bspline_basis(age_grid, knots, SPLINE_DEGREE, n_spline_basis)
+    # Posterior aging curve: B_grid @ age_coeffs for each sample
+    aging_curves = B_grid @ age_coeffs_flat.T  # (100, ns)
+    aging_curve_mean = aging_curves.mean(axis=1)
+    aging_curve_lower = np.percentile(aging_curves, 5, axis=1)
+    aging_curve_upper = np.percentile(aging_curves, 95, axis=1)
+
+    aging_df = pd.DataFrame({
+        "age": age_grid,
+        "age_effect_mean": aging_curve_mean,
+        "age_effect_lower": aging_curve_lower,
+        "age_effect_upper": aging_curve_upper,
+    })
 
     # Save projections to volume
     proj_dir = Path("/models/projections")
@@ -735,13 +855,17 @@ def train_pa_k_rate(
     proj_path = proj_dir / f"k_rate_projections_{projection_year}.parquet"
     proj_df.to_parquet(str(proj_path), index=False)
 
+    # Save aging curve
+    aging_path = proj_dir / f"k_rate_aging_curve_{projection_year}.parquet"
+    aging_df.to_parquet(str(aging_path), index=False)
+
     # Save trace
     trace_dir = Path("/models/traces")
     trace_dir.mkdir(parents=True, exist_ok=True)
     trace_path = trace_dir / f"k_rate_trace_{projection_year}.nc"
     trace.to_netcdf(str(trace_path))
-    models_volume.commit()
-    logger.info(f"Saved projections + trace to /models volume")
+
+    logger.info(f"Saved projections + aging curve + trace to /models volume")
 
     # ─── 6. wandb logging ───────────────────────────────────────────────
     if log_wandb:
@@ -755,6 +879,7 @@ def train_pa_k_rate(
                 name=run_name,
                 config={
                     "model": "pa_k_rate_binomial",
+                    "age_model": "bspline",
                     "likelihood": "binomial_batter_season",
                     "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
                     "target_accept": target_accept, "min_pa": min_pa,
@@ -780,14 +905,14 @@ def train_pa_k_rate(
 
             # Summary table
             summary = az.summary(trace, var_names=[
-                "league_init", "mu_ability", "sigma_ability",
-                "beta_hand", "beta_age", "beta_age2",
+                "league_init", "mu_ability", "sigma_ability", "beta_hand",
+                "tau_age",
             ])
             wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
 
             # Posterior plots
             for var_group, var_names in [
-                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand", "beta_age", "beta_age2"]),
+                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand", "tau_age"]),
                 ("league_trend", ["league_trend"]),
             ]:
                 ax = az.plot_trace(trace, var_names=var_names, compact=True)
@@ -797,6 +922,23 @@ def train_pa_k_rate(
 
             # Projections table
             wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
+
+            # Log aging curve plot
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.plot(aging_df["age"], aging_df["age_effect_mean"], "b-", linewidth=2, label="Mean")
+            ax.fill_between(aging_df["age"], aging_df["age_effect_lower"], aging_df["age_effect_upper"],
+                           alpha=0.3, color="blue", label="90% CI")
+            ax.set_xlabel("Age")
+            ax.set_ylabel("Age Effect (logit scale)")
+            ax.set_title("Learned K% Aging Curve (B-spline)")
+            ax.legend()
+            ax.grid(True, alpha=0.3)
+            ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
+            wandb.log({"aging_curve": wandb.Image(fig)})
+            plt.close(fig)
+            
+            # Log aging curve as table
+            wandb.log({"aging_curve_data": wandb.Table(dataframe=aging_df)})
 
             # Projections artifact
             artifact = wandb.Artifact(f"k-rate-projections-{projection_year}", type="projections",
@@ -814,6 +956,7 @@ def train_pa_k_rate(
             trace_artifact.add_file(str(trace_path), name="trace.nc")
             wandb.log_artifact(trace_artifact, aliases=["latest"])
 
+            models_volume.commit()
             logger.info(f"wandb run: {run.url}")
             wandb.finish()
         except Exception as e:
@@ -829,9 +972,17 @@ def train_pa_k_rate(
         "divergences": divergences,
         "sampling_time_s": round(elapsed, 1),
         "n_projections": len(proj_df),
-        "median_k_rate": round(float(proj_df["projected_k_rate"].median()), 4),
-        "top_5_lowest_k": proj_df.head(5)[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
-        "top_5_highest_k": proj_df.tail(5)[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+        "median_k_rate": round(float(proj_2026["projected_k_rate"].median()), 4),
+        "projection_years": list(range(projection_year, projection_year + 5)),
+        "spline_config": {k: v.tolist() if isinstance(v, np.ndarray) else v for k, v in spline_config.items()},
+        "aging_curve_summary": {
+            "peak_age": float(age_grid[aging_curve_mean.argmin()]),
+            "age_effect_at_25": float(aging_curves[np.argmin(np.abs(age_grid - 25))].mean()),
+            "age_effect_at_30": float(aging_curves[np.argmin(np.abs(age_grid - 30))].mean()),
+            "age_effect_at_35": float(aging_curves[np.argmin(np.abs(age_grid - 35))].mean()),
+        },
+        "top_5_lowest_k": proj_2026.nsmallest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+        "top_5_highest_k": proj_2026.nlargest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
     }
 
 
