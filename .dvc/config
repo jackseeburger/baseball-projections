@@ -1,0 +1,6 @@
+[core]
+    remote = r2
+['remote "r2"']
+    url = s3://baseball-data
+    endpointurl = https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com
+    access_key_id = 18170dc8b2b4805d3c057f69bb5b8ffb

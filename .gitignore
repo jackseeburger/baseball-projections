@@ -4,6 +4,10 @@ data/**
 !data/raw/
 data/raw/**
 !data/raw/.gitkeep
+!data/statcast.dvc
+!data/statcast/
+data/statcast/**
+!data/statcast/.gitkeep
 
 # Python
 venv/
