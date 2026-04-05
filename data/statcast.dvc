@@ -2,10 +2,10 @@ outs:
 - md5: null
   path: statcast/
   remote: r2
-  desc: "Year-partitioned Statcast pitch-level data (2015-2025). 7.8M rows, 119 columns, ~1.3GB total as snappy Parquet. Files: statcast/statcast_{year}.parquet"
-  meta:
-    source: pybaseball
-    rows: 7777676
-    years: 2015-2025
-    format: parquet
-    compression: snappy
+  push: false
+  desc: >
+    Year-partitioned Statcast pitch-level data (2015-2025).
+    7,777,676 rows × 119 columns. Snappy-compressed Parquet.
+    Files: statcast/statcast_{2015..2025}.parquet
+    Total size in R2: ~1.31 GB
+    Source: pybaseball statcast() → SQLite → Parquet export
