@@ -33,3 +33,10 @@ data/local_replica.db-*
 .ipynb_checkpoints/
 .DS_Store
 *.swp
+
+# R2 export scripts (one-time use)
+scripts/export_to_r2.py
+scripts/check_r2.py
+
+# DVC
+/data/statcast_local.db

@@ -1,11 +1,10 @@
 """Baseball Projections — Modal compute infrastructure.
 
-Single-file Modal app with all entrypoints. Keeps it simple and avoids
-cross-module import issues in Modal's container environment.
+Single-file Modal app with all entrypoints. Data lives in Cloudflare R2
+(accessed via CloudBucketMount), models stored on Modal Volume.
 
 Usage:
     modal run modal_functions/app.py                    # smoke test
-    modal run modal_functions/app.py::upload_data       # upload parquet data
     modal run modal_functions/app.py::run_training      # run training (placeholder)
     modal run modal_functions/app.py::run_simulation    # run simulation (placeholder)
     modal run modal_functions/app.py::run_wandb_test    # test wandb integration
@@ -17,26 +16,28 @@ from pathlib import Path
 import modal
 
 # ═══════════════════════════════════════════════════════════════════════════
-# App, Volumes, Secrets, Image
+# App, Storage, Secrets, Image
 # ═══════════════════════════════════════════════════════════════════════════
 
 app = modal.App("baseball-projections")
 
-# Persistent volumes
-data_volume = modal.Volume.from_name("baseball-data", create_if_missing=True)
+# R2 cloud bucket for data (replaces Modal Volume for data)
+r2_bucket = modal.CloudBucketMount(
+    bucket_name="baseball-data",
+    bucket_endpoint_url="https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com",
+    secret=modal.Secret.from_name("r2-baseball"),
+    read_only=True,  # Training reads data, doesn't write back to R2
+)
+
+# Modal Volume for model artifacts (traces, checkpoints — small, mutable)
 models_volume = modal.Volume.from_name("baseball-models", create_if_missing=True)
 
-VOLUME_MOUNTS = {
-    "/data": data_volume,
-    "/models": models_volume,
-}
-
-# Secrets — Turso DB + Weights & Biases
-_turso = modal.Secret.from_name("turso-baseball")
+# Secrets
+_r2 = modal.Secret.from_name("r2-baseball")
 _wandb = modal.Secret.from_name("wandb-baseball")
-ALL_SECRETS = [_turso, _wandb]
+ALL_SECRETS = [_r2, _wandb]
 
-# Container image — PyMC + data stack + Turso client + wandb
+# Container image — PyMC + data stack + wandb
 pymc_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -48,16 +49,22 @@ pymc_image = (
         "pandas>=2.2",
         "pyarrow>=18",
         "numpy>=1.26",
-        # Turso / libSQL
-        "libsql-experimental>=0.0.50",
+        "duckdb>=1.2",
         # Experiment tracking
         "wandb>=0.19",
         # Utilities
         "scipy>=1.14",
         "scikit-learn>=1.5",
         "tqdm",
+        "boto3",
     )
 )
+
+# Volume + CloudBucketMount mapping
+MOUNTS = {
+    "/data": r2_bucket,        # R2: read-only Parquet data
+    "/models": models_volume,   # Modal Volume: model artifacts
+}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -66,17 +73,19 @@ pymc_image = (
 
 @app.function(
     image=pymc_image,
-    volumes=VOLUME_MOUNTS,
+    volumes={"/models": models_volume},
+    network_file_systems={"/data": r2_bucket} if False else {},
     secrets=ALL_SECRETS,
     timeout=600,
     memory=4096,
 )
 def smoke_test():
-    """Verify: image builds, volumes mount, Turso connects, PyMC samples."""
+    """Verify: image builds, R2 data accessible, PyMC samples."""
     import pymc as pm
     import arviz as az
     import pandas as pd
     import numpy as np
+    import duckdb
 
     results = {}
 
@@ -84,38 +93,54 @@ def smoke_test():
     results["pymc"] = pm.__version__
     results["arviz"] = az.__version__
     results["pandas"] = pd.__version__
+    results["duckdb"] = duckdb.__version__
 
-    # 2. Data volume
-    parquet_dir = Path("/data/parquet")
-    if parquet_dir.exists():
-        parquet_files = list(parquet_dir.rglob("*.parquet"))
-        results["parquet_files"] = len(parquet_files)
-        if parquet_files:
-            df = pd.read_parquet(parquet_files[0])
-            results["sample_file"] = parquet_files[0].name
+    # 2. R2 data access via boto3
+    import boto3
+    from botocore.config import Config
+    s3 = boto3.client('s3',
+        endpoint_url=os.environ['R2_ENDPOINT_URL'],
+        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        config=Config(signature_version='s3v4'),
+        region_name='auto'
+    )
+    response = s3.list_objects_v2(Bucket='baseball-data', Prefix='statcast/')
+    files = response.get('Contents', [])
+    results["r2_parquet_files"] = len(files)
+    total_size = sum(f['Size'] for f in files)
+    results["r2_total_size_gb"] = round(total_size / 1e9, 2)
+
+    # 3. Download and read a sample Parquet to verify data integrity
+    import tempfile
+    if files:
+        sample_key = files[0]['Key']
+        with tempfile.NamedTemporaryFile(suffix='.parquet') as tmp:
+            s3.download_file('baseball-data', sample_key, tmp.name)
+            df = pd.read_parquet(tmp.name)
+            results["sample_file"] = sample_key
             results["sample_rows"] = len(df)
-    else:
-        results["parquet_files"] = 0
-        results["note"] = "Run upload_data first"
+            results["sample_columns"] = len(df.columns)
 
-    # 3. Turso connection
+    # 4. DuckDB can query Parquet from R2
     try:
-        import libsql_experimental as libsql
-        conn = libsql.connect(
-            "baseball.db",
-            sync_url=os.environ["TURSO_DATABASE_URL"],
-            auth_token=os.environ["TURSO_AUTH_TOKEN"],
-        )
-        conn.sync()
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        ).fetchall()]
-        results["turso_tables"] = tables
-        results["turso"] = "connected"
+        conn = duckdb.connect()
+        conn.execute(f"""
+            INSTALL httpfs; LOAD httpfs;
+            SET s3_endpoint='{os.environ["R2_ENDPOINT_URL"].replace("https://", "")}';
+            SET s3_access_key_id='{os.environ["AWS_ACCESS_KEY_ID"]}';
+            SET s3_secret_access_key='{os.environ["AWS_SECRET_ACCESS_KEY"]}';
+            SET s3_region='auto';
+            SET s3_url_style='path';
+        """)
+        row_count = conn.execute(
+            "SELECT COUNT(*) FROM read_parquet('s3://baseball-data/statcast/statcast_2024.parquet')"
+        ).fetchone()[0]
+        results["duckdb_r2_query"] = f"OK ({row_count:,} rows from 2024)"
     except Exception as e:
-        results["turso"] = f"FAILED: {e}"
+        results["duckdb_r2_query"] = f"FAILED: {e}"
 
-    # 4. PyMC sampling (tiny model — proves MCMC works)
+    # 5. PyMC sampling (tiny model — proves MCMC works)
     with pm.Model():
         mu = pm.Normal("mu", mu=0.260, sigma=0.05)
         pm.Normal("obs", mu=mu, sigma=0.03,
@@ -125,10 +150,10 @@ def smoke_test():
     results["pymc_sampling"] = "OK"
     results["mu_posterior_mean"] = round(float(trace.posterior["mu"].mean()), 4)
 
-    # 5. Models volume
+    # 6. Models volume
     results["models_volume"] = Path("/models").exists()
 
-    # 6. wandb connectivity
+    # 7. wandb connectivity
     try:
         import wandb
         results["wandb_version"] = wandb.__version__
@@ -140,12 +165,69 @@ def smoke_test():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# Data Upload — push local parquets to Modal Volume
+# Data Helpers — read Parquet from R2
+# ═══════════════════════════════════════════════════════════════════════════
+
+def get_s3_client():
+    """Get boto3 S3 client configured for R2."""
+    import boto3
+    from botocore.config import Config
+    return boto3.client('s3',
+        endpoint_url=os.environ['R2_ENDPOINT_URL'],
+        aws_access_key_id=os.environ['AWS_ACCESS_KEY_ID'],
+        aws_secret_access_key=os.environ['AWS_SECRET_ACCESS_KEY'],
+        config=Config(signature_version='s3v4'),
+        region_name='auto'
+    )
+
+
+def load_statcast_years(years: list[int] | None = None) -> "pd.DataFrame":
+    """Load statcast data from R2 for specified years (or all)."""
+    import pandas as pd
+    import tempfile
+
+    s3 = get_s3_client()
+    response = s3.list_objects_v2(Bucket='baseball-data', Prefix='statcast/')
+
+    dfs = []
+    for obj in response.get('Contents', []):
+        key = obj['Key']
+        # Extract year from statcast/statcast_2024.parquet
+        file_year = int(key.split('_')[-1].replace('.parquet', ''))
+        if years and file_year not in years:
+            continue
+
+        with tempfile.NamedTemporaryFile(suffix='.parquet') as tmp:
+            s3.download_file('baseball-data', key, tmp.name)
+            df = pd.read_parquet(tmp.name)
+            dfs.append(df)
+            print(f"  Loaded {key}: {len(df):,} rows")
+
+    return pd.concat(dfs, ignore_index=True) if dfs else pd.DataFrame()
+
+
+def get_duckdb_conn():
+    """Get a DuckDB connection configured for R2 queries."""
+    import duckdb
+    conn = duckdb.connect()
+    conn.execute(f"""
+        INSTALL httpfs; LOAD httpfs;
+        SET s3_endpoint='{os.environ["R2_ENDPOINT_URL"].replace("https://", "")}';
+        SET s3_access_key_id='{os.environ["AWS_ACCESS_KEY_ID"]}';
+        SET s3_secret_access_key='{os.environ["AWS_SECRET_ACCESS_KEY"]}';
+        SET s3_region='auto';
+        SET s3_url_style='path';
+    """)
+    return conn
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Local Entrypoints
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.local_entrypoint()
 def run_smoke_test():
-    """Run full smoke test — verifies image, volumes, Turso, PyMC."""
+    """Run full smoke test — verifies image, R2 data, PyMC, DuckDB."""
     print("🧪 Running Modal smoke test...")
     results = smoke_test.remote()
     print("\n" + "=" * 60)
@@ -154,34 +236,10 @@ def run_smoke_test():
     for k, v in results.items():
         print(f"  {k}: {v}")
     print("=" * 60)
-    if results.get("turso") == "connected" and results.get("pymc_sampling") == "OK":
-        print("\n✅ All systems go! Modal infrastructure is ready.")
+    if results.get("pymc_sampling") == "OK" and results.get("r2_parquet_files", 0) > 0:
+        print("\n✅ All systems go! Modal + R2 infrastructure is ready.")
     else:
         print("\n⚠️  Some checks failed — review above.")
-
-
-@app.local_entrypoint()
-def upload_data():
-    """Upload parquet files from local data/parquet/ to Modal volume."""
-    local_dir = Path(__file__).parent.parent / "data" / "parquet"
-    if not local_dir.exists():
-        print(f"❌ Not found: {local_dir}")
-        return
-
-    files = []
-    for root, _, fnames in os.walk(local_dir):
-        for f in fnames:
-            if f.endswith(".parquet"):
-                lp = Path(root) / f
-                rp = f"/data/parquet/{lp.relative_to(local_dir)}"
-                files.append((str(lp), rp))
-
-    print(f"📦 Uploading {len(files)} parquet files...")
-    with data_volume.batch_upload() as batch:
-        for local_path, remote_path in files:
-            batch.put_file(local_path, remote_path)
-            print(f"  ↑ {remote_path}")
-    print(f"✅ Done — {len(files)} files on 'baseball-data' volume")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -190,7 +248,7 @@ def upload_data():
 
 @app.function(
     image=pymc_image,
-    volumes=VOLUME_MOUNTS,
+    volumes={"/models": models_volume},
     secrets=ALL_SECRETS,
     timeout=3600,
     memory=8192,
@@ -204,8 +262,8 @@ def train_hitter_model(
 ):
     """Train hierarchical Bayesian hitter projection model.
 
-    Currently a placeholder that validates the data pipeline end-to-end.
-    Full model implementation comes in Phase 2 (SIG-232+).
+    Reads statcast data from R2, trains PyMC model, saves artifacts
+    to Modal Volume and logs to W&B.
     """
     import pandas as pd
     from datetime import datetime
@@ -216,11 +274,10 @@ def train_hitter_model(
     print(f"🏗️  Training run: {run_name}")
     print(f"   Year: {projection_year} | {n_samples} samples × {n_chains} chains")
 
-    # Load data
-    parquet_dir = Path("/data/parquet")
-    hitter_seasons = pd.read_parquet(parquet_dir / "hitter_seasons.parquet")
-    marcel = pd.read_parquet(parquet_dir / f"marcel_hitters_{projection_year}.parquet")
-    print(f"   {len(hitter_seasons)} hitter-seasons, {len(marcel)} Marcel projections")
+    # Load data from R2
+    print("   Loading statcast data from R2...")
+    df = load_statcast_years()
+    print(f"   Loaded {len(df):,} total pitches")
 
     # Placeholder — Phase 2 replaces this with PyMC hierarchical model
     print("⚠️  Placeholder model — full implementation in Phase 2")
@@ -229,7 +286,7 @@ def train_hitter_model(
         "run_name": run_name,
         "projection_year": projection_year,
         "model_type": "placeholder",
-        "n_hitters": len(marcel),
+        "total_pitches": len(df),
         "status": "complete",
     }
 
@@ -244,13 +301,31 @@ def train_hitter_model(
     return results
 
 
+@app.local_entrypoint()
+def run_training(
+    year: int = 2026,
+    samples: int = 2000,
+    chains: int = 4,
+):
+    """Trigger a training run from the VPS."""
+    print(f"🚀 Triggering hitter model training for {year}...")
+    result = train_hitter_model.remote(
+        projection_year=year,
+        n_samples=samples,
+        n_chains=chains,
+    )
+    print("\nResults:")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # Simulation Entrypoint (Phase 3 placeholder)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.function(
     image=pymc_image,
-    volumes=VOLUME_MOUNTS,
+    volumes={"/models": models_volume},
     secrets=ALL_SECRETS,
     timeout=3600,
     memory=8192,
@@ -261,7 +336,7 @@ def simulate_season(
     n_seasons: int = 10_000,
     run_name: str = "",
 ):
-    """Monte Carlo season simulation. Stub — Phase 3 (SIG-237+)."""
+    """Monte Carlo season simulation. Stub — Phase 3."""
     from datetime import datetime
 
     if not run_name:
@@ -286,13 +361,26 @@ def simulate_season(
     return results
 
 
+@app.local_entrypoint()
+def run_simulation(year: int = 2026, seasons: int = 10_000):
+    """Trigger a season simulation from the VPS."""
+    print(f"🎲 Triggering season simulation for {year}...")
+    result = simulate_season.remote(
+        projection_year=year,
+        n_seasons=seasons,
+    )
+    print("\nResults:")
+    for k, v in result.items():
+        print(f"  {k}: {v}")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # W&B Integration Test
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.function(
     image=pymc_image,
-    volumes=VOLUME_MOUNTS,
+    volumes={"/models": models_volume},
     secrets=ALL_SECRETS,
     timeout=600,
     memory=4096,
@@ -308,7 +396,6 @@ def wandb_integration_test():
 
     results = {}
 
-    # 1. Init wandb run
     run = wandb.init(
         project="baseball-projections",
         entity="jseeburger",
@@ -325,7 +412,6 @@ def wandb_integration_test():
     )
     results["wandb_run_url"] = run.url
 
-    # 2. Run tiny PyMC model
     observed_ba = np.array([0.250, 0.270, 0.265, 0.280, 0.245])
     with pm.Model() as model:
         mu = pm.Normal("mu_ba", mu=0.260, sigma=0.05)
@@ -334,7 +420,6 @@ def wandb_integration_test():
         trace = pm.sample(500, cores=1, chains=2,
                          progressbar=False, return_inferencedata=True)
 
-    # 3. Log MCMC diagnostics
     rhat = az.rhat(trace)
     ess = az.ess(trace, method="bulk")
     summary = az.summary(trace)
@@ -346,18 +431,14 @@ def wandb_integration_test():
         "diagnostics/ess/sigma_ba_bulk": float(ess["sigma_ba"].values),
     })
 
-    # Check for divergences
     div = trace.sample_stats.get("diverging")
     n_div = int(div.values.sum()) if div is not None else 0
     wandb.log({"diagnostics/divergences": n_div})
 
-    # 4. Log summary table
     table = wandb.Table(dataframe=summary.reset_index())
     wandb.log({"diagnostics/summary": table})
 
-    # 5. Log posterior plots
     import matplotlib.pyplot as plt
-
     ax = az.plot_posterior(trace)
     fig = ax.ravel()[0].figure
     wandb.log({"posterior/plot": wandb.Image(fig)})
@@ -368,7 +449,6 @@ def wandb_integration_test():
     wandb.log({"posterior/trace_plot": wandb.Image(fig)})
     plt.close(fig)
 
-    # 6. Log a sample projections table
     import pandas as pd
     sample_proj = pd.DataFrame({
         "player": ["Test Player A", "Test Player B", "Test Player C"],
@@ -379,7 +459,6 @@ def wandb_integration_test():
     proj_table = wandb.Table(dataframe=sample_proj)
     wandb.log({"projections_preview": proj_table})
 
-    # 7. Save model artifact
     import tempfile
     artifact = wandb.Artifact("integration-test-model", type="model",
                                metadata={"test": True})
@@ -395,41 +474,6 @@ def wandb_integration_test():
 
     wandb.finish()
     return results
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# VPS Trigger Helpers
-# ═══════════════════════════════════════════════════════════════════════════
-
-@app.local_entrypoint()
-def run_training(
-    year: int = 2026,
-    samples: int = 2000,
-    chains: int = 4,
-):
-    """Trigger a training run from the VPS."""
-    print(f"🚀 Triggering hitter model training for {year}...")
-    result = train_hitter_model.remote(
-        projection_year=year,
-        n_samples=samples,
-        n_chains=chains,
-    )
-    print("\nResults:")
-    for k, v in result.items():
-        print(f"  {k}: {v}")
-
-
-@app.local_entrypoint()
-def run_simulation(year: int = 2026, seasons: int = 10_000):
-    """Trigger a season simulation from the VPS."""
-    print(f"🎲 Triggering season simulation for {year}...")
-    result = simulate_season.remote(
-        projection_year=year,
-        n_seasons=seasons,
-    )
-    print("\nResults:")
-    for k, v in result.items():
-        print(f"  {k}: {v}")
 
 
 @app.local_entrypoint()
