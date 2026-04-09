@@ -1,31 +1,3 @@
-# Data files (re-fetch with `make data` or `python run_pipeline.py`)
-data/**
-!data/.gitkeep
-!data/raw/
-data/raw/**
-!data/raw/.gitkeep
-
-# Python
 venv/
 __pycache__/
 *.pyc
-*.pyo
-*.egg-info/
-
-# Testing
-.pytest_cache/
-
-# Logs
-*.log
-
-# Database local replica
-data/local_replica.db
-data/local_replica.db-*
-
-# Environment
-.env
-
-# IDE / OS
-.ipynb_checkpoints/
-.DS_Store
-*.swp
