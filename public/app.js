@@ -24,13 +24,14 @@ let tooltip;
 
 // ─── Data Loading ────────────────────────────────────────────────
 async function loadData() {
-  const [comparison, ourModel, agingCurves, summary] = await Promise.all([
+  const [comparison, ourModel, agingCurves, summary, careerWar] = await Promise.all([
     d3.json("data/comparison.json"),
     d3.json("data/our_model.json"),
     d3.json("data/aging_curves.json"),
     d3.json("data/summary.json"),
+    d3.json("data/career_war.json"),
   ]);
-  DATA = { comparison, ourModel, agingCurves, summary };
+  DATA = { comparison, ourModel, agingCurves, summary, careerWar };
 }
 
 // ─── Navigation ──────────────────────────────────────────────────
@@ -328,6 +329,17 @@ function renderPlayerCard(player) {
   renderComponentBars(player);
   renderUncertainty(player);
   renderPlayerAggTable(player);
+
+  // Career WAR chart
+  const mlbam = player.batter;
+  const career = DATA.careerWar?.[mlbam];
+  const careerCard = document.getElementById("career-war-card");
+  if (career) {
+    careerCard.style.display = "block";
+    renderCareerWAR(career);
+  } else {
+    careerCard.style.display = "none";
+  }
 }
 
 function renderComponentBars(player) {
@@ -443,6 +455,185 @@ function renderPlayerAggTable(player) {
 
   html += "</tbody></table>";
   document.getElementById("player-agg-table").innerHTML = html;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CAREER WAR CHART
+// ══════════════════════════════════════════════════════════════════
+function renderCareerWAR(career) {
+  const container = d3.select("#career-war-chart");
+  container.selectAll("*").remove();
+
+  const hist = career.historical || [];
+  const proj = career.projected || [];
+
+  if (hist.length === 0) return;
+
+  const width = 750, height = 380;
+  const margin = { top: 30, right: 30, bottom: 45, left: 55 };
+  const w = width - margin.left - margin.right;
+  const h = height - margin.top - margin.bottom;
+
+  const svg = container.append("svg")
+    .attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("width", "100%");
+  const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
+
+  // Combine data
+  const allPoints = [
+    ...hist.map(d => ({ ...d, type: "actual" })),
+    ...proj.map(d => ({ ...d, type: "projected" })),
+  ];
+
+  // Bridge point: last historical year connects to first projection
+  const lastHist = hist[hist.length - 1];
+  const firstProj = proj.length > 0 ? proj[0] : null;
+
+  // Scales
+  const allYears = allPoints.map(d => d.year);
+  const x = d3.scaleLinear()
+    .domain([d3.min(allYears) - 0.5, d3.max(allYears) + 0.5])
+    .range([0, w]);
+
+  const allWar = allPoints.map(d => d.war);
+  const yMin = Math.min(0, d3.min(allWar) - 0.5);
+  const yMax = d3.max(allWar) + 1;
+  const y = d3.scaleLinear().domain([yMin, yMax]).range([h, 0]);
+
+  // Grid lines
+  g.selectAll(".grid-line")
+    .data(y.ticks(6))
+    .enter().append("line")
+    .attr("x1", 0).attr("x2", w)
+    .attr("y1", d => y(d)).attr("y2", d => y(d))
+    .attr("stroke", "#1e2130").attr("stroke-width", 1);
+
+  // Zero line
+  g.append("line")
+    .attr("x1", 0).attr("y1", y(0)).attr("x2", w).attr("y2", y(0))
+    .attr("stroke", "#3a3d4a").attr("stroke-width", 1).attr("stroke-dasharray", "4,4");
+
+  // Axes
+  g.append("g").attr("class", "axis").attr("transform", `translate(0,${h})`)
+    .call(d3.axisBottom(x).ticks(allYears.length).tickFormat(d3.format("d")));
+  g.append("g").attr("class", "axis").call(d3.axisLeft(y).ticks(6));
+
+  // Axis labels
+  svg.append("text").attr("x", width / 2).attr("y", height - 4)
+    .attr("text-anchor", "middle").attr("fill", "#8b8fa3").attr("font-size", 12).text("Season");
+  svg.append("text").attr("transform", "rotate(-90)").attr("x", -height / 2).attr("y", 14)
+    .attr("text-anchor", "middle").attr("fill", "#8b8fa3").attr("font-size", 12).text("WAR");
+
+  // Projection zone background
+  if (proj.length > 0) {
+    const projStart = x(proj[0].year - 0.5);
+    g.append("rect")
+      .attr("x", projStart).attr("y", 0)
+      .attr("width", w - projStart).attr("height", h)
+      .attr("fill", "#4f8ff7").attr("opacity", 0.04);
+
+    g.append("text")
+      .attr("x", projStart + 8).attr("y", 16)
+      .attr("fill", "#4f8ff7").attr("font-size", 11).attr("opacity", 0.6)
+      .text("Projected");
+  }
+
+  // Historical line
+  const histLine = d3.line()
+    .x(d => x(d.year)).y(d => y(d.war))
+    .curve(d3.curveMonotoneX);
+
+  g.append("path").datum(hist)
+    .attr("d", histLine)
+    .attr("stroke", "#34d399").attr("stroke-width", 2.5).attr("fill", "none");
+
+  // Historical bars
+  const barWidth = Math.min(w / allYears.length * 0.6, 24);
+  g.selectAll(".bar-hist").data(hist).enter().append("rect")
+    .attr("x", d => x(d.year) - barWidth / 2)
+    .attr("y", d => d.war >= 0 ? y(d.war) : y(0))
+    .attr("width", barWidth)
+    .attr("height", d => Math.abs(y(0) - y(d.war)))
+    .attr("fill", "#34d399").attr("opacity", 0.3).attr("rx", 3);
+
+  // Projected line (dashed)
+  if (proj.length > 0) {
+    // Connect from last historical point
+    const projWithBridge = [lastHist, ...proj];
+    const projLine = d3.line()
+      .x(d => x(d.year)).y(d => y(d.war))
+      .curve(d3.curveMonotoneX);
+
+    g.append("path").datum(projWithBridge)
+      .attr("d", projLine)
+      .attr("stroke", "#4f8ff7").attr("stroke-width", 2.5)
+      .attr("fill", "none").attr("stroke-dasharray", "8,4");
+
+    // Projected bars
+    g.selectAll(".bar-proj").data(proj).enter().append("rect")
+      .attr("x", d => x(d.year) - barWidth / 2)
+      .attr("y", d => d.war >= 0 ? y(d.war) : y(0))
+      .attr("width", barWidth)
+      .attr("height", d => Math.abs(y(0) - y(d.war)))
+      .attr("fill", "#4f8ff7").attr("opacity", 0.25).attr("rx", 3);
+  }
+
+  // Historical dots
+  g.selectAll(".dot-hist").data(hist).enter().append("circle")
+    .attr("cx", d => x(d.year)).attr("cy", d => y(d.war))
+    .attr("r", 5).attr("fill", "#34d399").attr("stroke", "#0f1117").attr("stroke-width", 1.5)
+    .on("mouseenter", function (evt, d) {
+      d3.select(this).attr("r", 8);
+      showTooltip(evt,
+        `<div class="tt-name">${career.name} — ${d.year}</div>
+         <div class="tt-dim">${d.team || ""} · Age ${d.age}</div>
+         <div><strong>${d.war} WAR</strong> · ${d.pa} PA</div>
+         ${d.woba ? `<div>wOBA ${d.woba} · wRC+ ${Math.round(d.wrc_plus || 0)} · Off ${d.off}</div>` : ""}`
+      );
+    })
+    .on("mouseleave", function () { d3.select(this).attr("r", 5); hideTooltip(); });
+
+  // Projected dots
+  if (proj.length > 0) {
+    g.selectAll(".dot-proj").data(proj).enter().append("circle")
+      .attr("cx", d => x(d.year)).attr("cy", d => y(d.war))
+      .attr("r", 5).attr("fill", "#4f8ff7").attr("stroke", "#0f1117").attr("stroke-width", 1.5)
+      .on("mouseenter", function (evt, d) {
+        d3.select(this).attr("r", 8);
+        showTooltip(evt,
+          `<div class="tt-name">${career.name} — ${d.year}</div>
+           <div class="tt-dim">Projected · Age ${d.age}</div>
+           <div><strong>${d.war} WAR</strong></div>`
+        );
+      })
+      .on("mouseleave", function () { d3.select(this).attr("r", 5); hideTooltip(); });
+  }
+
+  // WAR labels on dots
+  allPoints.forEach(d => {
+    if (Math.abs(d.war) >= 1.0 || d.type === "projected") {
+      g.append("text")
+        .attr("x", x(d.year)).attr("y", y(d.war) - 10)
+        .attr("text-anchor", "middle")
+        .attr("fill", d.type === "actual" ? "#34d399" : "#4f8ff7")
+        .attr("font-size", 10).attr("font-weight", 600)
+        .text(d.war.toFixed(1));
+    }
+  });
+
+  // Legend
+  const legend = svg.append("g").attr("transform", `translate(${margin.left + 10}, ${margin.top - 15})`);
+  // Actual
+  legend.append("rect").attr("x", 0).attr("y", 0).attr("width", 14).attr("height", 3).attr("fill", "#34d399");
+  legend.append("text").attr("x", 18).attr("y", 4).attr("fill", "#8b8fa3").attr("font-size", 11).text("Actual");
+  // Projected
+  legend.append("rect").attr("x", 80).attr("y", 0).attr("width", 14).attr("height", 3).attr("fill", "#4f8ff7");
+  legend.append("text").attr("x", 98).attr("y", 4).attr("fill", "#8b8fa3").attr("font-size", 11).text("Projected");
+  // Career total
+  const totalActual = d3.sum(hist, d => d.war);
+  const totalProj = d3.sum(proj, d => d.war);
+  legend.append("text").attr("x", 190).attr("y", 4).attr("fill", "#5c6078").attr("font-size", 11)
+    .text(`Career: ${totalActual.toFixed(1)} actual + ${totalProj.toFixed(1)} projected = ${(totalActual + totalProj).toFixed(1)} total`);
 }
 
 // ══════════════════════════════════════════════════════════════════
