@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>⚾ Bayesian Baseball Projections</title>
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-header">
+      <h1>⚾</h1>
+      <h2>Projection Explorer</h2>
+    </div>
+    <ul class="nav-links">
+      <li><a href="#" data-page="overview" class="active">Overview</a></li>
+      <li><a href="#" data-page="player">Player Lookup</a></li>
+      <li><a href="#" data-page="comparison">System Comparison</a></li>
+      <li><a href="#" data-page="aging">Aging Curves</a></li>
+      <li><a href="#" data-page="leaderboard">Leaderboards</a></li>
+    </ul>
+    <div class="sidebar-footer">
+      <h4>Model Architecture</h4>
+      <ul class="info-list">
+        <li>5 hierarchical Bayesian models</li>
+        <li>HSGP aging curves (Matérn-5/2)</li>
+        <li>Binomial aggregation</li>
+        <li>PyMC + Modal compute</li>
+        <li>Statcast 2015–2025</li>
+      </ul>
+    </div>
+  </nav>
+
+  <!-- Main content -->
+  <main id="content">
+    <!-- Overview Page -->
+    <section id="page-overview" class="page active">
+      <h1>2026 Bayesian Baseball Projections</h1>
+      <p class="subtitle">Hierarchical Bayesian component models (K%, BB%, HR rate, ISO, BABIP) with HSGP aging curves — compared against <strong>Steamer</strong>, <strong>ZiPS</strong>, and <strong>Depth Charts</strong>.</p>
+      
+      <div class="metrics-row" id="overview-metrics"></div>
+      
+      <div class="card">
+        <h3>System Averages</h3>
+        <div id="system-averages-table"></div>
+      </div>
+
+      <div class="card">
+        <h3>Our wOBA vs Steamer wOBA</h3>
+        <div id="woba-scatter"></div>
+      </div>
+
+      <div class="grid-2">
+        <div class="card">
+          <h3>🚀 We're More Bullish</h3>
+          <div id="bullish-list"></div>
+        </div>
+        <div class="card">
+          <h3>📉 We're More Bearish</h3>
+          <div id="bearish-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Player Lookup Page -->
+    <section id="page-player" class="page">
+      <h1>Player Projection Card</h1>
+      <div class="search-bar">
+        <input type="text" id="player-search" placeholder="Search player..." autocomplete="off">
+        <div id="player-suggestions" class="suggestions"></div>
+      </div>
+      <div id="player-card" class="player-card-container"></div>
+      <div class="card" id="career-war-card" style="display:none">
+        <h3>Career WAR — Actual vs Projected</h3>
+        <div id="career-war-chart"></div>
+      </div>
+    </section>
+
+    <!-- System Comparison Page -->
+    <section id="page-comparison" class="page">
+      <h1>System Comparison</h1>
+      <div class="control-row">
+        <label>Stat: </label>
+        <select id="comparison-stat">
+          <option value="k_rate">K%</option>
+          <option value="bb_rate">BB%</option>
+          <option value="hr_rate">HR/PA</option>
+          <option value="iso">ISO</option>
+          <option value="babip">BABIP</option>
+          <option value="woba" selected>wOBA</option>
+          <option value="wrc_plus">wRC+</option>
+          <option value="off">Off (Runs)</option>
+        </select>
+      </div>
+      <div class="card">
+        <h3>Correlation Matrix</h3>
+        <div id="corr-matrix"></div>
+      </div>
+      <div class="card">
+        <h3>Distribution Comparison</h3>
+        <div id="dist-chart"></div>
+      </div>
+      <div class="grid-3">
+        <div class="card">
+          <h3>vs Steamer</h3>
+          <div id="scatter-steamer"></div>
+        </div>
+        <div class="card">
+          <h3>vs ZiPS</h3>
+          <div id="scatter-zips"></div>
+        </div>
+        <div class="card">
+          <h3>vs Depth Charts</h3>
+          <div id="scatter-dc"></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Residuals by Age (vs Steamer)</h3>
+        <div id="residual-chart"></div>
+      </div>
+    </section>
+
+    <!-- Aging Curves Page -->
+    <section id="page-aging" class="page">
+      <h1>HSGP Aging Curves</h1>
+      <p class="subtitle">Each component model learns its own aging curve using a Hilbert Space Gaussian Process with a Matérn-5/2 kernel.</p>
+      <div class="card">
+        <h3>All Components — Normalized</h3>
+        <div id="aging-all"></div>
+      </div>
+      <div class="control-row">
+        <label>Component: </label>
+        <select id="aging-stat">
+          <option value="k_rate">K% (Strikeout Rate)</option>
+          <option value="bb_rate">BB% (Walk Rate)</option>
+          <option value="hr_rate">HR Rate (per PA)</option>
+          <option value="iso">ISO (Isolated Power)</option>
+          <option value="babip">BABIP</option>
+        </select>
+      </div>
+      <div class="card">
+        <h3 id="aging-detail-title">K% — HSGP Aging Curve</h3>
+        <div id="aging-detail"></div>
+      </div>
+    </section>
+
+    <!-- Leaderboard Page -->
+    <section id="page-leaderboard" class="page">
+      <h1>2026 Projection Leaderboards</h1>
+      <div class="control-row">
+        <label>Rank By: </label>
+        <select id="lb-stat">
+          <option value="woba" selected>wOBA</option>
+          <option value="wrc_plus">wRC+</option>
+          <option value="off">Off (Runs)</option>
+          <option value="avg">AVG</option>
+          <option value="obp">OBP</option>
+          <option value="slg">SLG</option>
+          <option value="iso">ISO</option>
+          <option value="hr_rate">HR/PA</option>
+          <option value="bb_rate">BB%</option>
+          <option value="k_rate">K%</option>
+        </select>
+        <label>Show: </label>
+        <select id="lb-count">
+          <option value="25" selected>Top 25</option>
+          <option value="50">Top 50</option>
+          <option value="100">Top 100</option>
+        </select>
+      </div>
+      <div class="card">
+        <div id="leaderboard-table"></div>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h3>🚀 We Rank Higher (vs Steamer)</h3>
+          <div id="rank-higher"></div>
+        </div>
+        <div class="card">
+          <h3>📉 We Rank Lower (vs Steamer)</h3>
+          <div id="rank-lower"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
