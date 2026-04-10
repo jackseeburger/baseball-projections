@@ -458,7 +458,7 @@ function renderPlayerAggTable(player) {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// CAREER WAR CHART
+// CAREER WAR CHART — with Bayesian uncertainty bands
 // ══════════════════════════════════════════════════════════════════
 function renderCareerWAR(career) {
   const container = d3.select("#career-war-chart");
@@ -468,6 +468,9 @@ function renderCareerWAR(career) {
   const proj = career.projected || [];
 
   if (hist.length === 0) return;
+
+  // Detect new format (war_p50) vs legacy (war)
+  const hasUncertainty = proj.length > 0 && proj[0].war_p50 !== undefined;
 
   const width = 750, height = 380;
   const margin = { top: 30, right: 30, bottom: 45, left: 55 };
@@ -479,23 +482,26 @@ function renderCareerWAR(career) {
     .attr("width", "100%");
   const g = svg.append("g").attr("transform", `translate(${margin.left},${margin.top})`);
 
-  // Combine data
-  const allPoints = [
-    ...hist.map(d => ({ ...d, type: "actual" })),
-    ...proj.map(d => ({ ...d, type: "projected" })),
-  ];
+  // Get WAR value for a projected point (handles both formats)
+  const projWar = d => hasUncertainty ? d.war_p50 : d.war;
+
+  // Combine data for scale computation
+  const allYears = [...hist.map(d => d.year), ...proj.map(d => d.year)];
 
   // Bridge point: last historical year connects to first projection
   const lastHist = hist[hist.length - 1];
-  const firstProj = proj.length > 0 ? proj[0] : null;
 
   // Scales
-  const allYears = allPoints.map(d => d.year);
   const x = d3.scaleLinear()
     .domain([d3.min(allYears) - 0.5, d3.max(allYears) + 0.5])
     .range([0, w]);
 
-  const allWar = allPoints.map(d => d.war);
+  // Y domain: consider uncertainty bands
+  const histWars = hist.map(d => d.war);
+  const projWars = hasUncertainty
+    ? [...proj.map(d => d.war_p5), ...proj.map(d => d.war_p95)]
+    : proj.map(d => d.war);
+  const allWar = [...histWars, ...projWars];
   const yMin = Math.min(0, d3.min(allWar) - 0.5);
   const yMax = d3.max(allWar) + 1;
   const y = d3.scaleLinear().domain([yMin, yMax]).range([h, 0]);
@@ -535,7 +541,7 @@ function renderCareerWAR(career) {
     g.append("text")
       .attr("x", projStart + 8).attr("y", 16)
       .attr("fill", "#4f8ff7").attr("font-size", 11).attr("opacity", 0.6)
-      .text("Projected");
+      .text("Projected (Bayesian)");
   }
 
   // Historical line
@@ -556,9 +562,51 @@ function renderCareerWAR(career) {
     .attr("height", d => Math.abs(y(0) - y(d.war)))
     .attr("fill", "#34d399").attr("opacity", 0.3).attr("rx", 3);
 
-  // Projected line (dashed)
-  if (proj.length > 0) {
-    // Connect from last historical point
+  // ── Uncertainty bands (new) ──────────────────────────────────────
+  if (proj.length > 0 && hasUncertainty) {
+    // 90% band (p5–p95) — lightest
+    const area95 = d3.area()
+      .x(d => x(d.year))
+      .y0(d => y(d.war_p5))
+      .y1(d => y(d.war_p95))
+      .curve(d3.curveMonotoneX);
+    g.append("path").datum(proj)
+      .attr("d", area95)
+      .attr("fill", "#4f8ff7").attr("opacity", 0.08);
+
+    // 80% band (p10–p90)
+    const area80 = d3.area()
+      .x(d => x(d.year))
+      .y0(d => y(d.war_p10))
+      .y1(d => y(d.war_p90))
+      .curve(d3.curveMonotoneX);
+    g.append("path").datum(proj)
+      .attr("d", area80)
+      .attr("fill", "#4f8ff7").attr("opacity", 0.12);
+
+    // 50% band (p25–p75) — darkest
+    const area50 = d3.area()
+      .x(d => x(d.year))
+      .y0(d => y(d.war_p25))
+      .y1(d => y(d.war_p75))
+      .curve(d3.curveMonotoneX);
+    g.append("path").datum(proj)
+      .attr("d", area50)
+      .attr("fill", "#4f8ff7").attr("opacity", 0.18);
+
+    // Median line (dashed)
+    const projWithBridge = [{ ...lastHist, war_p50: lastHist.war }, ...proj];
+    const projLine = d3.line()
+      .x(d => x(d.year)).y(d => y(d.war_p50))
+      .curve(d3.curveMonotoneX);
+
+    g.append("path").datum(projWithBridge)
+      .attr("d", projLine)
+      .attr("stroke", "#4f8ff7").attr("stroke-width", 2.5)
+      .attr("fill", "none").attr("stroke-dasharray", "8,4");
+
+  } else if (proj.length > 0) {
+    // Legacy: single projected line (no uncertainty)
     const projWithBridge = [lastHist, ...proj];
     const projLine = d3.line()
       .x(d => x(d.year)).y(d => y(d.war))
@@ -569,7 +617,7 @@ function renderCareerWAR(career) {
       .attr("stroke", "#4f8ff7").attr("stroke-width", 2.5)
       .attr("fill", "none").attr("stroke-dasharray", "8,4");
 
-    // Projected bars
+    // Projected bars (legacy only)
     g.selectAll(".bar-proj").data(proj).enter().append("rect")
       .attr("x", d => x(d.year) - barWidth / 2)
       .attr("y", d => d.war >= 0 ? y(d.war) : y(0))
@@ -596,29 +644,50 @@ function renderCareerWAR(career) {
   // Projected dots
   if (proj.length > 0) {
     g.selectAll(".dot-proj").data(proj).enter().append("circle")
-      .attr("cx", d => x(d.year)).attr("cy", d => y(d.war))
+      .attr("cx", d => x(d.year)).attr("cy", d => y(hasUncertainty ? d.war_p50 : d.war))
       .attr("r", 5).attr("fill", "#4f8ff7").attr("stroke", "#0f1117").attr("stroke-width", 1.5)
       .on("mouseenter", function (evt, d) {
         d3.select(this).attr("r", 8);
-        showTooltip(evt,
-          `<div class="tt-name">${career.name} — ${d.year}</div>
-           <div class="tt-dim">Projected · Age ${d.age}</div>
-           <div><strong>${d.war} WAR</strong></div>`
-        );
+        if (hasUncertainty) {
+          showTooltip(evt,
+            `<div class="tt-name">${career.name} — ${d.year}</div>
+             <div class="tt-dim">Projected · Age ${d.age}</div>
+             <div><strong>${d.war_p50} WAR</strong> <span style="color:#8b8fa3">(median)</span></div>
+             <div style="font-size:12px;color:#8b8fa3">
+               90% CI: ${d.war_p5}–${d.war_p95} · 80% CI: ${d.war_p10}–${d.war_p90}
+             </div>
+             ${d.woba_p50 ? `<div style="margin-top:4px">wOBA ${d.woba_p50} · wRC+ ${Math.round(d.wrc_plus_p50 || 0)}</div>` : ""}`
+          );
+        } else {
+          showTooltip(evt,
+            `<div class="tt-name">${career.name} — ${d.year}</div>
+             <div class="tt-dim">Projected · Age ${d.age}</div>
+             <div><strong>${d.war} WAR</strong></div>`
+          );
+        }
       })
       .on("mouseleave", function () { d3.select(this).attr("r", 5); hideTooltip(); });
   }
 
   // WAR labels on dots
-  allPoints.forEach(d => {
-    if (Math.abs(d.war) >= 1.0 || d.type === "projected") {
+  hist.forEach(d => {
+    if (Math.abs(d.war) >= 1.0) {
       g.append("text")
         .attr("x", x(d.year)).attr("y", y(d.war) - 10)
         .attr("text-anchor", "middle")
-        .attr("fill", d.type === "actual" ? "#34d399" : "#4f8ff7")
+        .attr("fill", "#34d399")
         .attr("font-size", 10).attr("font-weight", 600)
         .text(d.war.toFixed(1));
     }
+  });
+  proj.forEach(d => {
+    const warVal = hasUncertainty ? d.war_p50 : d.war;
+    g.append("text")
+      .attr("x", x(d.year)).attr("y", y(warVal) - 10)
+      .attr("text-anchor", "middle")
+      .attr("fill", "#4f8ff7")
+      .attr("font-size", 10).attr("font-weight", 600)
+      .text(warVal.toFixed(1));
   });
 
   // Legend
@@ -629,11 +698,17 @@ function renderCareerWAR(career) {
   // Projected
   legend.append("rect").attr("x", 80).attr("y", 0).attr("width", 14).attr("height", 3).attr("fill", "#4f8ff7");
   legend.append("text").attr("x", 98).attr("y", 4).attr("fill", "#8b8fa3").attr("font-size", 11).text("Projected");
+  if (hasUncertainty) {
+    // Uncertainty band legend
+    legend.append("rect").attr("x", 180).attr("y", -3).attr("width", 14).attr("height", 10)
+      .attr("fill", "#4f8ff7").attr("opacity", 0.18).attr("rx", 2);
+    legend.append("text").attr("x", 198).attr("y", 4).attr("fill", "#8b8fa3").attr("font-size", 11).text("50/80/90% CI");
+  }
   // Career total
   const totalActual = d3.sum(hist, d => d.war);
-  const totalProj = d3.sum(proj, d => d.war);
-  legend.append("text").attr("x", 190).attr("y", 4).attr("fill", "#5c6078").attr("font-size", 11)
-    .text(`Career: ${totalActual.toFixed(1)} actual + ${totalProj.toFixed(1)} projected = ${(totalActual + totalProj).toFixed(1)} total`);
+  const totalProj = hasUncertainty ? d3.sum(proj, d => d.war_p50) : d3.sum(proj, d => d.war);
+  legend.append("text").attr("x", hasUncertainty ? 290 : 190).attr("y", 4).attr("fill", "#5c6078").attr("font-size", 11)
+    .text(`Career: ${totalActual.toFixed(1)} actual + ${totalProj.toFixed(1)} proj = ${(totalActual + totalProj).toFixed(1)} total`);
 }
 
 // ══════════════════════════════════════════════════════════════════
