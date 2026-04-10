@@ -460,17 +460,53 @@ function renderPlayerAggTable(player) {
 // ══════════════════════════════════════════════════════════════════
 // CAREER WAR CHART — with Bayesian uncertainty bands
 // ══════════════════════════════════════════════════════════════════
+const COMP_COLORS = {
+  fitted: "#f59e0b",
+  steamer: "#ef4444",
+  zips: "#a855f7",
+  depthcharts: "#06b6d4",
+};
+
 function renderCareerWAR(career) {
   const container = d3.select("#career-war-chart");
   container.selectAll("*").remove();
 
   const hist = career.historical || [];
   const proj = career.projected || [];
+  const fitted = career.fitted || [];
+  const comparisons = career.comparisons || {};
 
   if (hist.length === 0) return;
 
   // Detect new format (war_p50) vs legacy (war)
   const hasUncertainty = proj.length > 0 && proj[0].war_p50 !== undefined;
+  const hasFitted = fitted.length > 0;
+  const hasComparisons = Object.keys(comparisons).length > 0;
+
+  // ── Toggle controls ──────────────────────────────────────────────
+  const toggleDiv = container.append("div")
+    .attr("class", "career-toggles")
+    .style("display", "flex").style("gap", "12px").style("margin-bottom", "8px")
+    .style("font-size", "12px").style("flex-wrap", "wrap").style("align-items", "center");
+
+  const toggles = [
+    { key: "fitted", label: "Model Fit", color: COMP_COLORS.fitted, available: hasFitted, defaultOn: true },
+    { key: "steamer", label: "Steamer", color: COMP_COLORS.steamer, available: !!comparisons.steamer, defaultOn: false },
+    { key: "zips", label: "ZiPS", color: COMP_COLORS.zips, available: !!comparisons.zips, defaultOn: false },
+    { key: "depthcharts", label: "Depth Charts", color: COMP_COLORS.depthcharts, available: !!comparisons.depthcharts, defaultOn: false },
+  ];
+
+  toggles.filter(t => t.available).forEach(t => {
+    const label = toggleDiv.append("label")
+      .style("cursor", "pointer").style("display", "flex").style("align-items", "center").style("gap", "4px");
+    label.append("input")
+      .attr("type", "checkbox")
+      .attr("data-sys", t.key)
+      .property("checked", t.defaultOn);
+    label.append("span")
+      .style("color", t.color)
+      .text(`● ${t.label}`);
+  });
 
   const width = 750, height = 380;
   const margin = { top: 30, right: 30, bottom: 45, left: 55 };
@@ -496,12 +532,14 @@ function renderCareerWAR(career) {
     .domain([d3.min(allYears) - 0.5, d3.max(allYears) + 0.5])
     .range([0, w]);
 
-  // Y domain: consider uncertainty bands
+  // Y domain: consider uncertainty bands and comparison values
   const histWars = hist.map(d => d.war);
   const projWars = hasUncertainty
     ? [...proj.map(d => d.war_p5), ...proj.map(d => d.war_p95)]
     : proj.map(d => d.war);
-  const allWar = [...histWars, ...projWars];
+  const compWars = Object.values(comparisons).map(c => c.war);
+  const fittedWars = fitted.map(d => d.war);
+  const allWar = [...histWars, ...projWars, ...compWars, ...fittedWars];
   const yMin = Math.min(0, d3.min(allWar) - 0.5);
   const yMax = d3.max(allWar) + 1;
   const y = d3.scaleLinear().domain([yMin, yMax]).range([h, 0]);
@@ -542,6 +580,37 @@ function renderCareerWAR(career) {
       .attr("x", projStart + 8).attr("y", 16)
       .attr("fill", "#4f8ff7").attr("font-size", 11).attr("opacity", 0.6)
       .text("Projected (Bayesian)");
+  }
+
+  // ── Fitted model line (behind bars) ────────────────────────────────
+  const gFitted = g.append("g").attr("class", "layer-fitted")
+    .style("display", hasFitted ? null : "none");
+
+  if (hasFitted) {
+    const fittedLine = d3.line()
+      .x(d => x(d.year)).y(d => y(d.war))
+      .curve(d3.curveMonotoneX);
+
+    gFitted.append("path").datum(fitted)
+      .attr("d", fittedLine)
+      .attr("stroke", COMP_COLORS.fitted).attr("stroke-width", 1.5)
+      .attr("fill", "none").attr("opacity", 0.6)
+      .attr("stroke-dasharray", "4,3");
+
+    gFitted.selectAll(".dot-fitted").data(fitted).enter().append("circle")
+      .attr("cx", d => x(d.year)).attr("cy", d => y(d.war))
+      .attr("r", 3).attr("fill", COMP_COLORS.fitted).attr("opacity", 0.7)
+      .on("mouseenter", function (evt, d) {
+        d3.select(this).attr("r", 6).attr("opacity", 1);
+        const actual = hist.find(h => h.year === d.year);
+        showTooltip(evt,
+          `<div class="tt-name">Model Fit — ${d.year}</div>
+           <div class="tt-dim">Age ${d.age}</div>
+           <div><strong>${d.war} WAR</strong> fitted (wOBA ${d.woba})</div>
+           ${actual ? `<div style="color:#34d399">Actual: ${actual.war} WAR</div>` : ""}`
+        );
+      })
+      .on("mouseleave", function () { d3.select(this).attr("r", 3).attr("opacity", 0.7); hideTooltip(); });
   }
 
   // Historical line
@@ -626,6 +695,53 @@ function renderCareerWAR(career) {
       .attr("fill", "#4f8ff7").attr("opacity", 0.25).attr("rx", 3);
   }
 
+  // ── Comparison system overlays ──────────────────────────────────────
+  const compSystems = [
+    { key: "steamer", label: "Steamer" },
+    { key: "zips", label: "ZiPS" },
+    { key: "depthcharts", label: "Depth Charts" },
+  ];
+
+  compSystems.forEach(sys => {
+    const data = comparisons[sys.key];
+    if (!data) return;
+
+    const color = COMP_COLORS[sys.key];
+    const gComp = g.append("g").attr("class", `layer-${sys.key}`)
+      .style("display", "none"); // off by default
+
+    // Determine projection zone x-range
+    const projYearMin = proj.length > 0 ? proj[0].year : (lastHist ? lastHist.year + 1 : 2026);
+    const projYearMax = proj.length > 0 ? proj[proj.length - 1].year : projYearMin;
+
+    // Horizontal dashed line across projection zone
+    gComp.append("line")
+      .attr("x1", x(projYearMin - 0.3)).attr("x2", x(projYearMax + 0.3))
+      .attr("y1", y(data.war)).attr("y2", y(data.war))
+      .attr("stroke", color).attr("stroke-width", 1.5)
+      .attr("stroke-dasharray", "6,3").attr("opacity", 0.7);
+
+    // Dot at 2026
+    const dotYear = proj.length > 0 ? proj[0].year : 2026;
+    gComp.append("circle")
+      .attr("cx", x(dotYear)).attr("cy", y(data.war))
+      .attr("r", 5).attr("fill", color).attr("stroke", "#0f1117").attr("stroke-width", 1)
+      .on("mouseenter", function (evt) {
+        d3.select(this).attr("r", 8);
+        showTooltip(evt,
+          `<div class="tt-name">${sys.label} — ${dotYear}</div>
+           <div><strong>${data.war} WAR</strong> · wOBA ${data.woba} · ${data.pa} PA</div>`
+        );
+      })
+      .on("mouseleave", function () { d3.select(this).attr("r", 5); hideTooltip(); });
+
+    // Label
+    gComp.append("text")
+      .attr("x", x(projYearMax) + 5).attr("y", y(data.war) + 4)
+      .attr("fill", color).attr("font-size", 10).attr("font-weight", 600)
+      .text(`${sys.label} ${data.war}`);
+  });
+
   // Historical dots
   g.selectAll(".dot-hist").data(hist).enter().append("circle")
     .attr("cx", d => x(d.year)).attr("cy", d => y(d.war))
@@ -709,6 +825,13 @@ function renderCareerWAR(career) {
   const totalProj = hasUncertainty ? d3.sum(proj, d => d.war_p50) : d3.sum(proj, d => d.war);
   legend.append("text").attr("x", hasUncertainty ? 290 : 190).attr("y", 4).attr("fill", "#5c6078").attr("font-size", 11)
     .text(`Career: ${totalActual.toFixed(1)} actual + ${totalProj.toFixed(1)} proj = ${(totalActual + totalProj).toFixed(1)} total`);
+
+  // ── Wire up toggle event listeners ──────────────────────────────────
+  toggleDiv.selectAll("input[data-sys]").on("change", function () {
+    const sys = this.dataset.sys;
+    const visible = this.checked;
+    g.select(`.layer-${sys}`).style("display", visible ? null : "none");
+  });
 }
 
 // ══════════════════════════════════════════════════════════════════

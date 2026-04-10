@@ -55,16 +55,22 @@ HBP_RATE = 0.012
 SF_RATE = 0.008
 
 
+LOGIT_STATS = {"k_rate", "bb_rate", "hr_rate", "babip"}  # logit-link components
+NORMAL_STATS = {"iso"}  # normal-link components
+
+STAT_RATE_COL = {
+    "k_rate": "projected_k_rate",
+    "bb_rate": "projected_bb_rate",
+    "hr_rate": "projected_hr_rate",
+    "iso": "projected_iso",
+    "babip": "projected_babip",
+}
+
+
 def load_component_projections():
     """Load all 5 component rate projections with uncertainty."""
     components = {}
-    for stat, rate_col in [
-        ("k_rate", "projected_k_rate"),
-        ("bb_rate", "projected_bb_rate"),
-        ("hr_rate", "projected_hr_rate"),
-        ("iso", "projected_iso"),
-        ("babip", "projected_babip"),
-    ]:
+    for stat, rate_col in STAT_RATE_COL.items():
         path = PROJ_DIR / f"{stat}_projections_2026.parquet"
         if not path.exists():
             print(f"❌ Missing: {path}")
@@ -74,6 +80,88 @@ def load_component_projections():
         print(f"  {stat}: {len(df)} rows, {df['batter'].nunique()} players, "
               f"years {sorted(df['projection_year'].unique())}")
     return components
+
+
+def load_aging_curves():
+    """Load aging curve parquets and return interpolation-ready dicts."""
+    aging = {}
+    for stat in STAT_RATE_COL:
+        path = PROJ_DIR / f"{stat}_aging_curve_2026.parquet"
+        if not path.exists():
+            print(f"⚠️  Missing aging curve: {path}")
+            return None
+        df = pd.read_parquet(str(path))
+        aging[stat] = {
+            "ages": df["age"].values,
+            "effects": df["age_effect_mean"].values,
+        }
+    return aging
+
+
+def aging_effect_at(aging, stat, age):
+    """Interpolate the aging effect for a stat at a given age."""
+    return float(np.interp(age, aging[stat]["ages"], aging[stat]["effects"]))
+
+
+def compute_fitted_rate(stat, proj_rate, proj_age, ability, target_age, aging):
+    """Reconstruct the model's expected rate at target_age from posterior ability."""
+    age_eff_proj = aging_effect_at(aging, stat, proj_age)
+    age_eff_target = aging_effect_at(aging, stat, target_age)
+
+    if stat in LOGIT_STATS:
+        p = np.clip(proj_rate, 1e-6, 1 - 1e-6)
+        logit_proj = np.log(p / (1 - p))
+        baseline = logit_proj - age_eff_proj - ability
+        logit_target = baseline + age_eff_target + ability
+        return 1.0 / (1.0 + np.exp(-logit_target))
+    else:
+        # Normal-link (ISO)
+        baseline = proj_rate - age_eff_proj - ability
+        return max(baseline + age_eff_target + ability, 0.0)
+
+
+def assemble_war_point(k_rate, bb_rate, hr_rate, iso, babip, pa=550):
+    """Same assembly chain as assemble_war_draws but with scalar inputs."""
+    draws = {
+        "k_rate": np.array([k_rate]),
+        "bb_rate": np.array([bb_rate]),
+        "hr_rate": np.array([hr_rate]),
+        "iso": np.array([iso]),
+        "babip": np.array([babip]),
+    }
+    result = assemble_war_draws(draws, pa=pa)
+    return {
+        "owar": float(result["owar"][0]),
+        "woba": float(result["woba"][0]),
+        "wrc_plus": float(result["wrc_plus"][0]),
+    }
+
+
+def load_fg_comparison_systems():
+    """Load Steamer, ZiPS, Depth Charts projection JSONs and index by MLBAM ID."""
+    systems = {}
+    for sys_name in ["steamer", "zips", "depthcharts"]:
+        path = PROJ_DIR / f"fg_{sys_name}_bat_2026.json"
+        if not path.exists():
+            print(f"⚠️  Missing FG system: {path}")
+            continue
+        with open(path) as f:
+            data = json.load(f)
+        indexed = {}
+        for p in data:
+            mlbam = p.get("xMLBAMID")
+            if mlbam:
+                try:
+                    indexed[int(mlbam)] = {
+                        "war": round(float(p.get("WAR", 0)), 1),
+                        "woba": round(float(p.get("wOBA", 0)), 3),
+                        "pa": round(float(p.get("PA", 0))),
+                    }
+                except (ValueError, TypeError):
+                    continue
+        systems[sys_name] = indexed
+        print(f"  {sys_name}: {len(indexed)} players")
+    return systems
 
 
 def draw_correlated_rates(player_rates, n_draws=N_DRAWS):
@@ -142,7 +230,7 @@ def assemble_war_draws(draws, pa=550):
 
     bb = bb_rate * pa
     hbp = HBP_RATE * pa
-    obp = (h + bb + hbp) / (ab + bb + hbp + sf)
+    obp = (h + bb + hbp) / np.maximum(ab + bb + hbp + sf, 1)
 
     # Hit decomposition for wOBA
     xb = iso * ab
@@ -178,6 +266,16 @@ def build_career_war():
     """Main pipeline: build career WAR with uncertainty for all players."""
     print("Loading component projections...")
     components = load_component_projections()
+
+    print("Loading aging curves...")
+    aging = load_aging_curves()
+    if aging:
+        print("  ✅ All 5 aging curves loaded")
+    else:
+        print("  ⚠️  Aging curves unavailable — skipping fitted values")
+
+    print("Loading FG comparison systems...")
+    comparison_systems = load_fg_comparison_systems()
 
     # Load historical hitter seasons for actual WAR
     hs_path = DATA_DIR / "hitter_seasons.parquet"
@@ -238,10 +336,29 @@ def build_career_war():
     print(f"Merged projections: {len(merged)} batter-years, "
           f"{merged['batter'].nunique()} unique batters")
 
+    # ── Extract posterior abilities for fitted values ───────────────────
+    # For each batter, get the 2026 projected rate, age, and posterior ability
+    player_abilities = {}  # mlbam -> {stat: {rate, age, ability}}
+    if aging:
+        for stat, rate_col in STAT_RATE_COL.items():
+            comp_df = components[stat]
+            base_year = comp_df[comp_df["projection_year"] == 2026]
+            for _, row in base_year.iterrows():
+                batter = int(row["batter"])
+                if batter not in player_abilities:
+                    player_abilities[batter] = {}
+                player_abilities[batter][stat] = {
+                    "rate": float(row[rate_col]),
+                    "age": float(row["projected_age"]),
+                    "ability": float(row["posterior_mean_ability"]),
+                }
+        print(f"Posterior abilities: {len(player_abilities)} players")
+
     # ── Build career WAR for each player ─────────────────────────────────
     career_data = {}
     batters = merged["batter"].unique()
     n_processed = 0
+    n_fitted = 0
 
     for mlbam in batters:
         mlbam = int(mlbam)
@@ -268,6 +385,45 @@ def build_career_war():
                 "wrc_plus": round(float(row["wrc_plus"]), 0) if pd.notna(row.get("wrc_plus")) else None,
                 "off": round(float(row["off"]), 1) if pd.notna(row.get("off")) else None,
             })
+
+        # ── Fitted historical WAR from Bayesian model ─────────────────
+        fitted = []
+        if aging and mlbam in player_abilities:
+            pa_info = player_abilities[mlbam]
+            # Check we have all 5 stats
+            if all(s in pa_info for s in STAT_RATE_COL):
+                for hist_entry in historical:
+                    target_age = hist_entry["age"]
+                    hist_pa = hist_entry["pa"]
+                    try:
+                        fitted_rates = {}
+                        for stat in STAT_RATE_COL:
+                            fitted_rates[stat] = compute_fitted_rate(
+                                stat,
+                                pa_info[stat]["rate"],
+                                pa_info[stat]["age"],
+                                pa_info[stat]["ability"],
+                                target_age,
+                                aging,
+                            )
+                        result = assemble_war_point(
+                            fitted_rates["k_rate"],
+                            fitted_rates["bb_rate"],
+                            fitted_rates["hr_rate"],
+                            fitted_rates["iso"],
+                            fitted_rates["babip"],
+                            pa=hist_pa,
+                        )
+                        fitted.append({
+                            "year": hist_entry["year"],
+                            "age": target_age,
+                            "war": round(result["owar"], 1),
+                            "woba": round(result["woba"], 3),
+                        })
+                    except Exception:
+                        continue  # skip this year if computation fails
+                if fitted:
+                    n_fitted += 1
 
         # Projected seasons with Monte Carlo uncertainty
         player_proj = merged[merged["batter"] == mlbam].sort_values("projection_year")
@@ -307,16 +463,30 @@ def build_career_war():
                 "type": "projected",
             })
 
-        career_data[mlbam] = {
+        # ── Comparison system data ────────────────────────────────────
+        comparisons = {}
+        for sys_name, sys_index in comparison_systems.items():
+            if mlbam in sys_index:
+                comparisons[sys_name] = sys_index[mlbam]
+
+        entry = {
             "name": name,
             "mlbam": mlbam,
             "fg_id": fg_id,
             "historical": historical,
             "projected": projected,
         }
+        if fitted:
+            entry["fitted"] = fitted
+        if comparisons:
+            entry["comparisons"] = comparisons
+
+        career_data[mlbam] = entry
         n_processed += 1
 
     print(f"\nCareer data: {n_processed} players")
+    print(f"  With fitted values: {n_fitted}")
+    print(f"  With comparisons: {sum(1 for v in career_data.values() if v.get('comparisons'))}")
 
     # ── Save ──────────────────────────────────────────────────────────────
     out_path = OUT_DIR / "career_war.json"
@@ -332,11 +502,19 @@ def build_career_war():
         print(f"Aaron Judge career WAR:")
         for s in judge["historical"][-3:]:
             print(f"  {s['year']} (age {s['age']}): {s['war']} WAR actual")
+        if judge.get("fitted"):
+            print("  --- fitted (model in-sample) ---")
+            for s in judge["fitted"][-3:]:
+                print(f"  {s['year']} (age {s['age']}): {s['war']} WAR fitted (wOBA={s['woba']})")
         print("  --- projected (with uncertainty) ---")
         for s in judge["projected"]:
             print(f"  {s['year']} (age {s['age']}): "
                   f"p50={s['war_p50']} [{s['war_p10']}–{s['war_p90']}] WAR "
                   f"(wOBA={s['woba_p50']}, wRC+={s['wrc_plus_p50']})")
+        if judge.get("comparisons"):
+            print("  --- comparison systems ---")
+            for sys_name, vals in judge["comparisons"].items():
+                print(f"  {sys_name}: {vals['war']} WAR, wOBA={vals['woba']}, PA={vals['pa']}")
 
     soto = career_data.get(665742)
     if soto:
