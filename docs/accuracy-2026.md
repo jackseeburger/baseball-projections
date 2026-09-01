@@ -63,6 +63,22 @@ the per-game edge frontier, not team strength.
 
 Calibration is good in the .40–.65 band; the extreme buckets are tiny.
 
+## 2b. Why "close to FanGraphs on playoff odds" means nothing in September
+
+Mean absolute gap to FanGraphs playoff odds, Sept 1, 8,000 sims each:
+
+| Strength model | P(playoffs) | P(division) | P(WS) | Exp. wins |
+|---|---|---|---|---|
+| **No model — every team is a .500 coin flip** | 1.94 | 1.78 | 1.30 | 1.06 |
+| Ours (regressed Pythagenpat) | 1.63 | 2.10 | 1.37 | 0.66 |
+
+A simulator with **no team-strength model whatsoever** lands within 2 points of
+FanGraphs. With 26 games left, playoff odds are ~90% standings arithmetic; the
+strength model only moves the margin (mostly in expected wins). So the
+1.5-point agreement is a check that the *plumbing* is right — schedule,
+tiebreakers, bracket — not evidence of modeling skill. Playoff odds become a
+model test in April, not September.
+
 ## 3. So where is edge?
 
 Not in September playoff odds (85% of the season is banked; being within
