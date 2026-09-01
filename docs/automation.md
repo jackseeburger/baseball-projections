@@ -52,8 +52,9 @@ Agentic sessions do what cron cannot: implement roadmap items, diagnose why last
 night's numbers look wrong, fix broken pipelines, and open PRs. The machinery, all of
 which exists in Claude Code on the web today:
 
-1. **Work queue = GitHub issues.** Each roadmap item becomes an issue labeled
-   `factory:ready`, ordered by phase. Issues are the durable state between sessions —
+1. **Work queue = GitHub issues.** Each station task from
+   [architecture.md](architecture.md) becomes an issue labeled `factory:ready`,
+   naming its station and the baseline it must beat. Issues are the durable state between sessions —
    cloud containers are ephemeral, so nothing lives only in a conversation.
 2. **Scheduled Routines** (Claude Code cloud triggers) fire on a schedule and spawn a
    *fresh* session in this environment with a standing prompt. Two routines:
@@ -92,10 +93,16 @@ for Layer 1), never in the repo:
 
 | Credential | Status | Needed for |
 |---|---|---|
-| R2 keys (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) | ✅ present | reading/writing data |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | ❌ add | reading/writing Statcast + snapshots. Use these names: the platform injects its own `AWS_*` pair (not usable, not yours) |
 | `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ❌ add | boto3/DuckDB against R2 |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ❌ add | sessions launching training/sim runs |
 | `WANDB_API_KEY` | ❌ add | reading run status, logging |
+| `ODDS_API_KEY` | ❌ add | station M market-line archive (The Odds API, free tier) |
+
+Everything in stations D–H runs **without any of these** (MLB Stats API and
+Chadwick are public), which is why the simulator, site, and nightly job shipped
+on day one. The nightly sim runs on GitHub Actions, not Modal, for that reason;
+Modal is reserved for Bayesian refits.
 
 Network policy must allow: `modal.com`, `api.wandb.ai`, the R2 endpoint,
 `statsapi.mlb.com`, `baseballsavant.mlb.com`, `github.com`, PyPI.

@@ -1,26 +1,28 @@
 # ⚾ Baseball Projections
 
-A Bayesian baseball projection system using PyMC — hierarchical models for hitter and pitcher projections. Built to produce competitive full-season projections grounded in modern Statcast data and classical reliability-weighted baselines.
+A baseball projection and simulation system — hierarchical Bayesian player models, a season Monte Carlo with MLB tiebreakers, and a backtest harness that scores everything against dumb baselines, public systems, and (next) the betting market. Also the template for a general ML factory: data → object store, honest eval harness, serverless training, scheduled agent sessions, public scoreboard.
 
-## Architecture — 6 Phases
+## Where things stand
 
-| Phase | Description | Status |
-|-------|-------------|--------|
-| **1. Data Pipelines + Marcel Baseline** | Historical stats (FanGraphs), Statcast data (Baseball Savant), park factors, and Marcel projection engine | ✅ Complete |
-| **2. Bayesian Hierarchical Models** | PyMC models for hitter and pitcher true-talent estimation | 🔨 In Progress |
-| **3. Projection Synthesis** | Blend Marcel baseline with Bayesian posteriors, aging curves, platoon splits | Planned |
-| **4. Team-Level Aggregation** | Depth charts, lineup optimization, team wins projections | Planned |
-| **5. In-Season Updates** | Live Bayesian updating as the season progresses | Planned |
-| **6. Evaluation & Dashboard** | Accuracy tracking, comparison to other systems, web dashboard | Planned |
+**North star:** beat the betting market's closing line, out of sample, and
+prove it on a public scoreboard. Read **[docs/architecture.md](docs/architecture.md)**
+first — it is the one document every session works against: the model
+rollup as stations, each station's baseline and current score, the gate rule
+for what gets wired into production, and the edge thesis.
 
-## Current Status
+| Doc | What it is |
+|---|---|
+| [docs/architecture.md](docs/architecture.md) | North star: stations, gate rule, edge thesis, sequencing |
+| [docs/roadmap.md](docs/roadmap.md) | Dated v1 plan (ship playoff odds by Sept 28, 2026) |
+| [docs/automation.md](docs/automation.md) | How work runs in the background (Modal cron + scheduled Claude sessions) |
+| [docs/accuracy-2026.md](docs/accuracy-2026.md) | Honest scoreboard: our models vs Steamer/ZiPS/Depth Charts, per-game Brier |
+| [docs/backtest-baselines.md](docs/backtest-baselines.md) | Marcel / naive baselines 2019–2025 that every component must beat |
+| [docs/playoff-odds-validation.md](docs/playoff-odds-validation.md) | Simulator vs FanGraphs |
 
-**Phase 1 is complete.** The project includes:
-
-- **Historical data pipeline** — Fetches seasonal hitter/pitcher stats from FanGraphs (2000–present)
-- **Statcast pipeline** — Downloads pitch-level data from Baseball Savant (2015–present)
-- **Park factors** — Computes multi-year regressed park factors by team
-- **Marcel projections** — Tom Tango's Marcel the Monkey system: reliability-weighted 3-year averages with age adjustment and regression to league mean
+**Live today:** playoff odds for all 30 teams (`public/`), regenerated nightly
+with dated snapshots. **Not yet earned:** the Bayesian player components,
+which currently tie Marcel and trail Depth Charts, stay out of the rollup
+until they beat their baseline in the harness.
 
 ## Setup
 
