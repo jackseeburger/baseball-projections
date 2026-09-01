@@ -1,0 +1,39 @@
+name: Nightly playoff odds
+
+# Layer 1 production job (docs/automation.md): pull results → simulate →
+# write a dated JSON snapshot → commit. Runs on GitHub's runners because the
+# simulator is cheap CPU and needs no credentials; Modal is reserved for
+# Bayesian refits.
+on:
+  schedule:
+    - cron: "15 9 * * *"     # 09:15 UTC ≈ 5:15am ET, after West Coast finals
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  odds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-ci.txt
+      - name: Simulate season and write snapshot
+        run: python scripts/run_playoff_odds.py --sims 20000
+      - name: Commit snapshot
+        run: |
+          git config user.name "nightly-odds-bot"
+          git config user.email "nightly-odds-bot@users.noreply.github.com"
+          git add public/data/playoff_odds/
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "data: playoff odds snapshot $(date -u +%F)"
+            git push
+          fi

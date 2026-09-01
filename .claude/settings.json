@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pip install -q -r requirements-ci.txt 2>/dev/null || true",
+            "timeout": 300
+          }
+        ]
+      }
+    ]
+  }
+}
