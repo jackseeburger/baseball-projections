@@ -24,14 +24,15 @@ let tooltip;
 
 // ─── Data Loading ────────────────────────────────────────────────
 async function loadData() {
-  const [comparison, ourModel, agingCurves, summary, careerWar] = await Promise.all([
+  const [comparison, ourModel, agingCurves, summary, careerWar, playoffs] = await Promise.all([
     d3.json("data/comparison.json"),
     d3.json("data/our_model.json"),
     d3.json("data/aging_curves.json"),
     d3.json("data/summary.json"),
     d3.json("data/career_war.json"),
+    d3.json("data/playoff_odds/latest.json").catch(() => null),
   ]);
-  DATA = { comparison, ourModel, agingCurves, summary, careerWar };
+  DATA = { comparison, ourModel, agingCurves, summary, careerWar, playoffs };
 }
 
 // ─── Navigation ──────────────────────────────────────────────────
@@ -54,6 +55,7 @@ function renderPage(page) {
   if (rendered[page]) return;
   rendered[page] = true;
   switch (page) {
+    case "playoffs": renderPlayoffs(); break;
     case "overview": renderOverview(); break;
     case "player": renderPlayerPage(); break;
     case "comparison": renderComparison(); break;
@@ -1237,6 +1239,115 @@ function renderRankDelta(stat) {
   ).join("");
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+// PLAYOFF ODDS (Phase 2/3) — reads data/playoff_odds/latest.json
+// ══════════════════════════════════════════════════════════════════
+const ODDS_COLS = [
+  { key: "p_playoffs", label: "Playoffs" },
+  { key: "p_division", label: "Div" },
+  { key: "p_bye", label: "Bye" },
+  { key: "p_pennant", label: "Pennant" },
+  { key: "p_ws", label: "WS" },
+];
+const DIV_SHORT = { "AL East": "East", "AL Central": "Central", "AL West": "West",
+                    "NL East": "East", "NL Central": "Central", "NL West": "West" };
+let oddsSort = { key: "p_playoffs", dir: -1 };
+
+function probCell(p) {
+  const pct = p * 100;
+  const txt = pct >= 99.95 ? "100" : pct < 0.05 ? "<0.1" : pct >= 10 ? pct.toFixed(0) : pct.toFixed(1);
+  const bg = `rgba(79,143,247,${(0.05 + 0.55 * p).toFixed(2)})`;
+  return `<td class="prob" style="background:${bg}">${txt}</td>`;
+}
+
+function renderPlayoffs() {
+  const d = DATA.playoffs;
+  if (!d) {
+    document.getElementById("playoffs-subtitle").innerHTML =
+      '<span class="stale-warning">No odds snapshot found — run scripts/run_playoff_odds.py.</span>';
+    return;
+  }
+  const asOf = new Date(d.as_of + "T12:00:00");
+  const ageDays = Math.floor((Date.now() - new Date(d.generated_at)) / 86400000);
+  const stale = ageDays >= 2 ? ` <span class="stale-warning">⚠ ${ageDays} days old</span>` : "";
+  document.getElementById("playoffs-title").textContent = `${d.season} Playoff Odds`;
+  document.getElementById("playoffs-subtitle").innerHTML =
+    `Through games of <strong>${asOf.toLocaleDateString("en-US", { month: "long", day: "numeric" })}</strong>` +
+    ` · ${d.n_sims.toLocaleString()} simulated seasons · updated ${new Date(d.generated_at).toLocaleString()}${stale}`;
+
+  const inPlay = d.teams.filter(t => t.p_playoffs > 0.0005 && t.p_playoffs < 0.9995).length;
+  document.getElementById("playoffs-metrics").innerHTML = [
+    { label: "Games Remaining", value: d.games_remaining },
+    { label: "Teams Still In Play", value: inPlay },
+    { label: "Home-Field Edge", value: (d.hfa * 100).toFixed(1) + "%" },
+    { label: "Simulations", value: d.n_sims.toLocaleString() },
+  ].map(m => `<div class="metric-card"><div class="label">${m.label}</div><div class="value">${m.value}</div></div>`).join("");
+
+  renderOddsTable("playoffs-table-al", d.teams.filter(t => t.league_id === 103));
+  renderOddsTable("playoffs-table-nl", d.teams.filter(t => t.league_id === 104));
+  renderBracket(d.teams);
+  document.getElementById("playoffs-method").textContent = d.method +
+    ". Team strength regresses each club's runs scored and allowed 60 games toward league average, " +
+    "then Pythagenpat converts run rates to a talent win%. Every remaining game is drawn with log5 plus " +
+    "a home-field multiplier; ties are broken by head-to-head, intradivision, then intraleague-second-half record. " +
+    "Snapshots are archived daily and never overwritten.";
+}
+
+function renderOddsTable(elId, teams) {
+  const rows = [...teams].sort((a, b) => {
+    const diff = (a[oddsSort.key] - b[oddsSort.key]) * oddsSort.dir;
+    return diff !== 0 ? diff : b.mean_wins - a.mean_wins;
+  });
+  let h = '<table class="odds-table"><thead><tr><th>Team</th><th>Div</th><th>W-L</th>' +
+    `<th class="sortable ${oddsSort.key === "mean_wins" ? "sorted" : ""}" data-sort="mean_wins">Proj W</th>` +
+    "<th>90% range</th>";
+  ODDS_COLS.forEach(c => {
+    h += `<th class="sortable ${oddsSort.key === c.key ? "sorted" : ""}" data-sort="${c.key}">${c.label}</th>`;
+  });
+  h += "</tr></thead><tbody>";
+  rows.forEach(t => {
+    const cls = t.p_playoffs >= 0.9995 ? "clinched" : t.p_playoffs < 0.0005 ? "eliminated" : "";
+    h += `<tr class="${cls}"><td class="team-cell">${t.abbrev}</td><td>${DIV_SHORT[t.division] || t.division}</td>` +
+      `<td class="wl">${t.wins}-${t.losses}</td><td class="prob">${t.mean_wins.toFixed(1)}</td>` +
+      `<td class="range">${Math.round(t.wins_p5)}–${Math.round(t.wins_p95)}</td>`;
+    ODDS_COLS.forEach(c => { h += probCell(t[c.key]); });
+    h += "</tr>";
+  });
+  h += "</tbody></table>";
+  const el = document.getElementById(elId);
+  el.innerHTML = h;
+  el.querySelectorAll("th.sortable").forEach(th => th.addEventListener("click", () => {
+    const key = th.dataset.sort;
+    oddsSort = { key, dir: oddsSort.key === key ? -oddsSort.dir : -1 };
+    renderOddsTable("playoffs-table-al", DATA.playoffs.teams.filter(t => t.league_id === 103));
+    renderOddsTable("playoffs-table-nl", DATA.playoffs.teams.filter(t => t.league_id === 104));
+  }));
+}
+
+function currentSeeds(teams) {
+  // If the season ended today: division leaders by win%, then three best others.
+  const byPct = [...teams].sort((a, b) =>
+    (b.wins / (b.wins + b.losses)) - (a.wins / (a.wins + a.losses)) || b.wins - a.wins);
+  const winners = [], seen = new Set();
+  byPct.forEach(t => { if (!seen.has(t.division)) { seen.add(t.division); winners.push(t); } });
+  const wild = byPct.filter(t => !winners.includes(t)).slice(0, 3);
+  return [...winners, ...wild];
+}
+
+function renderBracket(teams) {
+  const html = [[103, "American League"], [104, "National League"]].map(([lg, name]) => {
+    const s = currentSeeds(teams.filter(t => t.league_id === lg));
+    const tag = (i) => `<span class="seed">${i + 1}</span> ${s[i].abbrev} <span class="seed">(${s[i].wins}-${s[i].losses})</span>`;
+    return `<div class="bracket"><h4>${name}</h4>` +
+      `<div>${tag(0)} <span class="bye">bye</span> → faces winner of 4/5</div>` +
+      `<div>${tag(1)} <span class="bye">bye</span> → faces winner of 3/6</div>` +
+      `<div>${tag(2)} vs ${tag(5)} &nbsp;(best-of-3 at ${s[2].abbrev})</div>` +
+      `<div>${tag(3)} vs ${tag(4)} &nbsp;(best-of-3 at ${s[3].abbrev})</div></div>`;
+  }).join("");
+  document.getElementById("playoffs-bracket").innerHTML = html;
+}
+
 // ══════════════════════════════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════════════════════════════
@@ -1244,7 +1355,7 @@ async function init() {
   await loadData();
   initTooltip();
   initNav();
-  renderPage("overview");
+  renderPage("playoffs");
 }
 
 init();

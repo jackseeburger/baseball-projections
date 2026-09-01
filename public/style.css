@@ -402,3 +402,18 @@ select:focus { border-color: var(--accent); }
   :root { --sidebar-w: 200px; }
   #content { padding: 24px 20px; }
 }
+
+/* ─── Playoff odds ─────────────────────────────────────────────── */
+.odds-table td.prob { font-family: var(--mono); text-align: right; }
+.odds-table td.wl { font-family: var(--mono); white-space: nowrap; }
+.odds-table td.range { color: var(--text-dim); font-family: var(--mono); font-size: 12px; white-space: nowrap; }
+.odds-table th.sortable { cursor: pointer; }
+.odds-table th.sorted::after { content: " ▾"; color: var(--accent); }
+.odds-table tr.clinched td.team-cell::after { content: " ✓"; color: var(--green); }
+.odds-table tr.eliminated td { opacity: 0.45; }
+.bracket { font-family: var(--mono); font-size: 13px; line-height: 1.8; }
+.bracket h4 { margin: 0 0 6px; color: var(--text-dim); font-weight: 600; }
+.bracket .seed { color: var(--text-dim); }
+.bracket .bye { color: var(--green); }
+.method-note { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 0; }
+.stale-warning { color: var(--red); font-weight: 600; }

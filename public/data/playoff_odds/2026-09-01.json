@@ -7,7 +7,7 @@
  "hfa": 0.5336609336609337,
  "games_played": 2070,
  "games_remaining": 361,
- "method": "regressed Pythagenpat strength, log5 + HFA, MLB tiebreakers",
+ "method": "Regressed Pythagenpat strength, log5 + HFA, MLB tiebreakers",
  "teams": [
   {
    "team_id": 158,

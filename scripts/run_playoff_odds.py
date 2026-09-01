@@ -77,7 +77,7 @@ def main() -> None:
         "hfa": hfa,
         "games_played": int(len(state.completed)),
         "games_remaining": int(len(state.remaining)),
-        "method": "regressed Pythagenpat strength, log5 + HFA, MLB tiebreakers",
+        "method": "Regressed Pythagenpat strength, log5 + HFA, MLB tiebreakers",
         "teams": json.loads(odds.drop(columns=["division_id"]).to_json(orient="records")),
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)

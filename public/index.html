@@ -15,7 +15,8 @@
       <h2>Projection Explorer</h2>
     </div>
     <ul class="nav-links">
-      <li><a href="#" data-page="overview" class="active">Overview</a></li>
+      <li><a href="#" data-page="playoffs" class="active">Playoff Odds</a></li>
+      <li><a href="#" data-page="overview">Overview</a></li>
       <li><a href="#" data-page="player">Player Lookup</a></li>
       <li><a href="#" data-page="comparison">System Comparison</a></li>
       <li><a href="#" data-page="aging">Aging Curves</a></li>
@@ -35,8 +36,27 @@
 
   <!-- Main content -->
   <main id="content">
+    <!-- Playoff Odds Page (landing through October) -->
+    <section id="page-playoffs" class="page active">
+      <h1 id="playoffs-title">Playoff Odds</h1>
+      <p class="subtitle" id="playoffs-subtitle"></p>
+      <div class="metrics-row" id="playoffs-metrics"></div>
+      <div class="grid-2">
+        <div class="card"><h3>American League</h3><div id="playoffs-table-al"></div></div>
+        <div class="card"><h3>National League</h3><div id="playoffs-table-nl"></div></div>
+      </div>
+      <div class="card">
+        <h3>Bracket if the season ended today</h3>
+        <div class="grid-2" id="playoffs-bracket"></div>
+      </div>
+      <div class="card">
+        <h3>Method</h3>
+        <p class="method-note" id="playoffs-method"></p>
+      </div>
+    </section>
+
     <!-- Overview Page -->
-    <section id="page-overview" class="page active">
+    <section id="page-overview" class="page">
       <h1>2026 Bayesian Baseball Projections</h1>
       <p class="subtitle">Hierarchical Bayesian component models (K%, BB%, HR rate, ISO, BABIP) with HSGP aging curves — compared against <strong>Steamer</strong>, <strong>ZiPS</strong>, and <strong>Depth Charts</strong>.</p>
       
