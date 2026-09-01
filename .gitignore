@@ -1,3 +1,6 @@
 venv/
 __pycache__/
 *.pyc
+data/parquet/
+data/raw/*.parquet
+data/statcast/*.parquet

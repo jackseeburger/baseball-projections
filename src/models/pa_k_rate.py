@@ -141,6 +141,7 @@ def prepare_model_data(
     pa: pd.DataFrame,
     park_factors: pd.DataFrame | None = None,
     min_pa: int = MIN_PA_THRESHOLD,
+    birthdates: pd.DataFrame | None = None,
 ) -> dict:
     """Prepare PA data for the PyMC model.
 
@@ -148,13 +149,17 @@ def prepare_model_data(
         1. Filter pitchers (batters with < min_pa total PAs are dropped).
         2. Determine batting team from inning_topbot.
         3. Create integer indices for batters, seasons, teams.
-        4. Estimate birth year and compute centered age.
+        4. Compute age as of June 30 from Chadwick register birthdates.
         5. Merge park factors (default to 1.0 if unavailable).
 
     Args:
         pa: Raw PA DataFrame from load_pa_data().
         park_factors: Park factor DataFrame (optional).
         min_pa: Minimum career PAs to include a batter.
+        birthdates: Chadwick register frame from src.data.birthdates.
+            Loaded from the parquet cache when None; falls back to the
+            legacy first_year - 23 estimate only if no register data is
+            available at all.
 
     Returns:
         Dictionary with all arrays/indices needed by the model.
@@ -195,12 +200,31 @@ def prepare_model_data(
     # Handedness: L=0, R=1
     df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
 
-    # --- Age estimation ---
-    # Approximate birth year as first appearance year minus 23
+    # --- Age from real birthdates (Chadwick register), June 30 convention ---
+    from src.data.birthdates import (
+        BIRTHDATES_PARQUET, birth_year_map, load_birthdates, seasonal_age,
+    )
+
     first_year = df.groupby("batter")["game_year"].min()
-    birth_year = (first_year - 23).to_dict()
-    df["birth_year"] = df["batter"].map(birth_year).astype(np.float64)
-    df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
+    if birthdates is None and BIRTHDATES_PARQUET.exists():
+        birthdates = load_birthdates()
+
+    if birthdates is not None:
+        by = birth_year_map(birthdates, fallback_first_year=first_year)
+        df["birth_year"] = df["batter"].map(by).astype(np.float64)
+        df["age"] = seasonal_age(birthdates, df["batter"], df["game_year"])
+        # Register misses fall back to the year-based estimate.
+        est_age = (df["game_year"] - df["birth_year"]).astype(np.float64)
+        df["age"] = np.where(np.isnan(df["age"]), est_age, df["age"])
+    else:
+        logger.warning(
+            "No birthdates parquet found — falling back to first_year - 23 "
+            "estimate. Run scripts/build_birthdates.py; ages are unreliable "
+            "until you do."
+        )
+        birth_year = (first_year - 23).to_dict()
+        df["birth_year"] = df["batter"].map(birth_year).astype(np.float64)
+        df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
     df["age_centered"] = (df["age"] - REFERENCE_AGE).astype(np.float64)
 
     # --- Park factor lookup ---

@@ -220,90 +220,66 @@ def verify_upload():
     print(f"birth_year present: {'birth_year' in df.columns}")
 
 
-@app.function(image=pymc_image, volumes=VOLUME_MOUNTS, timeout=120)
+@app.function(image=pymc_image, volumes=VOLUME_MOUNTS, timeout=600)
 def generate_birth_years_on_volume():
-    """Generate batter_birth_years.parquet directly on the Modal volume.
-    
-    Uses Statcast PA data to compute real ages from game-level data, 
-    cross-referencing with known debut years.
+    """Generate batter_birth_years.parquet on the Modal volume from the
+    Chadwick Bureau register (real birthdates keyed by MLBAM id).
+
+    Falls back to debut_year - 24 only for ids missing from the register.
     """
     import pandas as pd
-    import numpy as np
     from pathlib import Path
-    
+
     data_volume.reload()
     parquet_dir = Path("/data/parquet")
     pa_dir = parquet_dir / "pa_outcomes"
-    
-    # Load all PA data to get unique batters
+
     frames = []
     for f in sorted(pa_dir.glob("*.parquet")):
         frames.append(pd.read_parquet(f, columns=["batter", "game_year"]))
     df = pd.concat(frames, ignore_index=True)
     print(f"Loaded {len(df):,} PAs, {df['batter'].nunique()} unique batters")
-    
-    # Method 1: Use pybaseball/Statcast player data if available
-    # For now, use debut year with better estimation
-    # Average MLB debut age is ~24.5, but varies significantly
-    # We can compute this from the hitter_seasons data which has more info
-    
-    # Load hitter_seasons if available for cross-reference
-    hs_path = parquet_dir / "hitter_seasons.parquet"
-    if hs_path.exists():
-        hs = pd.read_parquet(hs_path)
-        print(f"Loaded hitter_seasons: {len(hs)} rows, columns: {list(hs.columns)}")
-        # Check if it has Age column
-        if 'Age' in hs.columns or 'age' in hs.columns:
-            age_col = 'Age' if 'Age' in hs.columns else 'age'
-            yr_col = 'Season' if 'Season' in hs.columns else 'game_year' if 'game_year' in hs.columns else 'year'
-            id_col = 'IDfg' if 'IDfg' in hs.columns else 'key_mlbam' if 'key_mlbam' in hs.columns else 'batter'
-            
-            print(f"Found age column '{age_col}', year column '{yr_col}', id column '{id_col}'")
-            print(f"Sample: {hs[[id_col, yr_col, age_col]].head()}")
-            
-            # Compute birth_year = season - age
-            hs['birth_year_est'] = hs[yr_col] - hs[age_col]
-            
-            # Get median birth year per player (most robust)
-            birth_years_hs = hs.groupby(id_col)['birth_year_est'].median().round().astype(int)
-            print(f"Got birth years from hitter_seasons for {len(birth_years_hs)} players")
-    
-    # Compute debut year for all PA batters
+
+    # Chadwick register: 16 sharded CSVs with key_mlbam + birth year.
+    register_url = ("https://raw.githubusercontent.com/chadwickbureau/register"
+                    "/master/data/people-{shard}.csv")
+    shards = []
+    for shard in "0123456789abcdef":
+        people = pd.read_csv(
+            register_url.format(shard=shard),
+            usecols=["key_mlbam", "birth_year"],
+            dtype={"key_mlbam": "Int64", "birth_year": "Int64"},
+        )
+        shards.append(people.dropna(subset=["key_mlbam", "birth_year"]))
+    register = (
+        pd.concat(shards, ignore_index=True)
+        .drop_duplicates("key_mlbam")
+        .set_index("key_mlbam")["birth_year"]
+    )
+    print(f"Chadwick register: {len(register):,} players with birth year")
+
     debut = df.groupby("batter")["game_year"].min().reset_index()
     debut.columns = ["batter", "debut_year"]
-    
-    # Try to match hitter_seasons birth years to PA batters
-    # The ID systems may differ (FanGraphs IDfg vs Statcast key_mlbam)
-    # For now, use debut_year - 24 as fallback but this generates the file
-    # so we can update with real ages later
-    
-    debut["birth_year"] = debut["debut_year"] - 24  # Default fallback
-    
-    # If we have hitter_seasons with age, try to match
-    if hs_path.exists() and 'birth_year_est' in hs.columns:
-        # Check if the ID column matches our batter IDs (Statcast mlbam IDs)
-        if id_col == 'IDfg':
-            # FanGraphs IDs don't match Statcast IDs directly
-            # But if hitter_seasons has key_mlbam or playerid columns...
-            mlbam_cols = [c for c in hs.columns if 'mlbam' in c.lower() or 'playerid' in c.lower()]
-            print(f"Available ID columns in hitter_seasons: {mlbam_cols}")
-    
-    # Save to volume
+    debut["birth_year"] = debut["batter"].map(register)
+    n_missing = int(debut["birth_year"].isna().sum())
+    if n_missing:
+        print(f"⚠️  {n_missing} batters not in register; using debut_year - 24")
+    debut["birth_year"] = (
+        debut["birth_year"].fillna(debut["debut_year"] - 24).astype(int)
+    )
+
     result = debut[["batter", "birth_year"]]
     output_path = parquet_dir / "batter_birth_years.parquet"
     result.to_parquet(output_path, index=False)
-    
-    # Commit the volume
     data_volume.commit()
-    
+
     print(f"\n✅ Saved {len(result)} batter birth years to {output_path}")
     print(f"Birth year range: {result['birth_year'].min()} - {result['birth_year'].max()}")
-    
-    # Verify it's readable
-    check = pd.read_parquet(output_path)
-    print(f"Verification: {len(check)} rows, columns: {list(check.columns)}")
-    
-    return {"n_batters": len(result), "path": str(output_path)}
+    match_rate = 1 - n_missing / max(len(result), 1)
+    print(f"Register match rate: {match_rate:.1%}")
+
+    return {"n_batters": len(result), "n_missing": n_missing,
+            "path": str(output_path)}
 
 
 # ═══════════════════════════════════════════════════════════════════════════
