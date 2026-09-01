@@ -123,3 +123,32 @@ class TestBacktest:
             providers={"bayes": parquet_provider(path, pred_col="proj_k")},
         )
         assert score(results).iloc[0]["mae"] == pytest.approx(0.0, abs=1e-9)
+
+
+class TestProviderFairness:
+    def test_common_players_intersection(self, seasons):
+        # A provider that only knows batter 1 forces everyone onto batter 1.
+        narrow = lambda train, spec, y: pd.DataFrame({"batter": [1], "predicted": [0.15]})
+        results = backtest("k_rate", 2023, seasons=seasons,
+                           providers={"narrow": narrow, "prev": previous_season})
+        assert set(results["batter"]) == {1}
+        wide = backtest("k_rate", 2023, seasons=seasons,
+                        providers={"narrow": narrow, "prev": previous_season},
+                        common_players=False)
+        assert set(wide[wide.model == "prev"]["batter"]) == {1, 2, 3}
+
+    def test_multi_year_file_selects_predict_year(self, seasons):
+        from src.eval.backtest import frame_provider
+        df = pd.DataFrame({
+            "batter": [1, 1, 2, 2, 3, 3],
+            "projection_year": [2024, 2025] * 3,
+            "proj": [0.15, 0.99, 0.25, 0.99, 0.35, 0.99],
+        })
+        results = backtest("k_rate", 2023, 2024, seasons=seasons,
+                           providers={"f": frame_provider(df, pred_col="proj")})
+        assert score(results).iloc[0]["mae"] == pytest.approx(0.0, abs=1e-9)
+
+    def test_duplicate_batters_rejected(self, seasons):
+        dup = lambda train, spec, y: pd.DataFrame({"batter": [1, 1], "predicted": [0.1, 0.2]})
+        with pytest.raises(ValueError, match="duplicate"):
+            backtest("k_rate", 2023, seasons=seasons, providers={"dup": dup})
