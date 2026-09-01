@@ -2,8 +2,8 @@
 PA-level Bayesian Strikeout Rate Model
 
 Hierarchical Bayesian model for projecting batter strikeout rates using
-plate-appearance-level data. Each PA is modeled as a Bernoulli outcome
-(K or not-K) with a logit-linear predictor combining:
+plate-appearance-level data, collapsed to Binomial counts per
+(batter, season, team, stand) cell with a logit-linear predictor combining:
 
     logit(p_K) = league_trend[season] + player_ability[batter]
                + handedness[stand] + park_effect[team]
@@ -16,7 +16,8 @@ Components:
     - Park effects: ZeroSumNormal across teams
     - Age curve: quadratic on centered age (peak ~ 27)
 
-Likelihood: Bernoulli(logistic(eta)) per PA
+Likelihood: Binomial(n, logistic(eta)) per cell — identical to per-PA
+Bernoulli up to a constant, with ~10x fewer likelihood rows (roadmap 0.4)
 
 Designed for Modal deployment (8GB RAM, 4 CPU, NumpyRo backend).
 
@@ -258,25 +259,31 @@ def prepare_model_data(
         .reset_index()
     )
 
-    # Outcome
-    is_k = df["is_k"].values.astype(np.int64)
+    # --- Binomial aggregation (roadmap 0.4) ---
+    from src.models.aggregation import aggregate_binomial_cells
+
+    cells = aggregate_binomial_cells(df)
+    logger.info(f"Binomial aggregation: {len(df):,} PAs → {len(cells):,} cells "
+                f"({len(df) / max(len(cells), 1):.1f}x compression)")
 
     model_data = {
         # Dimensions
-        "n_obs": len(df),
+        "n_obs": len(cells),
+        "n_pa": int(cells["n"].sum()),
         "n_batters": len(batters),
         "n_seasons": len(seasons),
         "n_teams": n_teams,
         # Index arrays (int64)
-        "batter_idx": df["batter_idx"].values,
-        "season_idx": df["season_idx"].values,
-        "team_idx": df["team_idx"].values,
-        "stand_idx": df["stand_idx"].values,
+        "batter_idx": cells["batter_idx"].values,
+        "season_idx": cells["season_idx"].values,
+        "team_idx": cells["team_idx"].values,
+        "stand_idx": cells["stand_idx"].values,
         # Continuous features (float64)
-        "age_centered": df["age_centered"].values,
-        "log_pf_k": df["log_pf_k"].values,
-        # Outcome
-        "is_k": is_k,
+        "age_centered": cells["age_centered"].values,
+        "log_pf_k": cells["log_pf_k"].values,
+        # Outcome: successes and trials per cell
+        "k": cells["k"].values,
+        "n_trials": cells["n"].values,
         # Lookup tables
         "seasons": seasons,
         "batters": batters,
@@ -287,11 +294,12 @@ def prepare_model_data(
         # Metadata
         "batter_meta": batter_meta,
         "log_pf_matrix": log_pf,
-        "df": df,
+        "df": cells,
     }
 
     logger.info(
-        f"Model data ready: {model_data['n_obs']:,} obs, "
+        f"Model data ready: {model_data['n_obs']:,} cells "
+        f"({model_data['n_pa']:,} PAs), "
         f"{model_data['n_batters']:,} batters, "
         f"{model_data['n_seasons']} seasons, "
         f"{model_data['n_teams']} teams"
@@ -315,7 +323,7 @@ def build_model(data: dict) -> pm.Model:
             + beta_age2 * age_centered^2
             + log_pf_k  (park factor offset)
 
-        is_k ~ Bernoulli(logistic(eta))
+        k ~ Binomial(n, logistic(eta))   per (batter, season, team, stand) cell
 
     Non-centered parameterization is used for player abilities to
     improve sampling geometry.
@@ -330,17 +338,18 @@ def build_model(data: dict) -> pm.Model:
         "batter": data["batters"],
         "season": data["seasons"],
         "team": data["teams"],
-        "obs_id": np.arange(data["n_obs"]),
+        "cell": np.arange(data["n_obs"]),
     }
 
     with pm.Model(coords=coords) as model:
         # ─── Mutable data containers (for posterior predictive) ───────────
-        batter_idx = pm.Data("batter_idx", data["batter_idx"], dims="obs_id")
-        season_idx = pm.Data("season_idx", data["season_idx"], dims="obs_id")
-        team_idx = pm.Data("team_idx", data["team_idx"], dims="obs_id")
-        stand_idx = pm.Data("stand_idx", data["stand_idx"], dims="obs_id")
-        age_c = pm.Data("age_centered", data["age_centered"], dims="obs_id")
-        log_pf = pm.Data("log_pf_k", data["log_pf_k"], dims="obs_id")
+        batter_idx = pm.Data("batter_idx", data["batter_idx"], dims="cell")
+        season_idx = pm.Data("season_idx", data["season_idx"], dims="cell")
+        team_idx = pm.Data("team_idx", data["team_idx"], dims="cell")
+        stand_idx = pm.Data("stand_idx", data["stand_idx"], dims="cell")
+        age_c = pm.Data("age_centered", data["age_centered"], dims="cell")
+        log_pf = pm.Data("log_pf_k", data["log_pf_k"], dims="cell")
+        n_trials = pm.Data("n_trials", data["n_trials"], dims="cell")
 
         # ─── League trend: random walk on logit scale ─────────────────────
         # Initial intercept ~ league-average K rate (~22% → logit ≈ -1.27)
@@ -400,12 +409,14 @@ def build_model(data: dict) -> pm.Model:
         )
 
         # ─── Likelihood ──────────────────────────────────────────────────
-        p_k = pm.Deterministic("p_k", pm.math.invlogit(eta), dims="obs_id")
-        pm.Bernoulli(
+        # Binomial over cells; no p_k Deterministic — writing a float per
+        # cell per draw into the trace was most of the old memory bill.
+        pm.Binomial(
             "obs_k",
-            p=p_k,
-            observed=data["is_k"],
-            dims="obs_id",
+            n=n_trials,
+            p=pm.math.invlogit(eta),
+            observed=data["k"],
+            dims="cell",
         )
 
     n_params = (
@@ -418,7 +429,7 @@ def build_model(data: dict) -> pm.Model:
         + 2                      # beta_age, beta_age2
     )
     logger.info(f"Model built: ~{n_params:,} free parameters, "
-                f"{data['n_obs']:,} observations")
+                f"{data['n_obs']:,} cells ({data.get('n_pa', 0):,} PAs)")
     return model
 
 
@@ -612,7 +623,7 @@ def log_to_wandb(
         model_type="hitter",
         config=model_config,
         tags=["k-rate", "bayesian", "pa-level"],
-        notes=f"PA-level Bernoulli K% model projecting to {PROJECTION_YEAR}",
+        notes=f"Binomial-cell K% model projecting to {PROJECTION_YEAR}",
         offline=offline,
     )
 
@@ -623,7 +634,7 @@ def log_to_wandb(
 
         # Dataset stats
         tracker.log_dataset_stats(
-            data["df"][["is_k", "age", "stand_idx"]],
+            data["df"][["k", "n", "age", "stand_idx"]],
             name="training_data",
         )
 
