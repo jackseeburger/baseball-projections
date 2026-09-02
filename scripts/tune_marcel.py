@@ -60,8 +60,43 @@ ARM_ORDER = ["marcel_tuned", "marcel_tuned_noage", "marcel", "marcel_preseason",
 
 # --- tuning -----------------------------------------------------------------
 
+def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
+                min_trials: int, passes: int, n_validate: int = 2) -> dict:
+    """Fit inside the tuning window and validate inside it too.
+
+    Splits the tuning years into fit years and the last `n_validate` of them,
+    so "do these parameters generalise at all, or is the search fitting
+    noise?" can be asked without spending the holdout. `tune` uses the answer
+    as a guard: a component whose fit does not beat stock here keeps stock's
+    constants, so the frozen file never ships a component the procedure
+    itself could tell was noise.
+    """
+    spec = COMPONENTS[component]
+    fit_years, val_years = years[:-n_validate], years[-n_validate:]
+    fit_splits = tuning.make_splits(seasons, component, fit_years, min_trials)
+    val_splits = tuning.make_splits(seasons, component, val_years, min_trials)
+    stock = STOCK_PARAMS[component]
+    full, _ = tuning.coordinate_search(fit_splits, spec, start=stock, passes=passes)
+    bw, _ = tuning.coordinate_search(fit_splits, spec, start=stock, passes=passes,
+                                     axes=["ballast", "weights"])
+    base = tuning.evaluate(val_splits, spec, stock)["mae"]
+    full_mae = tuning.evaluate(val_splits, spec, full)["mae"]
+    bw_mae = tuning.evaluate(val_splits, spec, bw)["mae"]
+    return {
+        "fit_years": [fit_years[0], fit_years[-1]],
+        "validate_years": [val_years[0], val_years[-1]],
+        "stock_mae": base,
+        "tuned_mae": full_mae,
+        "tuned_ballast_weights_only_mae": bw_mae,
+        "tuned_pct": 100.0 * (full_mae - base) / base,
+        "tuned_ballast_weights_only_pct": 100.0 * (bw_mae - base) / base,
+        "generalises": bool(full_mae < base),
+    }
+
+
 def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
-         min_trials: int, passes: int, verbose: bool) -> tuple[dict, dict, dict]:
+         min_trials: int, passes: int, verbose: bool,
+         guard: bool = True) -> tuple[dict, dict, dict]:
     """Coordinate search per component.
 
     Fits two nested variants and returns (full, restricted, in-sample summary):
@@ -106,6 +141,16 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
               f"log_loss={bw_fit['log_loss']:.6f} ({bw_gain:+.2%})")
         print(f"      {bw.to_dict()}")
 
+        inner = inner_check(seasons, component, years, min_trials, passes)
+        print(f"    inner validation (fit {inner['fit_years'][0]}-"
+              f"{inner['fit_years'][1]}, score {inner['validate_years'][0]}-"
+              f"{inner['validate_years'][1]}): tuned {inner['tuned_pct']:+.2f}%, "
+              f"no-age {inner['tuned_ballast_weights_only_pct']:+.2f}%")
+        if guard and not inner["generalises"]:
+            print(f"    GUARD: the fit does not generalise inside the tuning "
+                  f"window — {component} keeps stock Marcel's constants")
+            best = stock
+
         params[component] = best
         restricted[component] = bw
         summary[component] = {
@@ -124,6 +169,8 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
                 str(a["predict_year"]): {"stock": a["mae"], "tuned": b["mae"]}
                 for a, b in zip(base["by_year"], fit["by_year"])
             },
+            "inner_validation": inner,
+            "kept_stock": bool(guard and not inner["generalises"]),
             "search_trace": trace[-len(tuning.AXES) - 1:],
         }
     return params, restricted, summary
@@ -204,6 +251,47 @@ def pooled(paired: pd.DataFrame, scores: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(out).sort_values(["arm", "component"])
 
 
+def pooled_overall(paired: pd.DataFrame, scores: pd.DataFrame) -> pd.DataFrame:
+    """One number per arm: every cell's difference as a fraction of that
+    cell's stock MAE, pooled n-weighted across components and cells.
+
+    Components live on different scales (ISO's MAE is 4x K%'s), so pooling
+    raw differences would just be an ISO measurement. Scaling by the cell's
+    own stock MAE makes the units percent-of-Marcel and comparable.
+    """
+    stock = (scores[scores["model"] == "marcel"]
+             .set_index(["component", "cell"])["mae"])
+    out = []
+    for arm, g in paired.groupby("arm"):
+        ref = np.array([stock.loc[(c, cell)]
+                        for c, cell in zip(g["component"], g["cell"])])
+        w = g["n"].to_numpy(dtype="float64")
+        rel = g["diff"].to_numpy() / ref
+        rel_se = g["se"].to_numpy() / ref
+        diff = float(np.sum(w * rel) / np.sum(w))
+        se = float(np.sqrt(np.sum((w * rel_se) ** 2)) / np.sum(w))
+        out.append({"arm": arm, "cells": len(g),
+                    "pooled_pct_of_stock_mae": 100.0 * diff,
+                    "se_pct": 100.0 * se, "t": diff / se if se else np.nan})
+    return pd.DataFrame(out)
+
+
+def inner_validation(seasons: pd.DataFrame, components: list[str],
+                     years: list[int], min_trials: int, passes: int) -> pd.DataFrame:
+    """`inner_check` for every component, as a table."""
+    rows = []
+    for component in components:
+        r = inner_check(seasons, component, years, min_trials, passes)
+        rows.append({"component": component,
+                     "fit_years": f"{r['fit_years'][0]}-{r['fit_years'][1]}",
+                     "validate_years":
+                         f"{r['validate_years'][0]}-{r['validate_years'][1]}",
+                     **{k: r[k] for k in
+                        ("stock_mae", "tuned_mae", "tuned_pct",
+                         "tuned_ballast_weights_only_pct", "generalises")}})
+    return pd.DataFrame(rows)
+
+
 # --- markdown ----------------------------------------------------------------
 
 def mae_markdown(scores: pd.DataFrame, components: list[str],
@@ -270,6 +358,13 @@ def main() -> None:
     p.add_argument("--projections-dir", type=Path, default=ROOT / "data/projections")
     p.add_argument("--params-out", type=Path, default=ROOT / "src/eval/marcel_params.json")
     p.add_argument("--markdown", action="store_true")
+    p.add_argument("--no-guard", action="store_true",
+                   help="freeze the fit even for a component whose inner "
+                        "validation says it does not generalise")
+    p.add_argument("--inner-validation", action="store_true",
+                   help="fit on the first tuning years, validate on the last "
+                        "two — a look at whether the age axes overfit that "
+                        "does not spend the holdout")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
 
@@ -284,10 +379,16 @@ def main() -> None:
               f"floor(age) matches the Stats API age on "
               f"{report.get('floor_matches_api_age', float('nan')):.3%} of them")
 
+    if args.inner_validation:
+        print("\n=== inner validation (inside the tuning window) ===")
+        print(inner_validation(seasons, args.components, args.tune_years,
+                               args.min_trials, args.passes).round(6).to_string(index=False))
+        return
+
     if not args.skip_tune:
         params, restricted, summary = tune(
             seasons, args.components, args.tune_years, args.min_trials,
-            args.passes, args.verbose)
+            args.passes, args.verbose, guard=not args.no_guard)
         path = save_marcel_params(
             params, args.params_out,
             generated="scripts/tune_marcel.py",
@@ -295,7 +396,11 @@ def main() -> None:
                     f"{args.tune_years[0]}-{args.tune_years[-1]} "
                     f"(train <= Y-1), objective = mean trials-weighted MAE, "
                     f"min_trials={args.min_trials}, "
-                    f"ages = Chadwick register (June 30)"),
+                    f"ages = Chadwick register (June 30)"
+                    + ("; components whose fit does not beat stock on an "
+                       "inner validation (fit 2020-2022, score 2023-2024) "
+                       "keep stock's constants"
+                       if not args.no_guard else "")),
             grid=tuning.grid_summary(),
             in_sample=summary,
             variants={"ballast_weights_only":
@@ -331,16 +436,31 @@ def main() -> None:
     pool = pooled(paired, scores)
     print("\n=== pooled across the holdout cells ===")
     print(pool.round(6).to_string(index=False))
+    print("\n=== pooled overall, as a percent of stock Marcel's MAE ===")
+    print(pooled_overall(paired, scores).round(4).to_string(index=False))
+    print("(the five cells share players and the three cutoffs are nested "
+          "windows of the same season, so these pooled SEs are optimistic; "
+          "the per-cell SEs above are the honest ones)")
 
+    overall = pooled_overall(paired, scores).set_index("arm")
     for arm in sorted(paired["arm"].unique()):
         g = paired[paired["arm"] == arm]
         p = pool[pool["arm"] == arm]
         better = int((g["diff"] < 0).sum())
-        cleared = better > len(g) / 2 and bool((p["pooled_diff"] < 0).all())
+        # The gate (architecture.md section 3, as set for this task): beat
+        # stock Marcel on the majority of component x cell cells, with the
+        # pooled paired difference below zero.
+        cleared = (better > len(g) / 2
+                   and overall.loc[arm, "pooled_pct_of_stock_mae"] < 0)
         print(f"\n{arm}: wins {better}/{len(g)} component x cell cells; "
+              f"pooled {overall.loc[arm, 'pooled_pct_of_stock_mae']:+.2f}% "
+              f"of stock MAE (se {overall.loc[arm, 'se_pct']:.2f}); "
               f"pooled difference below zero in "
               f"{int((p['pooled_diff'] < 0).sum())}/{len(p)} components")
         print(f"GATE ({arm}): " + ("CLEARED" if cleared else "NOT CLEARED"))
+        worse = p[p["pooled_diff"] > 0]["component"].tolist()
+        if worse:
+            print(f"  components still worse than stock: {', '.join(worse)}")
 
 
 if __name__ == "__main__":

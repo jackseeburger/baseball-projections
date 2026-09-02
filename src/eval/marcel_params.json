@@ -1,6 +1,6 @@
 {
   "generated": "scripts/tune_marcel.py",
-  "method": "coordinate search, walk-forward predict years 2020-2024 (train <= Y-1), objective = mean trials-weighted MAE, min_trials=100, ages = Chadwick register (June 30)",
+  "method": "coordinate search, walk-forward predict years 2020-2024 (train <= Y-1), objective = mean trials-weighted MAE, min_trials=100, ages = Chadwick register (June 30); components whose fit does not beat stock on an inner validation (fit 2020-2022, score 2023-2024) keep stock's constants",
   "grid": {
     "ballast": [
       25.0,
@@ -112,6 +112,23 @@
           "tuned": 0.025902985550447434
         }
       },
+      "inner_validation": {
+        "fit_years": [
+          2020,
+          2022
+        ],
+        "validate_years": [
+          2023,
+          2024
+        ],
+        "stock_mae": 0.0284706723937305,
+        "tuned_mae": 0.02730242666112176,
+        "tuned_ballast_weights_only_mae": 0.027674161548523916,
+        "tuned_pct": -4.103330319890857,
+        "tuned_ballast_weights_only_pct": -2.797653789806457,
+        "generalises": true
+      },
+      "kept_stock": false,
       "search_trace": [
         {
           "pass": 2,
@@ -266,6 +283,23 @@
           "tuned": 0.016017122363532636
         }
       },
+      "inner_validation": {
+        "fit_years": [
+          2020,
+          2022
+        ],
+        "validate_years": [
+          2023,
+          2024
+        ],
+        "stock_mae": 0.01593665778086669,
+        "tuned_mae": 0.015957660918692284,
+        "tuned_ballast_weights_only_mae": 0.0160064350140942,
+        "tuned_pct": 0.13179135873024356,
+        "tuned_ballast_weights_only_pct": 0.4378410717414271,
+        "generalises": false
+      },
+      "kept_stock": true,
       "search_trace": [
         {
           "pass": 2,
@@ -420,6 +454,23 @@
           "tuned": 0.00863498460697247
         }
       },
+      "inner_validation": {
+        "fit_years": [
+          2020,
+          2022
+        ],
+        "validate_years": [
+          2023,
+          2024
+        ],
+        "stock_mae": 0.009347134880037277,
+        "tuned_mae": 0.009216810706094055,
+        "tuned_ballast_weights_only_mae": 0.009336357651658612,
+        "tuned_pct": -1.3942686782187772,
+        "tuned_ballast_weights_only_pct": -0.11529980595103989,
+        "generalises": true
+      },
+      "kept_stock": false,
       "search_trace": [
         {
           "pass": 2,
@@ -574,6 +625,23 @@
           "tuned": 0.024774170723644434
         }
       },
+      "inner_validation": {
+        "fit_years": [
+          2020,
+          2022
+        ],
+        "validate_years": [
+          2023,
+          2024
+        ],
+        "stock_mae": 0.026104568238306407,
+        "tuned_mae": 0.02501492480697897,
+        "tuned_ballast_weights_only_mae": 0.025060022486827135,
+        "tuned_pct": -4.1741484531756035,
+        "tuned_ballast_weights_only_pct": -4.001390645283622,
+        "generalises": true
+      },
+      "kept_stock": false,
       "search_trace": [
         {
           "pass": 1,
@@ -728,6 +796,23 @@
           "tuned": 0.03279563212729077
         }
       },
+      "inner_validation": {
+        "fit_years": [
+          2020,
+          2022
+        ],
+        "validate_years": [
+          2023,
+          2024
+        ],
+        "stock_mae": 0.03482443432754222,
+        "tuned_mae": 0.03474858486002533,
+        "tuned_ballast_weights_only_mae": 0.034794367291651654,
+        "tuned_pct": -0.21780531107407172,
+        "tuned_ballast_weights_only_pct": -0.08633890677955215,
+        "generalises": true
+      },
+      "kept_stock": false,
       "search_trace": [
         {
           "pass": 2,
@@ -900,15 +985,15 @@
       "age_slope_old": 0.012
     },
     "bb_rate": {
-      "ballast": 150.0,
+      "ballast": 200.0,
       "weights": [
-        1.0,
-        0.6,
-        0.6
+        5.0,
+        4.0,
+        3.0
       ],
-      "peak_age": 28.0,
-      "age_slope_young": 0.008,
-      "age_slope_old": -0.008
+      "peak_age": 27.0,
+      "age_slope_young": -0.001,
+      "age_slope_old": -0.003
     },
     "hr_rate": {
       "ballast": 200.0,
