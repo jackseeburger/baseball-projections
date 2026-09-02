@@ -8,13 +8,21 @@ you pay the ask and the fee rather than the mid; **selectivity**, because you
 are only paid where you *disagree* with the market; and **sizing**, because a
 fractional-Kelly stake on a miscalibrated edge still loses.
 
+There are two exams here. The **taker** exam crosses the closing quote and is
+the bulk of this document. The **maker** exam ([below](#maker-side--quoting-instead-of-crossing))
+rests a limit order through the 24 hours before first pitch and asks whether
+the price came to it — the trade that stops paying the two costs the taker
+exam says are eating the edge.
+
 Produced by:
 
 ```
 python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
     --market data/parquet/market_closes_2026.parquet \
     --out data/parquet/game_preds_2026.parquet
-python scripts/money_exam.py --markdown
+python scripts/money_exam.py --markdown                    # the taker tables
+python scripts/backfill_kalshi_candles.py --season 2026    # the price path
+python scripts/money_exam.py --maker --markdown            # the maker tables
 ```
 
 **Headline: no model here is worth betting.** Every one of them loses money at
@@ -295,11 +303,104 @@ not one more feature.
 Two cheaper routes exist and are worth naming. **Be a maker rather than a
 taker** — resting a limit order inside the spread rather than crossing it is
 worth 8.4 points of ROI here (the fee plus the spread), which is larger than
-any edge we have found, though it trades adverse selection for it and cannot
-be simulated from close data alone. And **find a less efficient contract**:
+any edge we have found, though it trades adverse selection for it. That one
+can now be simulated: the hourly candle archive makes the pre-game price
+*path* available, and the [maker section](#maker-side--quoting-instead-of-crossing)
+below is the answer. And **find a less efficient contract**:
 props and mid-liquidity markets, where the price does not already contain
 Steamer, ZiPS and the sharps, which is the roadmap's stated shortest path to
 money.
+
+## Maker side — quoting instead of crossing
+
+The decomposition above says 4.4 points of the stack's −11.6% is the taker fee
+and 4.0 is the spread. Together that is 8.4 points of ROI paid for the
+privilege of trading *now*, which is more than any edge station E has ever
+shown. A maker pays neither: he posts a limit order, waits, and trades only if
+someone comes to him. This section asks whether that trade survives.
+
+It could not be asked from the closes archive, because a resting order is
+filled by the price **path**, not by its last point. It can be asked from
+hourly candles, so those are now archived too:
+`scripts/backfill_kalshi_candles.py` writes
+`data/market/kalshi_candles_2026.parquet` — one row per (market, hour) for the
+24 hours before first pitch of every settled 2026 Kalshi game market: traded
+open/high/low/close, the bid and ask at the end of the hour, and the hour's
+volume. **876 markets, 20,989 hourly candles, 0.27 MB, no failures** (82
+rate-limit responses along the way, all retried through). 97.9% of the
+archived hours traded, so *whether* an hour traded is rarely what decides a
+fill; the price level is.
+
+### Method
+
+**The rule.** For one game and one model, with margin `m`:
+
+* the model is above the close → post a **YES** bid at `P_model(home) − m`;
+  below it → post a **NO** bid at `(1 − P_model(home)) − m`. Equality quotes
+  nothing. The bid is floored to Kalshi's whole-cent grid, which is the
+  conservative direction — a lower bid is harder to fill, never easier.
+* the order is live from **T−24h to first pitch**, **one contract per game**,
+  and is **cancelled unfilled at first pitch**. No in-game exposure.
+* it fills in the **first hour whose traded low reached the bid on non-zero
+  volume**; on the NO side, the first hour whose `1 − high` reached it, which
+  is the same statement, since buying NO at `q` is selling YES at `1 − q`. The
+  fill is at our own limit — price improvement is never assumed.
+
+**The leakage guard.** The limit price is a function of the model's
+probability and the margin alone; no quantity from the candle archive enters
+it. That is unit-tested (`test_limit_price_is_a_function_of_the_model_alone`),
+as is the fill rule itself: fill at the low, no fill when the low is above the
+bid, no fill on zero volume, the NO-side mirror, cancel at first pitch, and
+no fill before the order is posted. What *does* look at the market is the
+choice of **side**, which compares the model to the close — the same reference
+the taker exam uses, and the reason the two are comparable. The close is a
+price from ~15 minutes before first pitch, i.e. after the order went in, so
+`--maker-anchor post` reruns everything with the side chosen off the price on
+the screen when the order is posted instead. That variant has no hindsight in
+it anywhere and is in the sensitivity table.
+
+**The margin is chosen out of sample.** `m ∈ {0, 0.01, 0.02, 0.03, 0.05}` is a
+free parameter, and a free parameter chosen on the data it is scored on is not
+a result. It is chosen on the **first half** of the game window by date, by
+P&L per posted contract, and scored on the **second**. Both halves are below.
+
+**The control** is the model's own signed disagreements with the close, dealt
+to the wrong games. A maker's return depends on how big the edges are, so a
+null with a *different* edge distribution would be a different strategy rather
+than a control; permuting each model's own edges keeps the distribution
+exactly and destroys only the thing under test — whether the disagreement is
+attached to the right game.
+
+**The fee.** Kalshi's maker fee is the taker formula at a quarter of the rate,
+`0.0175 · C · P · (1 − P)` — **0.44¢ per contract at a coin flip**, against
+the taker's 2¢. Same provenance problem as the taker constant: `kalshi.com`'s
+fee-schedule PDF returns HTTP 429 from this environment, so the number is
+second-hand, from two independent readings of the July 2026 schedule that
+agree both on "maker = 25% of taker" and on the 0.44¢ maximum
+([marketmath.io](https://marketmath.io/blog/kalshi-fees-guide-2026),
+[pm.wiki](https://pm.wiki/learn/kalshi-fees-explained)). It is
+`--kalshi-maker-fee-rate`, not a constant. The fee is *not* rounded up to the
+cent by default, because the surviving first-party page
+([docs.kalshi.com/getting_started/fee_rounding](https://docs.kalshi.com/getting_started/fee_rounding))
+says the charged fee is `ceil_6dp(model_fee)` accumulated per order, and
+rounding 0.44¢ up to a whole cent would nearly triple it; `--maker-round-cents`
+prices the less charitable reading and the sensitivity table shows what it
+costs.
+
+**Three denominators, because a maker has three honest ones.** *Per posted
+contract* charges the strategy for the games it wanted and did not get, and is
+the number that matters. *Per filled contract* says how good the fills
+themselves were. *Per game* puts every model on the same footing. ROI (profit
+over capital at risk) is reported too, because it is what the taker table is
+in and therefore the only column through which the two exams can be compared.
+
+**The `crossed` column is the honest problem with a small margin.** A bid at
+or above the prevailing ask is not a maker order at all — the exchange fills
+it immediately against the resting offer and charges the *taker* fee. At
+`m = 0` the bid is the model's own price, which is above the market whenever
+the model disagrees at all, so most of those "limit orders" would have
+crossed. The column counts them, and a row with a high `crossed` rate is the
+taker exam wearing a maker's fee schedule.
 
 ## Why this instrument and not Brier
 
