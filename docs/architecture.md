@@ -106,7 +106,7 @@ and it must stay that way until [A]–[C] beat their baselines.
 | **B. Playing time** | PA per player, rest of season | Recent-30-day PA share | — | Not built (roadmap 1.3) | `src/sim/strength.from_run_environment` inputs |
 | **C. Team run env.** | Projected RS/G, RA/G per team from A×B | Season-to-date runs, regressed | — | Not built (roadmap 1.5) | `strength.from_run_environment(rs, ra)` |
 | **D. Team strength** | Talent win% | Every team .500 (coin flip) | Regressed Pythagenpat, 60-game ballast | **Wired, live** | `src/sim/strength.py` |
-| **E. Per-game P(win)** | Home win prob for one game | Home team always (Brier .2497) | log5 + HFA: **.2464** · Kalshi close **.2415** (876 games, measured — [market-benchmark-2026.md](market-benchmark-2026.md)) | Wired; no starter/lineup terms | `strength.home_win_prob` |
+| **E. Per-game P(win)** | Home win prob for one game | Home team always (Brier .2497) | log5 + HFA: **.2462** · Kalshi **.2416** / Polymarket **.2417** (756 games, measured — [market-benchmark-2026.md](market-benchmark-2026.md)) | Wired; no starter/lineup terms | `strength.home_win_prob` |
 | **F. Season sim** | Monte Carlo, MLB tiebreakers, bracket | — (plumbing) | Within 1.6 pts of FanGraphs; coin-flip control within 1.9 | **Wired, validated** | `src/sim/season.py`, `standings.py`, `bracket.py` |
 | **G. Odds** | P(playoffs/div/bye/pennant/WS), win bands | — | Live, 20k sims | **Wired, live** | `src/sim/odds.py` |
 | **H. Site + archive** | Landing page, dated JSON, nightly job | — | Live; first snapshot 2026-09-01 | **Wired**; nightly first run pending | `scripts/run_playoff_odds.py`, `nightly-odds.yml` |
@@ -140,7 +140,7 @@ Ordered by (expected payoff × how soon we can test it).
 | # | Pocket | Why public systems are beatable there | Test | Station |
 |---|---|---|---|---|
 | 1 | **Fix what's broken in A** | Our fits used fake ages and no pitcher effect. Refit with real ages (done in code) + pitcher random effect and re-score. If we don't reach Depth Charts we learn the structure isn't the problem. | Component MAE vs Marcel/DC on 2020–2026 | A |
-| 2 | **Per-game with starters, lineups, bullpen** | Public projection systems don't publish game odds; the market does. Team strength gets Brier .2464; the Kalshi close gets .2415 on the same 876 games. The **0.0049** between is pitcher-quality and lineup information — measured, see market-benchmark-2026.md. | Walk-forward Brier vs. market closing lines | E |
+| 2 | **Per-game with starters, lineups, bullpen** | Public projection systems don't publish game odds; the market does. Team strength gets Brier .2462; both exchanges' closes get .2416–.2417 on the same 756 games. The **0.0046** between is pitcher-quality and lineup information — measured, see market-benchmark-2026.md. | Walk-forward Brier vs. market closing lines | E |
 | 3 | **Calibrated uncertainty** | Everyone publishes a point estimate. Contract valuation (Phase 6) needs a distribution; a 10th/90th band that actually covers 80% is a product no one sells. | Coverage tests (roadmap 5.7) | A, G |
 | 4 | **Statcast-informed rates** | Marcel/Steamer/ZiPS use outcomes; batted-ball and swing data lead outcomes. Our PA-level models are positioned to use them and don't yet. | Same harness, add features | A |
 | 5 | **Rookies and low-sample players** | Regression-to-mean systems are weakest exactly where hierarchical pooling (with minor-league / Statcast priors) is strongest. | Score the <200-PA-history cohort separately | A |
