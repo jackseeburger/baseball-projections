@@ -233,3 +233,130 @@ def to_frame(rows: list[dict], schedule: pd.DataFrame) -> pd.DataFrame:
     df["game_pk"] = df["game_pk"].astype(int)
     df = df.drop_duplicates(subset=["venue", "game_pk"], keep="first")
     return df[CLOSE_COLUMNS].sort_values(["game_date", "game_pk", "venue"]).reset_index(drop=True)
+
+
+# ─────────────────── Kalshi candlestick archive (maker exam) ───────────────────
+#
+# The close alone can only price a *taker*: it says what one quote was at one
+# instant, so the only trade it can simulate is crossing that quote. A maker
+# rests a limit order and is filled only if the market comes to it, which is a
+# question about the whole pre-game price *path*, not about its last point.
+# Kalshi keeps hourly OHLC per market for as long as the market existed, so the
+# path is reconstructable after the fact — but only until we need it, hence the
+# archive. One row per (market, hour) over the last 24 hours before first pitch,
+# which is the window a pre-game limit order can plausibly rest for.
+
+CANDLE_COLUMNS = [
+    "market_id", "game_pk", "end_period_ts",
+    "yes_bid_close", "yes_ask_close",
+    "price_open", "price_high", "price_low", "price_close", "volume",
+]
+CANDLE_HOURS_BEFORE = 24        # how long before first pitch the order can rest
+
+
+def _dollars(node, field: str):
+    """`{"close_dollars": "0.5100"}` → 0.51; missing or unparseable → None."""
+    if not isinstance(node, dict):
+        return None
+    v = node.get(f"{field}_dollars")
+    if v in (None, ""):
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def candle_rows(candles: list[dict], market_id: str, game_pk: int) -> list[dict]:
+    """Kalshi's nested OHLC → flat rows in CANDLE_COLUMNS order.
+
+    `price` is the traded price (carried forward in an hour with no trades);
+    `yes_bid` / `yes_ask` are the quote at the end of the hour. Volume is
+    contracts traded during the hour, and it is what tells a fill simulation
+    whether the low was a real print or a stale carry-forward.
+    """
+    rows = []
+    for c in candles:
+        try:
+            end_ts = int(c["end_period_ts"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        price = c.get("price") or {}
+        rows.append({
+            "market_id": market_id,
+            "game_pk": int(game_pk),
+            "end_period_ts": end_ts,
+            "yes_bid_close": _dollars(c.get("yes_bid"), "close"),
+            "yes_ask_close": _dollars(c.get("yes_ask"), "close"),
+            "price_open": _dollars(price, "open"),
+            "price_high": _dollars(price, "high"),
+            "price_low": _dollars(price, "low"),
+            "price_close": _dollars(price, "close"),
+            "volume": float(c.get("volume_fp") or 0.0),
+        })
+    rows.sort(key=lambda r: r["end_period_ts"])
+    return rows
+
+
+def kalshi_candles_for_market(market_id: str, game_pk: int, first_pitch_ts: int,
+                              hours_before: int = CANDLE_HOURS_BEFORE,
+                              session=None) -> list[dict]:
+    """Hourly candles for one market from T−`hours_before` to first pitch.
+
+    The exchange returns nothing before the market's own `open_time`, so the
+    start is a floor and not a promise: a market that opened twelve hours out
+    yields twelve candles. Nothing after first pitch is requested at all — an
+    in-game price is not information a pre-game order could have acted on.
+    """
+    candles = kalshi.fetch_candlesticks(
+        "KXMLBGAME", market_id, first_pitch_ts - hours_before * 3600,
+        first_pitch_ts, period_minutes=60, session=session)
+    rows = candle_rows(candles, market_id, game_pk)
+    return [r for r in rows if r["end_period_ts"] <= first_pitch_ts]
+
+
+def kalshi_candle_archive(closes: pd.DataFrame, session=None,
+                          pace_seconds: float = 0.25,
+                          hours_before: int = CANDLE_HOURS_BEFORE,
+                          skip_markets: set[str] | None = None,
+                          on_market=None) -> tuple[list[dict], list[str]]:
+    """Candles for every Kalshi market in a closes frame, one market at a time.
+
+    Returns `(rows, failures)`. A market whose candles cannot be fetched is
+    logged and skipped — an archive of 800-odd markets must not be lost to one
+    of them — and its ticker comes back in `failures` so the caller can report
+    and retry it. `on_market(market_id, rows)` is called after each success so
+    the caller can checkpoint partial progress: Kalshi has rate-limited this
+    client before, and a run that dies mid-flight should cost minutes of work,
+    not hours.
+    """
+    skip = skip_markets or set()
+    rows: list[dict] = []
+    failures: list[str] = []
+    k = closes[closes["venue"] == "kalshi"] if "venue" in closes.columns else closes
+    for r in k.itertuples():
+        market_id = str(r.market_id)
+        if market_id in skip:
+            continue
+        first_pitch = _ts(str(r.game_start))
+        time.sleep(pace_seconds)      # Kalshi rate-limits bursts of candle calls
+        try:
+            got = kalshi_candles_for_market(market_id, int(r.game_pk), first_pitch,
+                                            hours_before, session)
+        except Exception as exc:      # one bad market must not sink the archive
+            logger.warning("candles failed for %s: %s", market_id, exc)
+            failures.append(market_id)
+            continue
+        rows.extend(got)
+        if on_market is not None:
+            on_market(market_id, got)
+    return rows, failures
+
+
+def candle_frame(rows: list[dict]) -> pd.DataFrame:
+    """CANDLE_COLUMNS frame, one row per (market, hour), de-duplicated."""
+    if not rows:
+        return pd.DataFrame(columns=CANDLE_COLUMNS)
+    df = pd.DataFrame(rows)[CANDLE_COLUMNS]
+    df = df.drop_duplicates(subset=["market_id", "end_period_ts"], keep="last")
+    return df.sort_values(["game_pk", "market_id", "end_period_ts"]).reset_index(drop=True)
