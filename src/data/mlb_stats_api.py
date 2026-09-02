@@ -6,6 +6,7 @@ Feeds:
   * schedule              → remaining games for the season Monte Carlo
   * probable starters     → station E starting-pitcher term
   * season / game-log pitching stats → the pitcher rates that term is built on
+  * rosters with IL status, hitter game logs → station B playing time
 
 Player ids are MLBAM ids, identical to Statcast `batter`, so everything joins
 to the Bayesian components and the Chadwick birthdates with no crosswalk.
@@ -300,4 +301,180 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
     df = pd.DataFrame(rows, columns=cols)
     logger.info(f"{season} game logs: {len(df)} appearances "
                 f"for {df['pitcher'].nunique() if len(df) else 0} pitchers")
+    return df
+
+
+# ─── Station B: rosters, IL status, and per-hitter plate appearances ───
+
+# `position.type` on a roster entry. Everything that is not a Pitcher can
+# come to the plate; "Hitter" is the designated hitter and "Two-Way Player"
+# is Ohtani-shaped.
+PITCHER_POSITION_TYPE = "Pitcher"
+
+
+def _dedupe_roster(df: pd.DataFrame, keys) -> pd.DataFrame:
+    """One row per player, keeping the most-available status.
+
+    The roster endpoint occasionally returns a player twice for the same date
+    — an option and a recall that both landed that day give an `A` row and an
+    `RM` row (seen on 2026-07-01 and 2026-08-01, 2-6 players a day) — and a
+    player traded that morning can briefly appear on both clubs' 40-mans.
+    Left as-is he would be counted twice in his team's PA share. `A` wins,
+    then the injured list, then everything else.
+    """
+    if df.empty:
+        return df
+    rank = df["status_code"].astype(str).map(
+        lambda c: 0 if c == "A" else (1 if c.startswith("D") else 2))
+    return (df.assign(_rank=rank).sort_values("_rank", kind="stable")
+            .drop_duplicates(subset=list(keys), keep="first")
+            .drop(columns="_rank").sort_index().reset_index(drop=True))
+
+
+def fetch_teams(season: int, refresh: bool = False) -> pd.DataFrame:
+    """The 30 MLB clubs for a season: team_id, abbrev, name, division_id."""
+    data = _get_cached(f"teams_{season}", "teams", refresh=refresh,
+                       sportId=1, season=season)
+    rows = [{
+        "team_id": t["id"],
+        "abbrev": t.get("abbreviation"),
+        "team": t.get("name"),
+        "division_id": (t.get("division") or {}).get("id"),
+    } for t in data.get("teams", [])]
+    return pd.DataFrame(rows, columns=["team_id", "abbrev", "team", "division_id"])
+
+
+def fetch_team_roster(team_id: int, date: str, roster_type: str = "40Man",
+                      refresh: bool = False) -> pd.DataFrame:
+    """One club's roster **as of `date`**, with each player's status that day.
+
+    Columns: batter, team_id, date, status_code, status, position_code,
+    position_type, is_hitter, note.
+
+    `rosterType=40Man` with a historical `date` is the useful call: unlike
+    `rosterType=active` it *keeps* the unavailable players and labels them, so
+    the injured list falls out of the same request with no need for the
+    transactions feed. Status codes seen in 2026: `A` active, `D7`/`D10`/
+    `D15`/`D60` injured lists, `RM` optioned to the minors, `PL` paternity,
+    `RL` restricted, `SU` suspended. Verified walk-forward: Aaron Judge is
+    `A` on 2026-05-01 and `D60` on 2026-08-01, so the endpoint is answering
+    "as of that date", not "today".
+
+    Only past dates are cached — a roster for today or later is still moving.
+    """
+    is_past = pd.Timestamp(date).normalize() < pd.Timestamp.today().normalize()
+    params = dict(rosterType=roster_type, date=date)
+    if is_past:
+        data = _get_cached(f"roster_{roster_type}_{team_id}_{date}",
+                           f"teams/{team_id}/roster", refresh=refresh, **params)
+    else:
+        data = _get(f"teams/{team_id}/roster", **params)
+    rows = []
+    for entry in data.get("roster", []):
+        position = entry.get("position") or {}
+        status = entry.get("status") or {}
+        rows.append({
+            "batter": entry["person"]["id"],
+            "team_id": team_id,
+            "date": date,
+            "status_code": status.get("code"),
+            "status": status.get("description"),
+            "position_code": position.get("code"),
+            "position_type": position.get("type"),
+            "is_hitter": position.get("type") != PITCHER_POSITION_TYPE,
+            "note": entry.get("note"),
+        })
+    df = pd.DataFrame(rows, columns=[
+        "batter", "team_id", "date", "status_code", "status",
+        "position_code", "position_type", "is_hitter", "note"])
+    return _dedupe_roster(df, ("batter", "team_id"))
+
+
+def fetch_rosters(team_ids, date: str, roster_type: str = "40Man",
+                  refresh: bool = False) -> pd.DataFrame:
+    """`fetch_team_roster` over many clubs, concatenated and deduped."""
+    frames = [fetch_team_roster(int(t), date, roster_type=roster_type, refresh=refresh)
+              for t in team_ids]
+    df = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
+    df = _dedupe_roster(df, ("batter",))
+    if len(df):
+        logger.info(f"rosters {date}: {len(df)} players over {df['team_id'].nunique()} "
+                    f"clubs, {int(df['is_hitter'].sum())} hitters, "
+                    f"{int((df['status_code'] == 'A').sum())} active")
+    return df
+
+
+def fetch_team_hitting_game_logs(team_ids, season: int,
+                                 refresh: bool = False) -> pd.DataFrame:
+    """Team-level hitting line per game: team_id, date, game_pk, pa, runs.
+
+    This is the denominator for station B — a team's plate appearances per
+    game. Taking it from the team's own log rather than summing player logs
+    means a hitter who has since been released or traded away still counts
+    toward the games he played in, which is what makes the per-hitter shares
+    normalize honestly.
+
+    Caveat: the team gameLog splits carry no `gameType` field (the player
+    logs do), but `season=YYYY` already restricts them to the regular season.
+    """
+    rows = []
+    for tid in sorted({int(t) for t in team_ids}):
+        data = _get_cached(
+            f"team_hitting_gamelog_{season}_{tid}", f"teams/{tid}/stats",
+            refresh=refresh, stats="gameLog", group="hitting",
+            season=season, sportId=1,
+        )
+        stats = data.get("stats", [])
+        for s in (stats[0].get("splits", []) if stats else []):
+            rows.append({
+                "team_id": tid,
+                "season": season,
+                "date": s.get("date"),
+                "game_pk": (s.get("game") or {}).get("gamePk"),
+                "pa": s["stat"].get("plateAppearances", 0) or 0,
+                "runs": s["stat"].get("runs", 0) or 0,
+            })
+    df = pd.DataFrame(rows, columns=["team_id", "season", "date", "game_pk", "pa", "runs"])
+    logger.info(f"{season} team hitting logs: {len(df)} team-games "
+                f"for {df['team_id'].nunique() if len(df) else 0} clubs")
+    return df
+
+
+def fetch_hitter_game_logs(player_ids, season: int,
+                           refresh: bool = False) -> pd.DataFrame:
+    """Per-game hitting lines for `player_ids` in `season`.
+
+    Columns: batter, season, date, game_pk, game_type, team_id, pa, ab, plus
+    the rest of HITTING_FIELDS. One row per game played — the caller filters
+    to `date <` the cutoff, which is what keeps station B walk-forward.
+
+    Cached per player-season under data/cache/statsapi/. The season is still
+    in progress, so a cached log is only complete up to the day it was
+    pulled; pass `refresh=True` (or `--refresh` on the build script) to
+    re-pull. Same convention as `fetch_pitcher_game_logs`.
+    """
+    rows = []
+    for pid in sorted({int(p) for p in player_ids}):
+        data = _get_cached(
+            f"hitting_gamelog_{season}_{pid}", f"people/{pid}/stats",
+            refresh=refresh, stats="gameLog", group="hitting", season=season,
+        )
+        stats = data.get("stats", [])
+        for s in (stats[0].get("splits", []) if stats else []):
+            row = {"batter": pid, "season": season, "date": s.get("date"),
+                   "game_pk": (s.get("game") or {}).get("gamePk"),
+                   "game_type": s.get("gameType"),
+                   "team_id": (s.get("team") or {}).get("id")}
+            for api_field, col in HITTING_FIELDS.items():
+                row[col] = s["stat"].get(api_field, 0) or 0
+            rows.append(row)
+    cols = ["batter", "season", "date", "game_pk", "game_type", "team_id",
+            *HITTING_FIELDS.values()]
+    df = pd.DataFrame(rows, columns=cols)
+    if len(df):
+        # gameType "R" is the regular season; spring/exhibition rows would
+        # otherwise inflate an early-season share.
+        df = df[df["game_type"].isna() | (df["game_type"] == "R")].reset_index(drop=True)
+    logger.info(f"{season} hitting logs: {len(df)} player-games "
+                f"for {df['batter'].nunique() if len(df) else 0} hitters")
     return df
