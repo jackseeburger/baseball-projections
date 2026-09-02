@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 
 import pandas as pd
@@ -25,6 +26,8 @@ from src.config import DATA_DIR, PARQUET_DIR
 logger = logging.getLogger(__name__)
 
 BASE = "https://statsapi.mlb.com/api/v1"
+# The live feed (boxscore, play-by-play, posted lineup) lives on v1.1 only.
+BASE_V11 = "https://statsapi.mlb.com/api/v1.1"
 SEASONS_PARQUET = PARQUET_DIR / "hitter_seasons_api.parquet"
 # Raw API JSON lands here so a walk-forward backtest can be re-run offline.
 # Gitignored (data/cache/); delete a file or pass refresh=True to re-pull.
@@ -55,13 +58,14 @@ HITTING_FIELDS = {
 }
 
 
-def _get(path: str, **params) -> dict:
-    resp = requests.get(f"{BASE}/{path}", params=params, timeout=60)
+def _get(path: str, base: str = BASE, **params) -> dict:
+    resp = requests.get(f"{base}/{path}", params=params, timeout=60)
     resp.raise_for_status()
     return resp.json()
 
 
-def _get_cached(cache_key: str, path: str, refresh: bool = False, **params) -> dict:
+def _get_cached(cache_key: str, path: str, refresh: bool = False,
+                base: str = BASE, **params) -> dict:
     """`_get` with the response JSON cached under data/cache/statsapi/.
 
     Only ever cache *settled* facts (a past date's schedule, a finished
@@ -73,7 +77,7 @@ def _get_cached(cache_key: str, path: str, refresh: bool = False, **params) -> d
             return json.loads(cache_file.read_text())
         except json.JSONDecodeError:
             logger.warning(f"corrupt cache {cache_file}; re-fetching")
-    data = _get(path, **params)
+    data = _get(path, base=base, **params)
     cache_file.parent.mkdir(parents=True, exist_ok=True)
     cache_file.write_text(json.dumps(data))
     return data
@@ -277,9 +281,14 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
                             refresh: bool = False) -> pd.DataFrame:
     """Per-appearance pitching lines for `pitcher_ids` in `season`.
 
-    Columns: pitcher, season, date, game_pk, game_type, bf, k, bb, hbp, hr,
-    er, gs, outs. One row per appearance — the caller filters to `date <` the
-    game being predicted, which is what keeps the backtest walk-forward.
+    Columns: pitcher, season, date, game_pk, game_type, team, bf, k, bb, hbp,
+    hr, er, gs, outs. One row per appearance — the caller filters to `date <`
+    the game being predicted, which is what keeps the backtest walk-forward.
+
+    `team` is the club he pitched for *that day*, which is what the bullpen
+    model needs (a reliever traded in July belongs to one pen before the
+    deadline and another after it, and only the appearances themselves say
+    when the line moved).
     """
     rows = []
     for pid in sorted({int(p) for p in pitcher_ids}):
@@ -292,12 +301,13 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
             row = {"pitcher": pid, "season": season, "date": s.get("date"),
                    "game_pk": (s.get("game") or {}).get("gamePk"),
                    "game_type": s.get("gameType"),
+                   "team": (s.get("team") or {}).get("id"),
                    "outs": _ip_to_outs(s["stat"].get("inningsPitched"))}
             for api_field, col in PITCHING_FIELDS.items():
                 row[col] = s["stat"].get(api_field, 0) or 0
             rows.append(row)
-    cols = ["pitcher", "season", "date", "game_pk", "game_type", "outs",
-            *PITCHING_FIELDS.values()]
+    cols = ["pitcher", "season", "date", "game_pk", "game_type", "team",
+            "outs", *PITCHING_FIELDS.values()]
     df = pd.DataFrame(rows, columns=cols)
     logger.info(f"{season} game logs: {len(df)} appearances "
                 f"for {df['pitcher'].nunique() if len(df) else 0} pitchers")
@@ -477,4 +487,132 @@ def fetch_hitter_game_logs(player_ids, season: int,
         df = df[df["game_type"].isna() | (df["game_type"] == "R")].reset_index(drop=True)
     logger.info(f"{season} hitting logs: {len(df)} player-games "
                 f"for {df['batter'].nunique() if len(df) else 0} hitters")
+
+# ─── Station E: posted lineups and batter rates ───
+
+# The live feed is ~750 KB per game; `fields` trims it to ~9 KB, which is what
+# makes caching a whole season of lineups (~1,800 games) reasonable.
+_LINEUP_FIELDS = ("gamePk,liveData,boxscore,teams,home,away,players,person,id,"
+                  "battingOrder")
+
+
+def posted_lineup(team_box: dict) -> list[int]:
+    """The nine batters a club *started*, in batting order, from a boxscore.
+
+    Read from the per-player `battingOrder` codes, not from the team-level
+    `battingOrder` array. The codes are slot x 100 for a starter ("300" is the
+    number-three hitter) and slot x 100 + n for the nth player to take over
+    that slot ("301" is the pinch hitter who batted third). The team-level
+    array is always nine long, but it holds the *last* occupant of each slot,
+    so in roughly one slot per team per game it is a substitute.
+
+    That distinction is the whole ballgame for a walk-forward backtest: who
+    pinch-hit is a fact about how the game went (managers rest regulars in
+    blowouts and hit for them when trailing), so the ending lineup leaks the
+    result backwards. Measured on 2025, the ending lineup's distance from a
+    club's own norm correlates **-0.06** with the runs that club scored —
+    backwards — while the posted lineup does not. Only the "x00" entries were
+    knowable before first pitch.
+
+    Returns [] when the boxscore has no batting order at all (postponed games,
+    feeds without a boxscore).
+    """
+    slots: dict[int, int] = {}
+    for key, player in (team_box.get("players") or {}).items():
+        code = player.get("battingOrder")
+        if not code or not str(code).endswith("00"):
+            continue
+        pid = (player.get("person") or {}).get("id")
+        if pid is None and key.startswith("ID"):
+            pid = key[2:]
+        try:
+            slots[int(code) // 100] = int(pid)
+        except (TypeError, ValueError):
+            continue
+    return [slots[s] for s in sorted(slots)] if len(slots) == 9 else []
+
+
+def fetch_lineups(game_pks, refresh: bool = False,
+                  pace: float = 0.02) -> pd.DataFrame:
+    """Posted batting order for each game, one row per lineup slot.
+
+    Columns: game_pk, side ("home"/"away"), slot (1-9), batter (MLBAM id).
+
+    Source is the live feed's boxscore, `liveData.boxscore.teams.{home,away}`,
+    reduced to the nine starters by `posted_lineup` (see there for why the
+    team-level `battingOrder` array is the wrong thing to read).
+
+    Walk-forward honesty: the starters are the card the club posted, typically
+    2-4 hours before first pitch and always before the exchange of cards. The
+    one thing this cannot see is a **late scratch** after the card went public,
+    which the backfill silently absorbs. The exchanges' closes knew about those
+    too — the median Kalshi close is 15 minutes before first pitch
+    (docs/market-benchmark-2026.md) — so scoring against those closes is fair,
+    exactly the argument `fetch_probables` makes for the starting pitcher. It
+    is *not* a simulation of forecasting the morning before.
+
+    Games with no posted lineup are simply absent, and the caller falls back to
+    a lineup-free model.
+
+    `pace` sleeps between *uncached* requests; a season is ~1,800 of them.
+    """
+    rows = []
+    for pk in sorted({int(p) for p in game_pks}):
+        cache_file = STATSAPI_CACHE / f"lineup_{pk}.json"
+        fresh = not cache_file.exists() or refresh
+        try:
+            data = _get_cached(f"lineup_{pk}", f"game/{pk}/feed/live",
+                               refresh=refresh, base=BASE_V11,
+                               fields=_LINEUP_FIELDS)
+        except requests.HTTPError as exc:      # pragma: no cover - network
+            logger.warning(f"lineup {pk}: {exc}")
+            continue
+        if fresh and pace:
+            time.sleep(pace)
+        teams = ((data.get("liveData") or {}).get("boxscore") or {}).get("teams") or {}
+        for side in ("home", "away"):
+            for slot, batter in enumerate(posted_lineup(teams.get(side) or {}), start=1):
+                rows.append({"game_pk": pk, "side": side, "slot": slot,
+                             "batter": int(batter)})
+    df = pd.DataFrame(rows, columns=["game_pk", "side", "slot", "batter"])
+    logger.info(f"lineups: {df['game_pk'].nunique() if len(df) else 0} games, "
+                f"{len(df)} slots")
+    return df
+
+
+def fetch_batter_game_logs(batter_ids, season: int, refresh: bool = False,
+                           pace: float = 0.02) -> pd.DataFrame:
+    """Per-game hitting lines for `batter_ids` in `season`.
+
+    Columns: batter, season, date, game_pk, game_type, plus the counting
+    columns in HITTING_FIELDS. One row per game — the caller filters to
+    `date <` the game being predicted, which is what keeps the backtest
+    walk-forward (`src.sim.lineups.games_before`).
+    """
+    rows = []
+    for bid in sorted({int(b) for b in batter_ids}):
+        cache_file = STATSAPI_CACHE / f"hitting_gamelog_{season}_{bid}.json"
+        fresh = not cache_file.exists() or refresh
+        try:
+            data = _get_cached(
+                f"hitting_gamelog_{season}_{bid}", f"people/{bid}/stats",
+                refresh=refresh, stats="gameLog", group="hitting", season=season)
+        except requests.HTTPError as exc:      # pragma: no cover - network
+            logger.warning(f"hitting game log {bid}: {exc}")
+            continue
+        if fresh and pace:
+            time.sleep(pace)
+        stats = data.get("stats", [])
+        for s in (stats[0].get("splits", []) if stats else []):
+            row = {"batter": bid, "season": season, "date": s.get("date"),
+                   "game_pk": (s.get("game") or {}).get("gamePk"),
+                   "game_type": s.get("gameType")}
+            for api_field, col in HITTING_FIELDS.items():
+                row[col] = s["stat"].get(api_field, 0) or 0
+            rows.append(row)
+    cols = ["batter", "season", "date", "game_pk", "game_type",
+            *HITTING_FIELDS.values()]
+    df = pd.DataFrame(rows, columns=cols)
+    logger.info(f"{season} hitting game logs: {len(df)} games for "
+                f"{df['batter'].nunique() if len(df) else 0} batters")
     return df
