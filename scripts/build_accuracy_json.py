@@ -317,20 +317,30 @@ def section_ros(payload: dict) -> dict:
                 won += live < rival
         return won, total
 
-    vs_bayes, n_bayes = beats("bayes_preseason")
-    vs_control, n_control = beats(ROS_CONTROL_ARM)
-    vs_stock, n_stock = beats("marcel")
+    # Only the comparisons this run actually has both sides of get a clause,
+    # so a payload predating an arm reads as a shorter sentence rather than
+    # "0 of 0".
+    clauses = [(what, won, n) for what, (won, n) in [
+        ("our preseason Bayesian components", beats("bayes_preseason")),
+        ("the same model without 2026", beats(ROS_CONTROL_ARM)),
+        ("stock Marcel", beats("marcel")),
+    ] if n]
+    # The unit is named once, on the first clause.
+    parts = [f"{what} on {won} of {n}"
+             + (" component-cutoff cells" if i == 0 else "")
+             for i, (what, won, n) in enumerate(clauses)]
+    counted = (parts[0] if len(parts) == 1
+               else ", ".join(parts[:-1]) + f"{',' if len(parts) > 2 else ''}"
+                    f" and {parts[-1]}") if parts else ""
     framing = (
         "Lower is better, and only within a cutoff — a later cutoff scores a "
         "shorter, noisier rest of season, so every arm's MAE rises down the "
         "table. The live arm is tuned Marcel — the same estimator with its "
         "ballast, recency weights and age curve fitted walk-forward on "
-        "2020-2024 — with the season to date folded in. It beats our preseason "
-        f"Bayesian components on {vs_bayes} of {n_bayes} component-cutoff "
-        f"cells, the same model without 2026 on {vs_control} of {n_control}, "
-        f"and stock Marcel on {vs_stock} of {n_stock}. Most of the gain is "
-        "in-season information rather than a better prior — which is why the "
-        "player pages lead with this number.")
+        "2020-2024 — with the season to date folded in."
+        + (f" It beats {counted}." if counted else "")
+        + " Most of the gain is in-season information rather than a better "
+          "prior — which is why the player pages lead with this number.")
 
     last_pa = payload.get("last_pa_date")
     notes = [
