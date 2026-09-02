@@ -19,9 +19,6 @@ MARCEL_PA_WEIGHTS = {1: 0.5, 2: 0.1}  # regression PA weights
 MARCEL_LEAGUE_PA = 200  # regression PA for hitters
 MARCEL_LEAGUE_IP = 50   # regression IP for pitchers
 
-# Turso Cloud database
-TURSO_DATABASE_URL = "libsql://baseball-projections-jseeburger4.aws-us-east-1.turso.io"
-
 # Weights & Biases
 WANDB_PROJECT = "baseball-projections"
 WANDB_ENTITY = "jseeburger"

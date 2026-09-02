@@ -1,0 +1,83 @@
+name: Modal refit
+
+# Layer 1 production (docs/automation.md): retrain the Bayesian components.
+# The runner is only the trigger — it authenticates to Modal and starts the
+# job, which runs on Modal's hardware and logs to W&B. Runner time is
+# seconds, so the 6-hour Actions job limit never applies to the sampling.
+#
+# Claude Code sessions cannot do this themselves: Modal's client speaks
+# gRPC and the session proxy does not pass gRPC. This workflow is the
+# supported path, plus a laptop.
+on:
+  schedule:
+    - cron: "0 7 * * 1"      # Mondays 07:00 UTC — weekly refit
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Which component to refit
+        type: choice
+        options: [smoke_test, k_rate, iso, babip, assembly, all]
+        default: smoke_test
+      draws:
+        description: Posterior draws per chain
+        default: "2000"
+      tune:
+        description: Tuning steps per chain
+        default: "1500"
+      chains:
+        description: Number of chains
+        default: "4"
+      fast:
+        description: Fast mode (tiny sample, for validating the pipeline)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  refit:
+    runs-on: ubuntu-latest
+    env:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+      COMPONENT: ${{ inputs.component || 'all' }}
+      DRAWS: ${{ inputs.draws || '2000' }}
+      TUNE: ${{ inputs.tune || '1500' }}
+      CHAINS: ${{ inputs.chains || '4' }}
+      FAST: ${{ inputs.fast && '--fast' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Modal client
+        run: pip install "modal>=0.64"
+      - name: Check credentials
+        run: |
+          if [ -z "$MODAL_TOKEN_ID" ] || [ -z "$MODAL_TOKEN_SECRET" ]; then
+            echo "::error::MODAL_TOKEN_ID / MODAL_TOKEN_SECRET are not set in"
+            echo "::error::this repository's Actions secrets."
+            exit 1
+          fi
+          modal profile current
+      - name: Run refit
+        run: |
+          set -euo pipefail
+          app=modal_functions/app.py
+          args="--draws $DRAWS --tune $TUNE --chains $CHAINS $FAST"
+          run() { echo "::group::$1"; modal run "$app::$1" ${2:-}; echo "::endgroup::"; }
+          case "$COMPONENT" in
+            smoke_test) run run_smoke_test ;;
+            k_rate)     run run_k_rate_model "$args" ;;
+            iso)        run run_iso_model   "$args" ;;
+            babip)      run run_babip_model "$args" ;;
+            assembly)   run run_assembly ;;
+            all)
+              run run_k_rate_model "$args"
+              run run_iso_model    "$args"
+              run run_babip_model  "$args"
+              run run_assembly
+              ;;
+          esac

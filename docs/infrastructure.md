@@ -148,4 +148,8 @@ Bayesian Baseball Projection System built for a solo practitioner.
 |--------|------|---------|
 | `r2-baseball` | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`, `R2_ENDPOINT_URL` | R2 access |
 | `wandb-baseball` | `WANDB_API_KEY` | W&B logging |
-| `turso-baseball` | (legacy, can remove) | Old Turso DB |
+
+Every secret in `ALL_SECRETS` must exist in the workspace or the function
+fails before its first line runs, so the list stays minimal. The Turso
+database was retired; `src/data/db.py` and the `turso-baseball` secret are
+gone.
