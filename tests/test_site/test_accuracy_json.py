@@ -18,7 +18,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/accuracy"
-SECTIONS = ("components", "game_odds", "playoff_odds_control")
+SECTIONS = ("components", "ros_backtest", "game_odds", "playoff_odds_control")
 
 
 def _load_builder():
@@ -40,6 +40,7 @@ def doc(tmp_path):
         out_dir=tmp_path,
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=FIXTURES / "ros_backtest.json",
         git_sha="0123456789abcdef",
     )
 
@@ -149,6 +150,18 @@ def test_game_odds_without_market_is_stale_with_a_reason():
     assert not any(r["is_market"] for r in section["rows"])
 
 
+def test_game_odds_lists_each_price_once(doc):
+    """The backtester emits a market close once per model subset it scores.
+    The same Kalshi price twice reads as two contenders tying with the bar."""
+    payload = json.loads((FIXTURES / "game_odds_market.json").read_text())
+    doubled = dict(payload, scores=payload["scores"] + payload["scores"])
+    section = build.section_game_odds(doubled, None)
+    models = [r["model"] for r in section["rows"]]
+    assert len(models) == len(set(models))
+    assert models == [r["model"] for r in doc["sections"]["game_odds"]["rows"]]
+    assert [r["rank"] for r in section["rows"]] == list(range(1, len(models) + 1))
+
+
 def test_control_section_parses_the_coin_flip_table(doc):
     section = doc["sections"]["playoff_odds_control"]
     models = {r["model"] for r in section["rows"]}
@@ -171,6 +184,59 @@ def test_control_section_reads_a_table_out_of_markdown():
     assert [r["metrics"]["P(playoffs)"] for r in section["rows"]] == [1.94, 1.63]
 
 
+def test_ros_section_ranks_the_live_arm_ahead_of_our_preseason_model(doc):
+    """The section exists to show why the site swapped models; if the fixture
+    stopped saying that, the swap is no longer justified."""
+    section = doc["sections"]["ros_backtest"]
+    assert section["stale"] is False
+    assert section["live_arm"] == "marcel"
+    live = next(r for r in section["rows"] if r["is_production"])
+    assert live["is_production"] is True
+    by_cutoff = {}
+    for row in section["rows"]:
+        by_cutoff.setdefault(row["cutoff_date"], {})[row["model"]] = row["metrics"]
+    for cutoff, arms in by_cutoff.items():
+        assert arms["marcel"]["k_rate"] < arms["bayes_preseason"]["k_rate"], cutoff
+        assert arms["marcel"]["k_rate"] < arms["marcel_preseason"]["k_rate"], cutoff
+
+
+def test_ros_section_marks_the_winner_inside_its_own_cutoff(doc):
+    """MAE rises with every cutoff, so a column-wide minimum would always be
+    the May 1 row. The builder marks the best arm per cutoff instead, and tells
+    the page not to rank the column itself."""
+    section = doc["sections"]["ros_backtest"]
+    assert section["highlight_best"] is False
+    for cutoff in {r["cutoff_date"] for r in section["rows"]}:
+        rows = [r for r in section["rows"] if r["cutoff_date"] == cutoff]
+        for component in ("k_rate", "bb_rate", "hr_rate", "iso"):
+            values = [(r["metrics"][component], r["model"]) for r in rows]
+            winner = min(values)[1]
+            marked = [r["model"] for r in rows if component in r["best"]]
+            assert marked == [winner], f"{cutoff} {component}"
+
+
+def test_ros_section_framing_is_counted_not_asserted(doc):
+    """The claim on the page is recomputed from the table, so it flips on its
+    own if the result ever does."""
+    section = doc["sections"]["ros_backtest"]
+    assert "11 of 12" in section["framing"]
+    assert "component-cutoff cells" in section["framing"]
+
+
+def test_ros_section_is_stale_when_the_pa_parquet_and_r2_are_both_missing(
+        tmp_path, monkeypatch):
+    for var in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL"):
+        monkeypatch.delenv(var, raising=False)
+    note = build.ros_input_note(tmp_path / "absent.parquet")
+    assert note and "R2_ACCESS_KEY_ID" in note
+
+
+def test_ros_input_note_is_silent_when_the_parquet_is_there(tmp_path):
+    path = tmp_path / "pa_outcomes_2026.parquet"
+    path.write_bytes(b"not really a parquet, but present")
+    assert build.ros_input_note(path) is None
+
+
 # ─── staleness and archiving ─────────────────────────────────────
 
 def test_a_skipped_section_falls_back_to_the_previous_snapshot(tmp_path, doc):
@@ -179,6 +245,7 @@ def test_a_skipped_section_falls_back_to_the_previous_snapshot(tmp_path, doc):
         out_dir=tmp_path, skip=("game_odds",),
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=FIXTURES / "ros_backtest.json",
         git_sha="deadbeef")
     section = later["sections"]["game_odds"]
     assert section["stale"] is True
@@ -188,9 +255,10 @@ def test_a_skipped_section_falls_back_to_the_previous_snapshot(tmp_path, doc):
 
 def test_a_missing_section_with_no_history_still_has_the_shape(tmp_path):
     later = build.build_document(
-        out_dir=tmp_path, skip=("components", "game_odds"),
-        components_json=None, game_odds_json=None, git_sha="deadbeef")
-    for name in ("components", "game_odds"):
+        out_dir=tmp_path, skip=("components", "ros_backtest", "game_odds"),
+        components_json=None, game_odds_json=None, ros_json=None,
+        git_sha="deadbeef")
+    for name in ("components", "ros_backtest", "game_odds"):
         section = later["sections"][name]
         assert section["stale"] is True
         assert "No previous snapshot" in section["stale_reason"]

@@ -9,6 +9,7 @@ this file's output it does not appear in the browser.
 
 Sections:
     components            scripts/score_2026_projections.py  (offline; data in git)
+    ros_backtest          scripts/run_intraseason_backtest.py (needs the PA parquet)
     game_odds             scripts/backtest_game_odds.py      (MLB Stats API + R2 market closes)
     playoff_odds_control  docs/accuracy-2026.md §2b          (the coin-flip control run)
 
@@ -44,8 +45,22 @@ ARCHITECTURE_MD = ROOT / "docs/architecture.md"
 MARKET_PARQUET = ROOT / "data/parquet/market_closes_2026.parquet"
 MARKET_R2_KEY = "market/market_closes_2026.parquet"
 PLAYOFF_ODDS_DIR = ROOT / "public/data/playoff_odds"
+PA_PARQUET = ROOT / "data/parquet/pa_outcomes_2026.parquet"
 
-SECTIONS = ("components", "game_odds", "playoff_odds_control")
+SECTIONS = ("components", "ros_backtest", "game_odds", "playoff_odds_control")
+
+# The rest-of-season section: four components (BABIP is 4 players at the Aug 1
+# cutoff, so it measures nothing there) and the four arms that answer "is
+# folding in the current season worth more than our prior?".
+ROS_COMPONENTS = ("k_rate", "bb_rate", "hr_rate", "iso")
+ROS_ARMS = ("marcel", "marcel_preseason", "bayes_preseason", "season_to_date")
+ROS_ARM_LABELS = {
+    "marcel": "Marcel + 2026 to date",
+    "marcel_preseason": "Marcel, 2026 withheld",
+    "bayes_preseason": "Bayes preseason (ours)",
+    "season_to_date": "2026 rate, regressed",
+}
+ROS_LIVE_ARM = "marcel"
 
 # Display names. Text only — every number comes from a generated table.
 MODEL_LABELS = {
@@ -219,11 +234,143 @@ def section_components(payload: dict) -> dict:
     }
 
 
+def _cutoff_label(cutoff: str) -> str:
+    """2026-07-01 -> "Jul 1"."""
+    try:
+        d = date.fromisoformat(cutoff)
+    except ValueError:
+        return cutoff
+    return f"{d:%b} {d.day}"
+
+
+def section_ros(payload: dict) -> dict:
+    """Rest-of-season projections: the walk-forward that put Marcel in production.
+
+    One row per (cutoff, arm), because MAE rises with every cutoff — a shorter
+    rest-of-season is a noisier target — so only the comparison *within* a
+    cutoff means anything. The best cell per component is marked inside its own
+    cutoff block, and the page is told not to rank the column globally.
+    """
+    scores = payload["scores"]
+    components = [c for c in ROS_COMPONENTS
+                  if c in {r["component"] for r in scores}]
+    cutoffs = payload.get("cutoffs") or sorted({r["cutoff"] for r in scores})
+    arms = [a for a in ROS_ARMS if a in {r["model"] for r in scores}]
+
+    mae, n_players = {}, {}
+    for r in scores:
+        mae[(r["cutoff"], r["model"], r["component"])] = num(r["mae"])
+        n_players[(r["cutoff"], r["component"])] = int(r["n_players"])
+
+    rows = []
+    for cutoff in cutoffs:
+        best = {}
+        for component in components:
+            values = [(mae[(cutoff, a, component)], a) for a in arms
+                      if (cutoff, a, component) in mae
+                      and mae[(cutoff, a, component)] is not None]
+            if values:
+                best[component] = min(values)[1]
+        for arm in arms:
+            metrics = {c: mae.get((cutoff, arm, c)) for c in components}
+            if all(v is None for v in metrics.values()):
+                continue
+            rows.append({
+                "model": arm,
+                "label": ROS_ARM_LABELS.get(arm, label_for(arm)),
+                "cutoff": _cutoff_label(cutoff),
+                "cutoff_date": cutoff,
+                "is_production": arm == ROS_LIVE_ARM,
+                "is_ours": arm == "bayes_preseason",
+                "is_baseline": arm in ("marcel_preseason", "season_to_date"),
+                "is_market": False,
+                "metrics": metrics,
+                "best": [c for c in components if best.get(c) == arm],
+            })
+
+    # The framing is a count, not a claim: it is recomputed from the table
+    # every night, so it flips on its own if the result ever does.
+    def beats(other: str) -> tuple[int, int]:
+        won = total = 0
+        for cutoff in cutoffs:
+            for component in components:
+                live = mae.get((cutoff, ROS_LIVE_ARM, component))
+                rival = mae.get((cutoff, other, component))
+                if live is None or rival is None:
+                    continue
+                total += 1
+                won += live < rival
+        return won, total
+
+    vs_bayes, n_bayes = beats("bayes_preseason")
+    vs_control, n_control = beats("marcel_preseason")
+    framing = (
+        "Lower is better, and only within a cutoff — a later cutoff scores a "
+        "shorter, noisier rest of season, so every arm's MAE rises down the "
+        f"table. The live arm is Marcel with the season to date folded in: it "
+        f"beats our preseason Bayesian components on {vs_bayes} of {n_bayes} "
+        f"component-cutoff cells and the same Marcel without 2026 on "
+        f"{vs_control} of {n_control}. The gain is in-season information, not a "
+        "better prior — which is why the player pages now lead with this number.")
+
+    last_pa = payload.get("last_pa_date")
+    notes = [
+        "Training is the prior full seasons plus the current season through the "
+        "cutoff; the realized side is every plate appearance on or after it. The "
+        "leakage guard rejects a training PA dated on or after the cutoff.",
+        f"Scored on hitters with at least {payload.get('min_trials')} realized "
+        f"trials after the cutoff, trials-weighted, on the same players across "
+        f"all arms.",
+        "BABIP is left out: at a one-month horizon the 100-trial floor leaves "
+        "four players, and league average ties Marcel on it anyway.",
+    ]
+    if last_pa:
+        notes.append(f"The current season runs through {last_pa} in this run, so "
+                     f"the last cutoff's 'rest of season' is about a month.")
+    if n_players:
+        counts = ", ".join(
+            f"{_cutoff_label(c)} {n_players[(c, components[0])]}"
+            for c in cutoffs if (c, components[0]) in n_players)
+        notes.append(f"Hitters scored per cutoff ({COMPONENT_LABELS[components[0]]}): "
+                     f"{counts}.")
+
+    return {
+        "title": "Rest-of-season projections, walk-forward",
+        "framing": framing,
+        "source": "scripts/run_intraseason_backtest.py (docs/backtest-baselines.md, "
+                  "docs/ros-projections.md)",
+        "as_of": (payload.get("generated_at") or "")[:10] or None,
+        "n": n_players.get((cutoffs[-1], components[0])) if cutoffs and components else None,
+        "n_label": "hitters at the last cutoff",
+        "predict_year": payload.get("predict_year"),
+        "cutoffs": list(cutoffs),
+        "arms": arms,
+        "live_arm": ROS_LIVE_ARM,
+        "highlight_best": False,
+        "columns": ([{"key": "cutoff", "label": "Cutoff", "type": "text"},
+                     {"key": "label", "label": "Arm", "type": "text"}]
+                    + [{"key": c, "label": COMPONENT_LABELS.get(c, c), "type": "rate"}
+                       for c in components]),
+        "rows": rows,
+        "notes": notes,
+        "stale": False,
+        "stale_reason": None,
+    }
+
+
 def section_game_odds(payload: dict, market_note: str | None) -> dict:
     """Walk-forward per-game table, market closes included when we have them."""
     rows = []
+    # One row per model. The backtester emits a market price once per model
+    # subset it scores, so a run that carries the lineup and bullpen arms lists
+    # the same Kalshi close two or three times — the same price is not two
+    # contenders, and duplicating the bar makes it look beatable by tie.
+    seen = set()
     for r in sorted(payload["scores"], key=lambda r: r["brier"]):
         model = r["model"]
+        if model in seen:
+            continue
+        seen.add(model)
         rows.append({
             "model": model,
             "label": label_for(model),
@@ -347,6 +494,24 @@ def ensure_market_parquet(path: Path) -> tuple[Path | None, str | None]:
     return path, None
 
 
+def ros_input_note(pa_parquet: Path = PA_PARQUET) -> str | None:
+    """Why the rest-of-season backtest cannot run here, or None if it can.
+
+    The PA-level parquet lives in R2 and is gitignored; `load_pa_outcomes` would
+    download it, but only with credentials. Checking first turns a five-minute
+    doomed subprocess into an instant, honest stale reason.
+    """
+    if pa_parquet.exists():
+        return None
+    missing = [v for v in ("R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT_URL")
+               if not os.getenv(v)]
+    if missing:
+        return (f"rest-of-season backtest not run: {pa_parquet.name} is absent and "
+                f"{', '.join(missing)} not set on this runner (they would fetch "
+                f"pa_outcomes/pa_outcomes_2026.parquet from R2)")
+    return None
+
+
 def newest_previous(out_dir: Path) -> tuple[dict | None, str | None]:
     """Newest committed dated snapshot, for section-level fallback."""
     dated = sorted(p for p in out_dir.glob("*.json") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem))
@@ -376,6 +541,7 @@ def fallback(name: str, reason: str, previous: dict | None, previous_name: str |
 
 def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
                    components_json: Path | None = None, game_odds_json: Path | None = None,
+                   ros_json: Path | None = None,
                    market_parquet: Path | None = MARKET_PARQUET, season: int = 2026,
                    timeout: int = 3600, work_dir: Path | None = None,
                    git_sha: str | None = None) -> dict:
@@ -401,6 +567,32 @@ def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
         except Exception as exc:                              # noqa: BLE001
             sections["components"] = fallback(
                 "components", err or f"could not score components: {type(exc).__name__}: {exc}",
+                previous, previous_name)
+
+    # 1b. rest-of-season walk-forward — needs the 2026 PA parquet, which comes
+    # from R2. The nightly runner without R2_* credentials cannot rebuild it and
+    # carries the last committed run instead.
+    if "ros_backtest" in skip:
+        sections["ros_backtest"] = fallback(
+            "ros_backtest", "skipped by --skip ros_backtest", previous, previous_name)
+    else:
+        path, err = ros_json, ""
+        if path is None:
+            missing = ros_input_note()
+            if missing:
+                path, err = None, missing
+            else:
+                path = tmp / "ros_backtest.json"
+                ok, err = run_script(
+                    ["scripts/run_intraseason_backtest.py",
+                     "--components", *ROS_COMPONENTS, "--json-out", str(path)], timeout)
+                path = path if ok else None
+        try:
+            sections["ros_backtest"] = section_ros(json.loads(Path(path).read_text()))
+        except Exception as exc:                              # noqa: BLE001
+            sections["ros_backtest"] = fallback(
+                "ros_backtest",
+                err or f"could not score rest-of-season arms: {type(exc).__name__}: {exc}",
                 previous, previous_name)
 
     # 2. game odds — needs the MLB Stats API, and R2 for the market rows.
@@ -538,12 +730,16 @@ def main() -> None:
     parser.add_argument("--game-odds-json", type=Path, default=None,
                         help="use this backtest_game_odds --json-out file instead of "
                              "running the script (testing)")
+    parser.add_argument("--ros-json", type=Path, default=None,
+                        help="use this run_intraseason_backtest --json-out file "
+                             "instead of running the script (testing)")
     parser.add_argument("--market-parquet", type=Path, default=MARKET_PARQUET)
     args = parser.parse_args()
 
     doc = build_document(out_dir=args.out_dir, skip=tuple(args.skip), season=args.season,
                          components_json=args.components_json,
                          game_odds_json=args.game_odds_json,
+                         ros_json=args.ros_json,
                          market_parquet=args.market_parquet, timeout=args.timeout)
     for row in doc["meta"]["status"]:
         state = "fresh" if row["fresh"] else "STALE"

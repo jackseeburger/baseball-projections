@@ -123,6 +123,9 @@ def main() -> None:
                         help="print the docs table instead of the wide scores")
     parser.add_argument("--calibration-model", default=None)
     parser.add_argument("--csv-out", type=Path, default=None)
+    parser.add_argument("--json-out", type=Path, default=None,
+                        help="also write the scores to PATH as JSON, for "
+                             "scripts/build_accuracy_json.py")
     args = parser.parse_args()
 
     seasons = pd.read_parquet(args.seasons)
@@ -153,6 +156,27 @@ def main() -> None:
         args.csv_out.parent.mkdir(parents=True, exist_ok=True)
         scores.to_csv(args.csv_out, index=False)
         print(f"\nwrote {args.csv_out}")
+
+    if args.json_out:
+        import json
+        from datetime import datetime, timezone
+
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "predict_year": args.predict_year,
+            "min_trials": args.min_trials,
+            "components": args.components,
+            "cutoffs": args.cutoffs,
+            # Arms in the order the doc table uses, restricted to the ones this
+            # run actually produced (bayes_preseason is absent without the
+            # projection files).
+            "arms": [a for a in ARM_ORDER if a in set(scores["model"])],
+            "last_pa_date": str(pd.to_datetime(pa["game_date"]).max().date()),
+            "scores": json.loads(scores.to_json(orient="records")),
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
+        print(f"\nwrote {args.json_out}")
 
 
 if __name__ == "__main__":
