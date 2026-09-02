@@ -1,0 +1,64 @@
+name: Statcast ingest
+
+# Layer 1 production (docs/automation.md): keep the current season's
+# Statcast in R2 and on the Modal volume, so refits see this year.
+#
+# The archive had stopped at 2025, which meant every refit trained on a
+# season that had already ended. This job closes that gap nightly.
+on:
+  schedule:
+    - cron: "30 12 * * *"    # 12:30 UTC — after the market snapshot, all games final
+  workflow_dispatch:
+    inputs:
+      season:
+        description: Season to ingest
+        default: ""
+      since:
+        description: Start date YYYY-MM-DD (default March 1)
+        default: ""
+      sync_volume:
+        description: Push PA outcomes to the Modal volume
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: statcast-ingest
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+      R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-ci.txt boto3 "modal>=0.64"
+      - name: Check R2 credentials
+        run: |
+          for v in R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_ENDPOINT_URL R2_BUCKET_NAME; do
+            if [ -z "${!v}" ]; then
+              echo "::error::$v is not set in this repository's Actions secrets"
+              exit 1
+            fi
+          done
+      - name: Ingest season
+        run: |
+          python scripts/ingest_statcast.py \
+            ${{ inputs.season && format('--season {0}', inputs.season) || '' }} \
+            ${{ inputs.since && format('--since {0}', inputs.since) || '' }}
+      - name: Push PA outcomes to the Modal volume
+        if: ${{ inputs.sync_volume != false }}
+        run: modal run modal_functions/app.py::upload_data

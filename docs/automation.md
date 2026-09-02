@@ -112,6 +112,16 @@ Two GitHub Actions jobs commit data to `main` today, serialized by a shared
 |---|---|---|
 | `nightly-odds.yml` | 09:15, backup 11:45 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
 | `market-snapshot.yml` | 10:00, 16:30, 23:00 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
+| `statcast-ingest.yml` | 12:30 | `statcast/statcast_<year>.parquet` and `pa_outcomes/pa_outcomes_<year>.parquet` in R2, then the Modal volume |
+| `modal-refit.yml` | Mondays 07:00 | Modal training runs; diagnostics to W&B |
+
+**Keep the current season flowing.** The Statcast archive in R2 ran 2015–2025
+and was uploaded before the 2026 season began, so every refit trained on a
+season that had already ended — the models could not know anything about the
+year they were projecting. `statcast-ingest.yml` closes that: it pulls the
+season from Baseball Savant (public, no key), rebuilds PA outcomes, writes both
+to R2, and pushes the PA file to the Modal volume the training functions read.
+Run it before a refit, or the refit is stale by construction.
 
 Git is the interim archive because it needs no credentials; once the `R2_*`
 keys exist the snapshots move to R2 and the repo keeps only `latest.json`.
