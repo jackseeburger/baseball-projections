@@ -1,0 +1,947 @@
+{
+  "generated": "scripts/tune_marcel.py",
+  "method": "coordinate search, walk-forward predict years 2020-2024 (train <= Y-1), objective = mean trials-weighted MAE, min_trials=100, ages = Chadwick register (June 30)",
+  "grid": {
+    "ballast": [
+      25.0,
+      50.0,
+      75.0,
+      100.0,
+      150.0,
+      200.0,
+      300.0,
+      400.0,
+      600.0,
+      800.0,
+      1200.0,
+      1800.0,
+      2600.0
+    ],
+    "weight_ratios": [
+      0.0,
+      0.2,
+      0.4,
+      0.6,
+      0.8,
+      1.0
+    ],
+    "peak_age": [
+      23.0,
+      24.0,
+      25.0,
+      26.0,
+      27.0,
+      28.0,
+      29.0,
+      30.0,
+      31.0,
+      32.0
+    ],
+    "age_slope": [
+      -0.012,
+      -0.008,
+      -0.006,
+      -0.004,
+      -0.003,
+      -0.002,
+      -0.001,
+      0.0,
+      0.001,
+      0.002,
+      0.003,
+      0.004,
+      0.006,
+      0.008,
+      0.012
+    ],
+    "n_points_per_pass": 89
+  },
+  "in_sample": {
+    "k_rate": {
+      "years": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "n_scored_by_year": {
+        "2020": 310,
+        "2021": 463,
+        "2022": 469,
+        "2023": 461,
+        "2024": 455
+      },
+      "stock": {
+        "mae": 0.030657493923754164,
+        "rmse": 0.03904442219727073,
+        "log_loss": 0.5226003289471587
+      },
+      "tuned": {
+        "mae": 0.029707607822458397,
+        "rmse": 0.03834727482741377,
+        "log_loss": 0.5224550844403504
+      },
+      "tuned_ballast_weights_only": {
+        "mae": 0.03010824161797001,
+        "rmse": 0.03851109440776319,
+        "log_loss": 0.5224694484118926
+      },
+      "mae_gain_pct": -3.0983814386725617,
+      "mae_gain_pct_ballast_weights_only": -1.7915760079742888,
+      "log_loss_gain_pct": -0.02779265506795966,
+      "mae_by_year": {
+        "2020": {
+          "stock": 0.03540133786410989,
+          "tuned": 0.0363985003935191
+        },
+        "2021": {
+          "stock": 0.03077176510014136,
+          "tuned": 0.029870823650441445
+        },
+        "2022": {
+          "stock": 0.030173021867058586,
+          "tuned": 0.028171426631739084
+        },
+        "2023": {
+          "stock": 0.029596522055220252,
+          "tuned": 0.028194302886144936
+        },
+        "2024": {
+          "stock": 0.027344822732240745,
+          "tuned": 0.025902985550447434
+        }
+      },
+      "search_trace": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "ballast",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "weights",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "peak_age",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_old",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_young",
+          "mae": 0.029707607822458397,
+          "params": {
+            "ballast": 100.0,
+            "weights": [
+              1.0,
+              0.4,
+              0.2
+            ],
+            "peak_age": 31.0,
+            "age_slope_young": 0.006,
+            "age_slope_old": 0.012
+          }
+        }
+      ]
+    },
+    "bb_rate": {
+      "years": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "n_scored_by_year": {
+        "2020": 310,
+        "2021": 463,
+        "2022": 469,
+        "2023": 461,
+        "2024": 455
+      },
+      "stock": {
+        "mae": 0.0175686940130883,
+        "rmse": 0.022521668863663802,
+        "log_loss": 0.29246458486690774
+      },
+      "tuned": {
+        "mae": 0.01747583928887762,
+        "rmse": 0.022519802278709634,
+        "log_loss": 0.29247519204976846
+      },
+      "tuned_ballast_weights_only": {
+        "mae": 0.017552875967118332,
+        "rmse": 0.02247972792748145,
+        "log_loss": 0.2924527828533372
+      },
+      "mae_gain_pct": -0.5285237715535718,
+      "mae_gain_pct_ballast_weights_only": -0.09003541161445516,
+      "log_loss_gain_pct": 0.0036268264294459446,
+      "mae_by_year": {
+        "2020": {
+          "stock": 0.02259260900068416,
+          "tuned": 0.02285073260210565
+        },
+        "2021": {
+          "stock": 0.016826537537888226,
+          "tuned": 0.016783026093101134
+        },
+        "2022": {
+          "stock": 0.016551007965135738,
+          "tuned": 0.016252684481730045
+        },
+        "2023": {
+          "stock": 0.01566214766802629,
+          "tuned": 0.01547563090391863
+        },
+        "2024": {
+          "stock": 0.016211167893707096,
+          "tuned": 0.016017122363532636
+        }
+      },
+      "search_trace": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.017477497873502886,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "ballast",
+          "mae": 0.01747583928887762,
+          "params": {
+            "ballast": 150.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "weights",
+          "mae": 0.01747583928887762,
+          "params": {
+            "ballast": 150.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "peak_age",
+          "mae": 0.01747583928887762,
+          "params": {
+            "ballast": 150.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_old",
+          "mae": 0.01747583928887762,
+          "params": {
+            "ballast": 150.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_young",
+          "mae": 0.01747583928887762,
+          "params": {
+            "ballast": 150.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 28.0,
+            "age_slope_young": 0.008,
+            "age_slope_old": -0.008
+          }
+        }
+      ]
+    },
+    "hr_rate": {
+      "years": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "n_scored_by_year": {
+        "2020": 310,
+        "2021": 463,
+        "2022": 469,
+        "2023": 461,
+        "2024": 455
+      },
+      "stock": {
+        "mae": 0.010678642828964132,
+        "rmse": 0.013425443974223808,
+        "log_loss": 0.14330302052689037
+      },
+      "tuned": {
+        "mae": 0.010288218339252583,
+        "rmse": 0.013176000898601891,
+        "log_loss": 0.14323105280833928
+      },
+      "tuned_ballast_weights_only": {
+        "mae": 0.010643734953696086,
+        "rmse": 0.013346124851064855,
+        "log_loss": 0.14329591854586857
+      },
+      "mae_gain_pct": -3.656124621497637,
+      "mae_gain_pct_ballast_weights_only": -0.3268943050830779,
+      "log_loss_gain_pct": -0.05022065709883717,
+      "mae_by_year": {
+        "2020": {
+          "stock": 0.01273504159897272,
+          "tuned": 0.01261812576411423
+        },
+        "2021": {
+          "stock": 0.010723566992699024,
+          "tuned": 0.01040540124804414
+        },
+        "2022": {
+          "stock": 0.011240335793074353,
+          "tuned": 0.009983943271916436
+        },
+        "2023": {
+          "stock": 0.009734263049512288,
+          "tuned": 0.00979863680521564
+        },
+        "2024": {
+          "stock": 0.008960006710562267,
+          "tuned": 0.00863498460697247
+        }
+      },
+      "search_trace": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.010306234507395366,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.4
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "ballast",
+          "mae": 0.010305793304776862,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.4
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "weights",
+          "mae": 0.010288218339252583,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "peak_age",
+          "mae": 0.010288218339252583,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_old",
+          "mae": 0.010288218339252583,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_young",
+          "mae": 0.010288218339252583,
+          "params": {
+            "ballast": 200.0,
+            "weights": [
+              1.0,
+              0.6,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        }
+      ]
+    },
+    "babip": {
+      "years": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "n_scored_by_year": {
+        "2020": 182,
+        "2021": 395,
+        "2022": 405,
+        "2023": 392,
+        "2024": 398
+      },
+      "stock": {
+        "mae": 0.027762336517964566,
+        "rmse": 0.03527048287994004,
+        "log_loss": 0.6071879412259434
+      },
+      "tuned": {
+        "mae": 0.026850558423150307,
+        "rmse": 0.03429584529842982,
+        "log_loss": 0.6070200050132376
+      },
+      "tuned_ballast_weights_only": {
+        "mae": 0.026907402702594924,
+        "rmse": 0.03428452222668114,
+        "log_loss": 0.607019178264406
+      },
+      "mae_gain_pct": -3.2842267949034554,
+      "mae_gain_pct_ballast_weights_only": -3.0794735695838424,
+      "log_loss_gain_pct": -0.027658028314389908,
+      "mae_by_year": {
+        "2020": {
+          "stock": 0.03556885702212637,
+          "tuned": 0.03472581815107746
+        },
+        "2021": {
+          "stock": 0.02578828470353226,
+          "tuned": 0.02531300260383389
+        },
+        "2022": {
+          "stock": 0.025245404387551382,
+          "tuned": 0.024708240746236978
+        },
+        "2023": {
+          "stock": 0.02572558066323871,
+          "tuned": 0.024731559890958762
+        },
+        "2024": {
+          "stock": 0.026483555813374107,
+          "tuned": 0.024774170723644434
+        }
+      },
+      "search_trace": [
+        {
+          "pass": 1,
+          "axis": "age_slope_young",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        },
+        {
+          "pass": 2,
+          "axis": "ballast",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        },
+        {
+          "pass": 2,
+          "axis": "weights",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        },
+        {
+          "pass": 2,
+          "axis": "peak_age",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        },
+        {
+          "pass": 2,
+          "axis": "age_slope_old",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        },
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.026850558423150307,
+          "params": {
+            "ballast": 600.0,
+            "weights": [
+              1.0,
+              0.8,
+              1.0
+            ],
+            "peak_age": 26.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.003
+          }
+        }
+      ]
+    },
+    "iso": {
+      "years": [
+        2020,
+        2021,
+        2022,
+        2023,
+        2024
+      ],
+      "n_scored_by_year": {
+        "2020": 281,
+        "2021": 450,
+        "2022": 457,
+        "2023": 449,
+        "2024": 439
+      },
+      "stock": {
+        "mae": 0.03863037186417469,
+        "rmse": 0.048240502516480974,
+        "log_loss": NaN
+      },
+      "tuned": {
+        "mae": 0.03716737978366478,
+        "rmse": 0.04731525073602156,
+        "log_loss": NaN
+      },
+      "tuned_ballast_weights_only": {
+        "mae": 0.03838511218033093,
+        "rmse": 0.04787448925975852,
+        "log_loss": NaN
+      },
+      "mae_gain_pct": -3.787155054198864,
+      "mae_gain_pct_ballast_weights_only": -0.6348882291532062,
+      "log_loss_gain_pct": null,
+      "mae_by_year": {
+        "2020": {
+          "stock": 0.045788266311809656,
+          "tuned": 0.04558297329792438
+        },
+        "2021": {
+          "stock": 0.03794869348055725,
+          "tuned": 0.037201170269633856
+        },
+        "2022": {
+          "stock": 0.03976603087342205,
+          "tuned": 0.03385789206104884
+        },
+        "2023": {
+          "stock": 0.03531784173138982,
+          "tuned": 0.03639923116242604
+        },
+        "2024": {
+          "stock": 0.03433102692369462,
+          "tuned": 0.03279563212729077
+        }
+      },
+      "search_trace": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "ballast",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "weights",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "peak_age",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_old",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        },
+        {
+          "pass": 3,
+          "axis": "age_slope_young",
+          "mae": 0.03716737978366478,
+          "params": {
+            "ballast": 300.0,
+            "weights": [
+              1.0,
+              0.8,
+              0.6
+            ],
+            "peak_age": 23.0,
+            "age_slope_young": -0.012,
+            "age_slope_old": -0.012
+          }
+        }
+      ]
+    }
+  },
+  "variants": {
+    "ballast_weights_only": {
+      "k_rate": {
+        "ballast": 100.0,
+        "weights": [
+          1.0,
+          0.4,
+          0.4
+        ],
+        "peak_age": 27.0,
+        "age_slope_young": 0.002,
+        "age_slope_old": 0.005
+      },
+      "bb_rate": {
+        "ballast": 200.0,
+        "weights": [
+          1.0,
+          0.6,
+          0.6
+        ],
+        "peak_age": 27.0,
+        "age_slope_young": -0.001,
+        "age_slope_old": -0.003
+      },
+      "hr_rate": {
+        "ballast": 300.0,
+        "weights": [
+          1.0,
+          0.6,
+          0.4
+        ],
+        "peak_age": 27.0,
+        "age_slope_young": 0.0,
+        "age_slope_old": 0.0
+      },
+      "babip": {
+        "ballast": 600.0,
+        "weights": [
+          1.0,
+          0.8,
+          1.0
+        ],
+        "peak_age": 27.0,
+        "age_slope_young": -0.001,
+        "age_slope_old": -0.003
+      },
+      "iso": {
+        "ballast": 400.0,
+        "weights": [
+          1.0,
+          0.6,
+          0.4
+        ],
+        "peak_age": 27.0,
+        "age_slope_young": -0.001,
+        "age_slope_old": -0.003
+      }
+    }
+  },
+  "components": {
+    "k_rate": {
+      "ballast": 100.0,
+      "weights": [
+        1.0,
+        0.4,
+        0.2
+      ],
+      "peak_age": 31.0,
+      "age_slope_young": 0.006,
+      "age_slope_old": 0.012
+    },
+    "bb_rate": {
+      "ballast": 150.0,
+      "weights": [
+        1.0,
+        0.6,
+        0.6
+      ],
+      "peak_age": 28.0,
+      "age_slope_young": 0.008,
+      "age_slope_old": -0.008
+    },
+    "hr_rate": {
+      "ballast": 200.0,
+      "weights": [
+        1.0,
+        0.6,
+        0.6
+      ],
+      "peak_age": 23.0,
+      "age_slope_young": -0.012,
+      "age_slope_old": -0.012
+    },
+    "babip": {
+      "ballast": 600.0,
+      "weights": [
+        1.0,
+        0.8,
+        1.0
+      ],
+      "peak_age": 26.0,
+      "age_slope_young": -0.012,
+      "age_slope_old": -0.003
+    },
+    "iso": {
+      "ballast": 300.0,
+      "weights": [
+        1.0,
+        0.8,
+        0.6
+      ],
+      "peak_age": 23.0,
+      "age_slope_young": -0.012,
+      "age_slope_old": -0.012
+    }
+  }
+}
