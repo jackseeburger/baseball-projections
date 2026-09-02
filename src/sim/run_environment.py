@@ -303,6 +303,24 @@ def blend_run_env(bottom_up: pd.DataFrame, top_down: pd.DataFrame,
     return out
 
 
+def league_constant_rates(team_ids, lg_rs9: float, lg_ra9: float) -> pd.DataFrame:
+    """The shrinkage control: every club league average, top and bottom.
+
+    Blended in at `weight` this is exactly "the production rates shrunk
+    `weight` of the way to the league", with no player information in it at
+    all. It exists because the bottom-up estimate is *less spread out* than
+    season-to-date run differential — FIP and linear weights are heavily
+    regressed component rates — so any blend of the two compresses the league,
+    and `pythag_60` is known to be overconfident in its tails
+    (docs/market-benchmark-2026.md). Without this control a gain from plain
+    shrinkage would be indistinguishable from a gain from knowing the roster.
+
+    `scripts/backtest_game_odds.py --c-control league` scores it.
+    """
+    idx = pd.Index(sorted({int(t) for t in team_ids}), name="team_id")
+    return pd.DataFrame({"rs_pg": float(lg_rs9), "ra_pg": float(lg_ra9)}, index=idx)
+
+
 def bottom_up_rates(rs9: pd.Series, ra9: pd.Series,
                     team_ids=None) -> pd.DataFrame:
     """Assemble the two halves into a `rs_pg` / `ra_pg` frame for `blend_run_env`."""

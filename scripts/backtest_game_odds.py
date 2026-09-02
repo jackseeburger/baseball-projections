@@ -448,7 +448,11 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     ra9 = rn_model.team_ra9(rot_ra9, pen_ra9, lg_ra9, team_ids=top_down.index,
                             starter_ip=sp_day["starter_ip"])
 
-    bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=top_down.index)
+    if c_ctx.get("control") == "league":
+        # The shrinkage control: same blend, no player information in it.
+        bottom_up = rn_model.league_constant_rates(top_down.index, lg_rs9, lg_ra9)
+    else:
+        bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=top_down.index)
     blended = rn_model.blend_run_env(bottom_up, top_down, c_ctx["weight"])
     return {
         "team": blended,
@@ -494,7 +498,8 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
 
 def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
                     share_window: int | None, rotation_days: int | None,
-                    rotation_top_n: int, pa_per_game: float) -> dict:
+                    rotation_top_n: int, pa_per_game: float,
+                    control: str = "none") -> dict:
     """Fetch the club-attributed hitting logs station C needs, once.
 
     `lu_ctx["game_logs"]` cannot be reused for this: `fetch_batter_game_logs`
@@ -504,15 +509,20 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
     the lineup context has run.
 
     The batter universe is every hitter who has appeared in a posted lineup
-    this season (`lu_ctx`), which on 2025 and 2026 is a superset of every
-    hitter with a plate appearance bar three men with four PA between them.
+    this season (`lu_ctx`) — 661 men on 2025, 637 on 2026. Measured against
+    the clubs' own team hitting logs that covers **99.98%** of all plate
+    appearances taken in 2026 (99.99% in 2025), worst club 99.75%: what it
+    misses is the pinch hitter who never started a game all year. Shares are
+    normalised within the club, so a fraction of a percent of missing plate
+    appearances moves a share by a fraction of a percent.
     """
     batters = pd.unique(lu_ctx["game_logs"]["batter"]) if len(lu_ctx["game_logs"]) else []
     logs = fetch_hitter_game_logs(batters, season)
     logs = logs.loc[:, ["batter", "team_id", "date", "pa"]].dropna(subset=["team_id"])
     return {"hitter_logs": logs, "starts": bp_ctx["starts"], "weight": weight,
             "share_window": share_window, "rotation_days": rotation_days,
-            "rotation_top_n": rotation_top_n, "pa_per_game": pa_per_game}
+            "rotation_top_n": rotation_top_n, "pa_per_game": pa_per_game,
+            "control": control}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -616,6 +626,12 @@ def main() -> None:
     parser.add_argument("--c-rotation-days", type=int, default=C_ROTATION_DAYS,
                         help="trailing days of starts that define a rotation "
                              "(0 = the season to date)")
+    parser.add_argument("--c-control", choices=("none", "league"), default="none",
+                        help="replace the bottom-up half with league average, "
+                             "so pythag_C is pythag_60 shrunk --c-weight of the "
+                             "way to the league and nothing else — the control "
+                             "that says whether C's gain is roster information "
+                             "or plain shrinkage")
     parser.add_argument("--c-rotation-top-n", type=int,
                         default=rn_model.ROTATION_TOP_N,
                         help="how many starters make a rotation")
@@ -672,7 +688,7 @@ def main() -> None:
             args.season, lu_ctx, bp_ctx, args.c_weight,
             args.c_share_window if args.c_share_window > 0 else None,
             args.c_rotation_days if args.c_rotation_days > 0 else None,
-            args.c_rotation_top_n, lu_ctx["pa_per_game"])
+            args.c_rotation_top_n, lu_ctx["pa_per_game"], args.c_control)
 
     preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
                          ballasts, sp_ctx, lu_ctx, bp_ctx, c_ctx)
@@ -711,6 +727,7 @@ def main() -> None:
               f"bottom-up estimate for one half and kept the top-down rate. "
               f"weight={args.c_weight}, "
               f"shares={str(args.c_share_window) + 'd' if args.c_share_window > 0 else 'season'}, "
+              f"control={args.c_control}, "
               f"rotation=top{args.c_rotation_top_n}/"
               f"{args.c_rotation_days if args.c_rotation_days > 0 else 'season'}.")
 
