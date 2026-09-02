@@ -281,9 +281,14 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
                             refresh: bool = False) -> pd.DataFrame:
     """Per-appearance pitching lines for `pitcher_ids` in `season`.
 
-    Columns: pitcher, season, date, game_pk, game_type, bf, k, bb, hbp, hr,
-    er, gs, outs. One row per appearance — the caller filters to `date <` the
-    game being predicted, which is what keeps the backtest walk-forward.
+    Columns: pitcher, season, date, game_pk, game_type, team, bf, k, bb, hbp,
+    hr, er, gs, outs. One row per appearance — the caller filters to `date <`
+    the game being predicted, which is what keeps the backtest walk-forward.
+
+    `team` is the club he pitched for *that day*, which is what the bullpen
+    model needs (a reliever traded in July belongs to one pen before the
+    deadline and another after it, and only the appearances themselves say
+    when the line moved).
     """
     rows = []
     for pid in sorted({int(p) for p in pitcher_ids}):
@@ -296,12 +301,13 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
             row = {"pitcher": pid, "season": season, "date": s.get("date"),
                    "game_pk": (s.get("game") or {}).get("gamePk"),
                    "game_type": s.get("gameType"),
+                   "team": (s.get("team") or {}).get("id"),
                    "outs": _ip_to_outs(s["stat"].get("inningsPitched"))}
             for api_field, col in PITCHING_FIELDS.items():
                 row[col] = s["stat"].get(api_field, 0) or 0
             rows.append(row)
-    cols = ["pitcher", "season", "date", "game_pk", "game_type", "outs",
-            *PITCHING_FIELDS.values()]
+    cols = ["pitcher", "season", "date", "game_pk", "game_type", "team",
+            "outs", *PITCHING_FIELDS.values()]
     df = pd.DataFrame(rows, columns=cols)
     logger.info(f"{season} game logs: {len(df)} appearances "
                 f"for {df['pitcher'].nunique() if len(df) else 0} pitchers")

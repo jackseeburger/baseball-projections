@@ -15,6 +15,9 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       toward its announced starting pitcher (src/sim/starters)
     pythag_60_sp_lu — pythag_60_sp with each side's runs *scored* re-weighted
                       toward its posted lineup (src/sim/lineups)
+    pythag_60_sp_lu_bp
+                    — ...and the 3.5 relief innings re-weighted toward the
+                      bullpen that is actually available (src/sim/bullpen)
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -36,6 +39,7 @@ from src.data.mlb_stats_api import (
     build_seasons_table, fetch_batter_game_logs, fetch_lineups,
     fetch_pitcher_game_logs, fetch_probables, fetch_schedule, fetch_season_pitching,
 )
+from src.sim import bullpen as bp_model
 from src.sim import lineups as lu_model
 from src.sim import starters as sp_model
 from src.sim.season import from_schedule
@@ -44,6 +48,7 @@ from src.sim.teams import fetch_teams
 
 SP_MODEL = "pythag_60_sp"
 LU_MODEL = "pythag_60_sp_lu"
+BP_MODEL = "pythag_60_sp_lu_bp"
 SP_BALLAST_GAMES = 60.0   # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
@@ -52,6 +57,9 @@ MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # (docs/market-benchmark-2026.md).
 LU_WEIGHT = 0.5
 LU_BASELINE = "team"
+# Bullpen availability: what counts as a pen and what counts as used up. Both
+# chosen walk-forward on 2025 only (docs/market-benchmark-2026.md).
+BP_BASELINE = bp_model.BASELINE
 
 
 def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
@@ -82,11 +90,12 @@ def strengths(tot: pd.DataFrame, regress_games: float) -> pd.Series:
 
 def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                  ballasts: list[float], sp_ctx: dict | None = None,
-                 lu_ctx: dict | None = None) -> pd.DataFrame:
+                 lu_ctx: dict | None = None,
+                 bp_ctx: dict | None = None) -> pd.DataFrame:
     """One row per scored game with each model's P(home).
 
     Every quantity used on a date is rebuilt from games, pitcher appearances
-    and batter games strictly before that date.
+    batter games and relief appearances strictly before that date.
     """
     completed = completed.sort_values("date").reset_index(drop=True)
     rows = []
@@ -102,6 +111,8 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
         sp_day = starter_day_context(tot, date, sp_ctx) if sp_ctx else None
         lu_day = (lineup_day_context(tot, date, day, lu_ctx, lu_history)
                   if lu_ctx and sp_day is not None else None)
+        bp_day = (bullpen_day_context(tot, date, bp_ctx, sp_day)
+                  if bp_ctx and lu_day is not None else None)
         for g in day.itertuples(index=False):
             row = {"date": date, "game_pk": int(g.game_pk),
                    "home_id": g.home_id, "away_id": g.away_id,
@@ -117,6 +128,11 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
             if lu_day is not None:
                 p_lu, flags = lineup_game_prob(g, sp_day, lu_day, hfa_obs, lu_ctx)
                 row[LU_MODEL] = p_lu if p_lu is not None else row[SP_MODEL]
+                row.update(flags)
+            if bp_day is not None:
+                p_bp, flags = lineup_game_prob(g, sp_day, lu_day, hfa_obs, lu_ctx,
+                                               bp_day, bp_ctx)
+                row[BP_MODEL] = p_bp if p_bp is not None else row[LU_MODEL]
                 row.update(flags)
             rows.append(row)
         if lu_day is not None:
@@ -225,17 +241,26 @@ def lineup_day_context(tot: pd.DataFrame, date: str, day: pd.DataFrame,
             "lg_rs9": float(tot["rs"].sum() / max(tot["g"].sum(), 1))}
 
 
-def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict):
-    """P(home) with both sides' starter *and* posted lineup priced in.
+def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict,
+                     bp_day: dict | None = None, bp_ctx: dict | None = None):
+    """P(home) with both sides' starter, posted lineup and (optionally) pen.
 
-    Returns (probability or None when either is unknown, diagnostic flags).
+    The three terms stack additively on the club's own regressed run rates —
+    the lineup moves runs scored, the starter moves the 5.5 innings he covers
+    and the bullpen the other 3.5 — so each is a delta and none of them can
+    re-regress a club toward the league on its own.
+
+    Returns (probability or None when the starter or lineup is unknown,
+    diagnostic flags).
     """
     pk = int(g.game_pk)
     raa = lu_day["raa"].get(pk)
     sp_ids = sp_day["probables"].get(pk)
-    flags = {"lu_fallback": raa is None or sp_ids is None,
-             "lu_no_history": lu_day["no_history"].get(pk, 0) if raa else 0}
-    if flags["lu_fallback"]:
+    fallback = raa is None or sp_ids is None
+    flags = ({"bp_fallback": fallback, "bp_short": 0} if bp_day is not None else
+             {"lu_fallback": fallback,
+              "lu_no_history": lu_day["no_history"].get(pk, 0) if raa else 0})
+    if fallback:
         return None, flags
     team, lg_ra9 = sp_day["team"], sp_day["lg_ra9"]
     league_baseline = lu_ctx["baseline"] == "league"
@@ -245,6 +270,13 @@ def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict):
         ra9 = sp_model.blend_starter_team(sp_day["sp_ra9"].get(pid, lg_ra9),
                                           team.loc[team_id, "ra_pg"], lg_ra9,
                                           starter_ip=sp_day["starter_ip"])
+        if bp_day is not None:
+            avail, full = bp_day["pen"].get(int(team_id), (lg_ra9, lg_ra9))
+            pen_base = (bp_day["lg_pen_ra9"] if bp_ctx["baseline"] == "league"
+                        else full)
+            ra9 = bp_model.blend_bullpen_team(avail, ra9, pen_base,
+                                              relief_ip=bp_ctx["relief_ip"])
+            flags["bp_short"] += int(round(abs(avail - full) > 1e-9))
         base = 0.0 if league_baseline else lu_day["baseline"].get(int(team_id), 0.0)
         rs9 = lu_model.blend_lineup_team(raa[side], team.loc[team_id, "rs_pg"],
                                          base, weight=lu_ctx["weight"])
@@ -295,6 +327,59 @@ def build_lu_context(season: int, scored: pd.DataFrame, ballast, weight: float,
             "ballast": ballast, "weight": weight, "baseline": baseline,
             "baseline_ballast": baseline_ballast, "pa_per_game": pa_per_game,
             "baseline_window": baseline_window}
+
+
+# ─── station E bullpen-availability term ───
+
+def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
+                        sp_day: dict) -> dict:
+    """Each club's available and whole bullpen for one slate, from the past only.
+
+    The rates are the same Marcel/FIP machinery the rotation is priced with
+    (`src.sim.starters`), rebuilt here over *every* pitcher rather than only
+    the announced starters, because the pen is mostly men who never start.
+    """
+    lg = bp_ctx["league"]
+    lg_ra9 = sp_day["lg_ra9"]
+    counts = pd.concat([bp_ctx["prior_counts"],
+                        sp_model.appearances_before(bp_ctx["game_logs"], date)],
+                       ignore_index=True)
+    rates = sp_model.marcel_rates(counts, bp_ctx["season"], lg,
+                                  ballast=bp_ctx["ballast"])
+    ra9 = sp_model.starter_ra9_lookup(rates, lg, lg_ra9)
+
+    relief = bp_ctx["relief"]
+    pens = bp_model.pen_window(relief, date, days=bp_ctx["roster_days"])
+    out = bp_model.unavailable(relief, date, days=bp_ctx["rest_days"],
+                               min_days=bp_ctx["rest_min_days"])
+    pen = {}
+    for team_id, grp in pens.groupby("team"):
+        pen[int(team_id)] = (bp_model.pen_ra9(grp, ra9, lg_ra9, exclude=out),
+                             bp_model.pen_ra9(grp, ra9, lg_ra9))
+    return {"pen": pen, "lg_pen_ra9": bp_model.league_pen_ra9(pens, ra9, lg_ra9),
+            "n_out": len(out)}
+
+
+def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
+                     rest_days: int, rest_min_days: int, relief_ip: float,
+                     league: dict, prior_counts: pd.DataFrame) -> dict:
+    """Fetch every pitcher's appearances once for the whole backtest.
+
+    `sp_ctx` already holds the prior-season pitching totals and league rates —
+    they are the same pool — so only the current season's game logs are new,
+    and they have to cover the whole pitcher population rather than just the
+    announced starters.
+    """
+    ids = fetch_season_pitching(season)["pitcher"]
+    logs = fetch_pitcher_game_logs(ids, season)
+    logs = logs[logs["game_type"] == "R"]
+    game_logs = sp_model.normalize_counts(logs)
+    game_logs["date"] = logs["date"].to_numpy()
+    return {"game_logs": game_logs, "prior_counts": prior_counts,
+            "relief": bp_model.relief_appearances(logs), "league": league,
+            "season": season, "ballast": ballast, "baseline": baseline,
+            "roster_days": roster_days, "rest_days": rest_days,
+            "rest_min_days": rest_min_days, "relief_ip": relief_ip}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -369,6 +454,23 @@ def main() -> None:
                         default=lu_model.BASELINE_BALLAST_GAMES,
                         help="league-average games of ballast on a club's own "
                              "lineup baseline")
+    parser.add_argument("--no-bullpen", action="store_true",
+                        help="skip the pythag_60_sp_lu_bp bullpen-availability model")
+    parser.add_argument("--bp-baseline", choices=("league", "team"),
+                        default=BP_BASELINE,
+                        help="measure the available pen against the league's "
+                             "relievers or against the club's own whole pen")
+    parser.add_argument("--bp-roster-days", type=int,
+                        default=bp_model.ROSTER_WINDOW_DAYS,
+                        help="trailing days of relief work that define a pen")
+    parser.add_argument("--bp-rest-days", type=int, default=bp_model.REST_DAYS,
+                        help="how many calendar days back the rest rule looks")
+    parser.add_argument("--bp-rest-min-days", type=int,
+                        default=bp_model.REST_MIN_DAYS,
+                        help="days worked inside that window that make a "
+                             "reliever unavailable (2 = back-to-back)")
+    parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
+                        help="innings the bullpen is assumed to cover")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game prediction frame here (parquet) "
                              "for follow-up analysis")
@@ -407,13 +509,24 @@ def main() -> None:
             # batters-faced-per-inning rather than assumed.
             pa_per_game=sp_ctx["league"]["bf_per_ip"] * 9.0)
 
+    bp_ctx = None
+    if lu_ctx is not None and not args.no_bullpen:
+        bp_ctx = build_bp_context(
+            args.season,
+            sp_model.BALLAST_BF if args.sp_ballast is None else args.sp_ballast,
+            args.bp_baseline, args.bp_roster_days, args.bp_rest_days,
+            args.bp_rest_min_days, args.relief_ip,
+            sp_ctx["league"], sp_ctx["prior_counts"])
+
     preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
-                         ballasts, sp_ctx, lu_ctx)
+                         ballasts, sp_ctx, lu_ctx, bp_ctx)
     models = ["home_constant", "win_pct_log5"] + [f"pythag_{int(k)}" for k in ballasts]
     if sp_ctx is not None:
         models.append(SP_MODEL)
     if lu_ctx is not None:
         models.append(LU_MODEL)
+    if bp_ctx is not None:
+        models.append(BP_MODEL)
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -427,6 +540,12 @@ def main() -> None:
               f"{int(preds['lu_no_history'].sum())} lineup slots had no history "
               f"(scored at league average). "
               f"weight={args.lu_weight}, baseline={args.lu_baseline}.")
+    if bp_ctx is not None:
+        print(f"{BP_MODEL}: {int(preds['bp_short'].sum())} of {2 * len(preds)} club-games "
+              f"took the mound with a reliever unavailable; "
+              f"baseline={args.bp_baseline}, pen={args.bp_roster_days}d, "
+              f"rest={args.bp_rest_min_days}/{args.bp_rest_days}d, "
+              f"relief_ip={args.relief_ip}.")
 
     if args.market is not None:
         preds, market_models = join_market(preds, pd.read_parquet(args.market))
@@ -440,6 +559,9 @@ def main() -> None:
         if lu_ctx is not None:
             print(f"  of these, {int(preds['lu_fallback'].sum())} fell back to "
                   f"{SP_MODEL} for a missing lineup.")
+        if bp_ctx is not None:
+            print(f"  of these, {int(preds['bp_short'].sum())} of "
+                  f"{2 * len(preds)} club-games were a reliever short.")
 
     # Paired comparisons on the scored population: is the new term's gain real?
     pairs = []
@@ -447,12 +569,15 @@ def main() -> None:
         pairs.append((SP_MODEL, "pythag_60"))
     if lu_ctx is not None:
         pairs += [(LU_MODEL, SP_MODEL), (LU_MODEL, "pythag_60")]
+    if bp_ctx is not None:
+        pairs += [(BP_MODEL, LU_MODEL), (BP_MODEL, SP_MODEL)]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 
     # Calibration of the production model, and of the challengers
     for model in ["pythag_60"] + ([SP_MODEL] if sp_ctx is not None else []) + \
-                 ([LU_MODEL] if lu_ctx is not None else []):
+                 ([LU_MODEL] if lu_ctx is not None else []) + \
+                 ([BP_MODEL] if bp_ctx is not None else []):
         buckets = pd.cut(preds[model], [0, .4, .45, .5, .55, .6, .65, 1.0])
         cal = preds.groupby(buckets, observed=True).agg(n=("home_win", "size"),
                                                         predicted=(model, "mean"),
