@@ -34,13 +34,15 @@ to be the only option):
     uniform       equal share across the active-roster hitters
     season_share  season-to-date PA share, no window and no IL handling
     last_30       trailing-30-day share, IL zeroed, bench default, capped
-    blend         the model: w(h) x last_30 + (1 - w(h)) x season, capped
+    blend         w(h) x last_30 + (1 - w(h)) x season, IL zeroed, capped
+    blend_il      the same, with the injured and optioned projected at their
+                  pre-injury share times their expected return fraction
 
-`last_30` was the model until the blend replaced it, and it stays in the
-table as the third baseline: it is what the blend has to beat at the short
-horizon, as `season_share` is what it has to beat at the long one.
+`last_30` was the model until the blend replaced it, and `blend` until the
+return fractions replaced the hard roster gate; each stays in the table as the
+baseline the next one has to beat.
 
-`scripts/build_playing_time.py --score` scores all four walk-forward at two
+`scripts/build_playing_time.py --score` scores all five walk-forward at two
 cutoffs against realized PA; see docs/playing-time.md.
 """
 from __future__ import annotations
@@ -135,7 +137,24 @@ def logistic_from_anchors(w_short: float, w_long: float,
 BLEND_MIDPOINT_GAMES, BLEND_SCALE_GAMES = logistic_from_anchors(
     BLEND_WEIGHT_SHORT, BLEND_WEIGHT_LONG)
 
-METHODS = ("uniform", "season_share", "last_30", "blend")
+# --- the roster gate, and the option to soften it ---
+#
+# `blend` zeroes every hitter the 40-man roster says is unavailable at the
+# cutoff. `blend_il` replaces that zero with an *expected* share: the share he
+# would have taken healthy (computed from the data before he was placed, since
+# after it his trailing window is empty by construction) times the fraction of
+# the remaining horizon he is expected to be back for, from the injured-list
+# return-time distribution in `src/projections/il_returns.py`. Everything else
+# — the horizon blend, the per-club normalization, the lineup-slot cap — is
+# untouched, and passing no fractions at all makes `blend_il` identical to
+# `blend` row for row.
+#
+# Which of the two production runs is this flag, and it is set by the gate in
+# docs/playing-time.md, not by preference.
+USE_IL_RETURNS = True
+PRODUCTION_METHOD = "blend_il" if USE_IL_RETURNS else "blend"
+
+METHODS = ("uniform", "season_share", "last_30", "blend", "blend_il")
 
 PROJECTION_COLUMNS = [
     "batter", "team_id", "cutoff_date", "games_remaining",
@@ -302,6 +321,61 @@ def _weights_season(roster: pd.DataFrame, game_logs: pd.DataFrame,
     return psn.where(psn > 0, fill).astype(float)
 
 
+def _season_days(game_logs: pd.DataFrame, through) -> float:
+    """Days of season played before `through` — the time base the weights use."""
+    through = _as_date(through)
+    season_start = _dates(game_logs).min() if len(game_logs) else through
+    return max(float((through - season_start).days), 1.0)
+
+
+def preinjury_weights(roster: pd.DataFrame, game_logs: pd.DataFrame, cutoff,
+                      spell_start: pd.Series) -> tuple[pd.Series, pd.Series]:
+    """Both halves' raw weights, read as of the day each hitter went out.
+
+    A hitter placed on the injured list three weeks ago has no plate
+    appearances in the trailing 30 days *because* he is injured, so weighing
+    him at the cutoff would say he is a zero-share bench bat rather than the
+    regular he was. These are the same two weights as `_weights_last_30` and
+    `_weights_season`, computed at his own `spell_start` instead — the share
+    he would be taking if he were healthy.
+
+    `spell_start` is a per-row date (NaT for a hitter who is not out, and for
+    one whose spell the transactions cannot date). Both series are zero
+    wherever `spell_start` is NaT or the hitter had no plate appearances
+    before it, which tells the caller to keep the cutoff-dated weight.
+
+    Both are put back on the cutoff's time base so they stay commensurate with
+    the healthy hitters they are normalized against: the 30-day window is the
+    same 30 days long wherever it sits, and the season-to-date count is scaled
+    up by the ratio of season lengths, which is what "at the rate he was going"
+    means.
+    """
+    cutoff = _as_date(cutoff)
+    w30 = pd.Series(0.0, index=roster.index)
+    wsn = pd.Series(0.0, index=roster.index)
+    starts = pd.to_datetime(spell_start)
+    season_days_at_cutoff = _season_days(game_logs, cutoff)
+    for start in sorted(pd.unique(starts.dropna())):
+        start = _as_date(start)
+        if start >= cutoff:
+            continue
+        rows = roster.index[starts == start]
+        batters = roster.loc[rows, "batter"]
+        # Only this handful of hitters' logs matter, so the repeated windowing
+        # stays cheap however many distinct placement dates there are.
+        logs = game_logs[game_logs["batter"].isin(set(batters))]
+        p30 = _mapped(batters, window_pa(logs, start, PRIMARY_WINDOW_DAYS))
+        p60 = _mapped(batters, window_pa(logs, start, FALLBACK_WINDOW_DAYS)) * (
+            PRIMARY_WINDOW_DAYS / FALLBACK_WINDOW_DAYS)
+        season = _mapped(batters, window_pa(logs, start, None))
+        season_days = _season_days(game_logs, start)
+        short = p30.where(p30 > 0, p60)
+        short = short.where(short > 0, season * (PRIMARY_WINDOW_DAYS / season_days))
+        w30.loc[rows] = short.to_numpy(float)
+        wsn.loc[rows] = (season * (season_days_at_cutoff / season_days)).to_numpy(float)
+    return w30, wsn
+
+
 def horizon_weight(games_remaining,
                    midpoint: float = BLEND_MIDPOINT_GAMES,
                    scale: float = BLEND_SCALE_GAMES):
@@ -370,6 +444,7 @@ def project_playing_time(
     method: str = "last_30",
     pa_per_game: pd.DataFrame | None = None,
     blend_weight: float | None = None,
+    active_fractions: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Project rest-of-season plate appearances for every hitter on `roster`.
 
@@ -388,8 +463,17 @@ def project_playing_time(
         PA/game. Pass `pa_per_game` (team_id, pa_per_game) instead if you
         already have it.
     method
-        "blend" (the model), "last_30" (the model's short-horizon half),
+        "blend_il" or "blend" (the model, with and without expected returns
+        from the injured list), "last_30" (the model's short-horizon half),
         "season_share" or "uniform" (the baselines).
+    active_fractions
+        For `method="blend_il"`: `batter, elapsed_days, active_fraction` for
+        the hitters who are unavailable at the cutoff, from
+        `il_returns.expected_active_fractions`. Each such hitter is weighed as
+        he was the day he went out (`elapsed_days` before the cutoff) and then
+        scaled by `active_fraction`, the share of the remaining horizon he is
+        expected to be back for. Any unavailable hitter not in the frame keeps
+        the hard zero, so passing None makes `blend_il` identical to `blend`.
     blend_weight
         Override for `w(h)` under `method="blend"`: a constant in [0, 1] used
         for every club instead of the horizon logistic. `1.0` reproduces
@@ -399,7 +483,8 @@ def project_playing_time(
 
     Returns one row per input roster row with `pa_share` (sums to 1 within a
     team, or to 0 for a team with nobody eligible) and `projected_pa_ros`.
-    Injured and otherwise-unavailable players get exactly zero.
+    Injured and otherwise-unavailable players get exactly zero under every
+    method but `blend_il`.
     """
     if method not in METHODS:
         raise ValueError(f"unknown method {method!r}; expected one of {METHODS}")
@@ -436,10 +521,28 @@ def project_playing_time(
         # The blend. Both halves are normalized to club shares *first*, so the
         # weight is a weight on shares rather than on two incommensurate PA
         # counts (a 30-day count and a season count).
-        share_30 = _normalize(_weights_last_30(roster, game_logs, cutoff).where(active, 0.0),
-                              team_id)
-        share_season = _normalize(_weights_season(roster, game_logs, cutoff).where(active, 0.0),
-                                  team_id)
+        w30 = _weights_last_30(roster, game_logs, cutoff)
+        wsn = _weights_season(roster, game_logs, cutoff)
+        # The roster gate. `blend` is binary — one for an active hitter, zero
+        # for everyone else. `blend_il` keeps the one, and replaces the zero
+        # with the fraction of the horizon an unavailable hitter is expected
+        # to be back for, weighing him as of the day he went out. Multiplying
+        # the weights and normalizing after is the same thing as scaling his
+        # club share, since the normalization divides the scale out.
+        fraction = active.astype(float)
+        if method == "blend_il" and active_fractions is not None and len(active_fractions):
+            fractions = (active_fractions.set_index("batter")
+                         .loc[:, ["elapsed_days", "active_fraction"]])
+            f = out["batter"].map(fractions["active_fraction"]).astype(float)
+            fraction = fraction.where(active, f.fillna(0.0))
+            elapsed = out["batter"].map(fractions["elapsed_days"]).astype(float)
+            spell_start = cutoff - pd.to_timedelta(elapsed.where(~active), unit="D")
+            shift_30, shift_season = preinjury_weights(roster, game_logs, cutoff,
+                                                       spell_start)
+            w30 = w30.where(shift_30 <= 0, shift_30)
+            wsn = wsn.where(shift_season <= 0, shift_season)
+        share_30 = _normalize(w30 * fraction, team_id)
+        share_season = _normalize(wsn * fraction, team_id)
         if blend_weight is None:
             w = pd.Series(horizon_weight(out["games_remaining"]), index=out.index)
         else:
@@ -584,6 +687,7 @@ def walk_forward_scores(
     games_remaining_by_cutoff: dict,
     score_end,
     methods=METHODS,
+    active_fractions_by_cutoff: dict | None = None,
 ) -> pd.DataFrame:
     """Score every method at every cutoff against realized PA through `score_end`.
 
@@ -598,7 +702,8 @@ def walk_forward_scores(
     rows = []
     for cutoff, projections, real, universe in walk_forward_projections(
             roster_by_cutoff, game_logs, team_logs, games_remaining_by_cutoff,
-            score_end, methods=methods):
+            score_end, methods=methods,
+            active_fractions_by_cutoff=active_fractions_by_cutoff):
         for m, proj in projections.items():
             rows.append({"cutoff": str(cutoff), "method": m,
                          **score_projection(proj, real, universe=universe)})
@@ -613,6 +718,7 @@ def walk_forward_projections(
     score_end,
     methods=METHODS,
     blend_weights=None,
+    active_fractions_by_cutoff: dict | None = None,
 ):
     """The projections behind `walk_forward_scores`, one cutoff at a time.
 
@@ -624,15 +730,20 @@ def walk_forward_projections(
     a `blend@w` entry to the projections dict. That is how the parameter sweep
     traces MAE against the blend weight at a fixed horizon without re-reading
     the game logs for every candidate.
+
+    `active_fractions_by_cutoff` is keyed by the same cutoffs and feeds
+    `blend_il`; without it `blend_il` is `blend`.
     """
     for cutoff in sorted(roster_by_cutoff):
         roster = roster_by_cutoff[cutoff]
         remaining = games_remaining_by_cutoff[cutoff]
         real = realized_pa(game_logs, cutoff, score_end)
         ppg = team_pa_per_game(team_logs, cutoff)
+        fractions = (active_fractions_by_cutoff or {}).get(cutoff)
         projections = {
             m: project_playing_time(roster, game_logs, remaining, cutoff,
-                                    pa_per_game=ppg, method=m)
+                                    pa_per_game=ppg, method=m,
+                                    active_fractions=fractions)
             for m in methods
         }
         for w in (blend_weights or ()):
