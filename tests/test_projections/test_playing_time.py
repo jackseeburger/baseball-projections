@@ -23,6 +23,7 @@ from src.projections.playing_time import (
     team_pa_per_game,
     walk_forward_scores,
     window_pa,
+    window_pa_by_team,
 )
 
 CUTOFF = "2026-08-01"
@@ -152,6 +153,47 @@ def test_uniform_baseline_is_flat_over_the_active_roster(frames):
 
 
 # --- leakage ---
+
+def test_by_team_splits_a_traded_hitter_between_his_clubs():
+    """`window_pa_by_team` is `window_pa` keyed on the club he batted for.
+
+    Station B pools a traded hitter's plate appearances because its roster
+    frame already says which club he is on now. Station C
+    (`src.sim.run_environment`) has no roster frame — it reads membership out
+    of the appearances — so it needs the split.
+    """
+    logs = pd.DataFrame([
+        {"batter": 1, "team_id": 100, "date": "2026-07-10", "pa": 40},
+        {"batter": 1, "team_id": 200, "date": "2026-07-25", "pa": 20},
+        {"batter": 2, "team_id": 100, "date": "2026-07-25", "pa": 30},
+    ])
+    pooled = window_pa(logs, CUTOFF, 30).set_index("batter")["pa"].to_dict()
+    split = window_pa_by_team(logs, CUTOFF, 30)
+    assert pooled == {1: 60, 2: 30}
+    assert {(int(r.team_id), int(r.batter)): int(r.pa)
+            for r in split.itertuples(index=False)} == {(100, 1): 40, (200, 1): 20,
+                                                        (100, 2): 30}
+
+
+def test_by_team_respects_the_window_and_the_cutoff():
+    logs = pd.DataFrame([
+        {"batter": 1, "team_id": 100, "date": "2026-05-01", "pa": 400},
+        {"batter": 2, "team_id": 100, "date": "2026-07-31", "pa": 4},
+        {"batter": 3, "team_id": 100, "date": CUTOFF, "pa": 400},
+    ])
+    assert window_pa_by_team(logs, CUTOFF, 30)["batter"].tolist() == [2]
+    # window_days=None is the season to date, still strictly before the cutoff.
+    assert sorted(window_pa_by_team(logs, CUTOFF, None)["batter"]) == [1, 2]
+
+
+def test_by_team_drops_appearances_with_no_club_and_survives_an_empty_frame():
+    logs = pd.DataFrame([{"batter": 1, "team_id": None, "date": "2026-07-31", "pa": 4},
+                         {"batter": 2, "team_id": 100, "date": "2026-07-31", "pa": 4}])
+    assert window_pa_by_team(logs, CUTOFF, 30)["batter"].tolist() == [2]
+    empty = window_pa_by_team(pd.DataFrame(columns=["batter", "team_id", "date", "pa"]),
+                              CUTOFF, 30)
+    assert empty.empty and list(empty.columns) == ["team_id", "batter", "pa"]
+
 
 def test_trailing_window_excludes_the_cutoff_day():
     """A game *on* the cutoff has not happened yet and must not be seen."""

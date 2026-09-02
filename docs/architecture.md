@@ -96,7 +96,11 @@ Everything on the site is a rollup of models below it. Each arrow is a
 **Today the chain is wired from [D] down and bypassed above it.** Team
 strength comes straight from the standings' run differential, so the live
 playoff odds contain no player modeling. That is deliberate for v1 (it ships)
-and it must stay that way until [A]–[C] beat their baselines.
+and it must stay that way until [A]–[C] beat their baselines. [C] now does,
+by .00055 Brier on the market game set (§2) — but it is a *blend* that reads
+A's rate machinery and B's shares directly rather than the published
+projections, and it is one season inside one standard error, so it waits for
+a second season the same way E's lineup and bullpen terms do.
 
 ## 2. Station status
 
@@ -104,9 +108,9 @@ and it must stay that way until [A]–[C] beat their baselines.
 |---|---|---|---|---|---|
 | **A. Player rates** | K%, BB%, HR/PA, ISO, BABIP projections | Marcel (K% MAE .0261 on 2026) | Depth Charts .0234 · **ours .0271 (last)** | Built, **loses to Marcel** → not wired | `src/eval` providers; `data/projections/*.parquet` |
 | **B. Playing time** | PA per player, rest of season | Season-to-date PA share (MAE 25.8 PA over one month; equal-share floor 28.5) | 30-day share + IL zeroed + one-lineup-slot cap: **MAE 22.1**, top-9 capture **.766** at a one-month horizon; **loses at two months** (46.1 vs 43.4) — 616/595 hitters, walk-forward at 2026-07-01 and 2026-08-01, [playing-time.md](playing-time.md) | Built; **beats the baseline at the ~26-game horizon it serves**, not yet wired | `src/projections/playing_time.py`; `data/parquet/playing_time_ros.parquet` |
-| **C. Team run env.** | Projected RS/G, RA/G per team from A×B | Season-to-date runs, regressed | — | Not built (roadmap 1.5) | `strength.from_run_environment(rs, ra)` |
+| **C. Team run env.** | Projected RS/G, RA/G per team from A×B | Season-to-date runs, regressed (`pythag_60_sp`, Brier .24483) | **`pythag_C_sp` .24428** on the same 756 market games (−.00055, se .00086); .24606 vs .24661 on all 1,777 of 2026 and .24401 vs .24468 on 2025 — [market-benchmark-2026.md](market-benchmark-2026.md) | Built; **clears the gate on all three sets, inside 1 SE on each**; not wired | `src/sim/run_environment.py`; `strength.from_run_environment(rs, ra)` |
 | **D. Team strength** | Talent win% | Every team .500 (coin flip) | Regressed Pythagenpat, 60-game ballast | **Wired, live** | `src/sim/strength.py` |
-| **E. Per-game P(win)** | Home win prob for one game | log5 + HFA on team strength (Brier .2462) | **+ starting pitcher: .2448** (wired, live) · + posted lineup + bullpen quality: **.24454** (clears the gate, inside 1 SE; not wired) · Kalshi **.2416** / Polymarket **.2417** (756 games, measured — [market-benchmark-2026.md](market-benchmark-2026.md)) | **Wired, live** (Sept 2) — the starter term prices every remaining game with both probables posted; lineups and bullpen are each worth < .0003 and stay out of production until a second season sizes them; the market still holds .0030 | `strength.home_win_prob`, `src/sim/starters.py`, `lineups.py`, `bullpen.py` |
+| **E. Per-game P(win)** | Home win prob for one game | log5 + HFA on team strength (Brier .2462) | **+ starting pitcher: .2448** (wired, live) · + posted lineup + bullpen quality: **.24454** (clears the gate, inside 1 SE; not wired) · + station C's run environment: **.24428** · Kalshi **.2416** / Polymarket **.2417** (756 games, measured — [market-benchmark-2026.md](market-benchmark-2026.md)) | **Wired, live** (Sept 2) — the starter term prices every remaining game with both probables posted; lineups, bullpen and C are each worth < .0006 and stay out of production until a second season sizes them; the market still holds .0027 | `strength.home_win_prob`, `src/sim/starters.py`, `lineups.py`, `bullpen.py`, `run_environment.py` |
 | **F. Season sim** | Monte Carlo, MLB tiebreakers, bracket | — (plumbing) | Within 1.6 pts of FanGraphs; coin-flip control within 1.9 | **Wired, validated** | `src/sim/season.py`, `standings.py`, `bracket.py` |
 | **G. Odds** | P(playoffs/div/bye/pennant/WS), win bands | — | Live, 20k sims | **Wired, live** | `src/sim/odds.py` |
 | **H. Site + archive** | Landing page, **Model Accuracy page**, dated JSON, nightly job | — | Live; first snapshot 2026-09-01. Accuracy page renders the A/E/G scoreboards from generated JSON only (`public/data/accuracy/`), with a stale badge and a reason wherever a section could not be rebuilt | **Wired**; nightly first run pending | `scripts/run_playoff_odds.py`, `scripts/build_accuracy_json.py`, `nightly-odds.yml` |

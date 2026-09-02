@@ -18,6 +18,12 @@ Metrics: Brier score and log loss (lower is better). Baselines:
     pythag_60_sp_lu_bp
                     — ...and the 3.5 relief innings re-weighted toward the
                       bullpen that is actually available (src/sim/bullpen)
+    pythag_C        — station C: the team's runs scored / allowed rebuilt
+                      bottom-up from the hitters who are actually playing and
+                      the rotation + pen that are actually pitching, blended
+                      with the top-down regressed rates (src/sim/run_environment)
+    pythag_C_sp     — pythag_C with the same starting-pitcher delta pythag_60_sp
+                      applies, so the two are directly comparable
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -36,11 +42,13 @@ import numpy as np
 import pandas as pd
 
 from src.data.mlb_stats_api import (
-    build_seasons_table, fetch_batter_game_logs, fetch_lineups,
-    fetch_pitcher_game_logs, fetch_probables, fetch_schedule, fetch_season_pitching,
+    build_seasons_table, fetch_batter_game_logs, fetch_hitter_game_logs,
+    fetch_lineups, fetch_pitcher_game_logs, fetch_probables, fetch_schedule,
+    fetch_season_pitching,
 )
 from src.sim import bullpen as bp_model
 from src.sim import lineups as lu_model
+from src.sim import run_environment as rn_model
 from src.sim import starters as sp_model
 from src.sim.season import from_schedule
 from src.sim.strength import HFA_PRIOR, home_win_prob, pythagenpat
@@ -49,7 +57,9 @@ from src.sim.teams import fetch_teams
 SP_MODEL = "pythag_60_sp"
 LU_MODEL = "pythag_60_sp_lu"
 BP_MODEL = "pythag_60_sp_lu_bp"
-SP_BALLAST_GAMES = 60.0   # the production team-strength ballast this model extends
+C_MODEL = "pythag_C"
+C_SP_MODEL = "pythag_C_sp"
+SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
 # measure it against. Both chosen walk-forward on the 2025 season and never on
@@ -60,6 +70,14 @@ LU_BASELINE = "team"
 # Bullpen availability: what counts as a pen and what counts as used up. Both
 # chosen walk-forward on 2025 only (docs/market-benchmark-2026.md).
 BP_BASELINE = bp_model.BASELINE
+# Station C: how much of the bottom-up run environment to use, what trailing
+# window defines a club's hitters and their plate-appearance shares, and how
+# many days of starts define a rotation. All three chosen walk-forward on 2025
+# only (docs/market-benchmark-2026.md); `--c-weight 0` reproduces pythag_60 and
+# pythag_60_sp exactly.
+C_WEIGHT = rn_model.BLEND_WEIGHT
+C_SHARE_WINDOW = rn_model.SHARE_WINDOW_DAYS or 0   # 0 = the season to date
+C_ROTATION_DAYS = rn_model.ROTATION_WINDOW_DAYS
 
 
 def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
@@ -91,7 +109,8 @@ def strengths(tot: pd.DataFrame, regress_games: float) -> pd.Series:
 def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                  ballasts: list[float], sp_ctx: dict | None = None,
                  lu_ctx: dict | None = None,
-                 bp_ctx: dict | None = None) -> pd.DataFrame:
+                 bp_ctx: dict | None = None,
+                 c_ctx: dict | None = None) -> pd.DataFrame:
     """One row per scored game with each model's P(home).
 
     Every quantity used on a date is rebuilt from games, pitcher appearances
@@ -113,6 +132,8 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                   if lu_ctx and sp_day is not None else None)
         bp_day = (bullpen_day_context(tot, date, bp_ctx, sp_day)
                   if bp_ctx and lu_day is not None else None)
+        c_day = (run_env_day_context(tot, date, c_ctx, sp_day, lu_day, bp_day)
+                 if c_ctx and bp_day is not None else None)
         for g in day.itertuples(index=False):
             row = {"date": date, "game_pk": int(g.game_pk),
                    "home_id": g.home_id, "away_id": g.away_id,
@@ -134,6 +155,8 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                                                bp_day, bp_ctx)
                 row[BP_MODEL] = p_bp if p_bp is not None else row[LU_MODEL]
                 row.update(flags)
+            if c_day is not None:
+                row.update(run_env_game_probs(g, c_day, sp_day, hfa_obs))
             rows.append(row)
         if lu_day is not None:
             update_lineup_history(day, lu_ctx, lu_history)
@@ -238,6 +261,9 @@ def lineup_day_context(tot: pd.DataFrame, date: str, day: pd.DataFrame,
         [raa9(ids) for ids in history.get(int(t), [])[-window:]], 0.0,
         lu_ctx["baseline_ballast"]) for t in tot.index}
     return {"raa": raa, "no_history": missing, "baseline": baseline,
+            # Station C prices *every* hitter on the club, not just the nine
+            # posted, so it reuses this date's rates rather than rebuilding them.
+            "runs_lookup": lookup,
             "lg_rs9": float(tot["rs"].sum() / max(tot["g"].sum(), 1))}
 
 
@@ -357,7 +383,8 @@ def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
         pen[int(team_id)] = (bp_model.pen_ra9(grp, ra9, lg_ra9, exclude=out),
                              bp_model.pen_ra9(grp, ra9, lg_ra9))
     return {"pen": pen, "lg_pen_ra9": bp_model.league_pen_ra9(pens, ra9, lg_ra9),
-            "n_out": len(out)}
+            # Station C prices the rotation off the same table.
+            "ra9": ra9, "n_out": len(out)}
 
 
 def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
@@ -376,10 +403,135 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
     game_logs = sp_model.normalize_counts(logs)
     game_logs["date"] = logs["date"].to_numpy()
     return {"game_logs": game_logs, "prior_counts": prior_counts,
-            "relief": bp_model.relief_appearances(logs), "league": league,
+            "relief": bp_model.relief_appearances(logs),
+            # The other half of the same appearances: station C's rotation.
+            "starts": rn_model.start_appearances(logs), "league": league,
             "season": season, "ballast": ballast, "baseline": baseline,
             "roster_days": roster_days, "rest_days": rest_days,
             "rest_min_days": rest_min_days, "relief_ip": relief_ip}
+
+
+# ─── station C: the bottom-up team run environment ───
+
+def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
+                        sp_day: dict, lu_day: dict, bp_day: dict) -> dict:
+    """Each club's blended runs scored / allowed for one slate, from the past only.
+
+    Every input is a station already scored on its own:
+
+      * hitter rates    `lu_day["runs_lookup"]` — station A/E's Marcel component
+                        rates, built from games strictly before `date`
+      * playing time    trailing-window plate-appearance shares by club, station
+                        B's window and its one-lineup-slot cap, from games
+                        strictly before `date`
+      * rotation        the top-5 by starts in the trailing window, priced with
+                        the same FIP table the announced starter is
+      * bullpen         `bp_day["pen"]`'s *whole* pen (the availability news is
+                        station E's term, not C's), workload-weighted
+
+    The result is blended with the top-down regressed rates at `weight`, so
+    `weight = 0` hands back exactly what `pythag_60` uses.
+    """
+    top_down = team_rates(tot, SP_BALLAST_GAMES)
+    lg_ra9, lg_rs9 = sp_day["lg_ra9"], lu_day["lg_rs9"]
+
+    shares = rn_model.team_pa_shares(c_ctx["hitter_logs"], date,
+                                     window_days=c_ctx["share_window"])
+    rs9 = rn_model.team_rs9(shares, lu_day["runs_lookup"], lg_rs9,
+                            c_ctx["pa_per_game"])
+
+    rotation = rn_model.rotation_window(c_ctx["starts"], date,
+                                        days=c_ctx["rotation_days"],
+                                        top_n=c_ctx["rotation_top_n"])
+    rot_ra9 = rn_model.rotation_ra9(rotation, bp_day["ra9"], lg_ra9)
+    pen_ra9 = {t: full for t, (_avail, full) in bp_day["pen"].items()}
+    ra9 = rn_model.team_ra9(rot_ra9, pen_ra9, lg_ra9, team_ids=top_down.index,
+                            starter_ip=sp_day["starter_ip"])
+
+    if c_ctx.get("control") == "league":
+        # The shrinkage control: same blend, no player information in it.
+        bottom_up = rn_model.league_constant_rates(top_down.index, lg_rs9, lg_ra9)
+    else:
+        bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=top_down.index)
+    blended = rn_model.blend_run_env(bottom_up, top_down, c_ctx["weight"])
+    return {
+        "team": blended,
+        "lg_ra9": lg_ra9,
+        "starter_ip": sp_day["starter_ip"],
+        # Diagnostics: clubs the bottom-up half could not price and that
+        # therefore kept their top-down rate for that column.
+        "rs_missing": {int(t) for t in top_down.index if t not in set(rs9.index)},
+        "ra_missing": {int(t) for t in top_down.index
+                       if int(t) not in rot_ra9 or int(t) not in pen_ra9},
+    }
+
+
+def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
+    """P(home) for `pythag_C` and `pythag_C_sp`, plus fallback diagnostics.
+
+    `pythag_C` is the blended run environment straight into Pythagenpat + log5
+    + HFA — no starter, so it is the station D comparison. `pythag_C_sp` adds
+    exactly the delta `pythag_60_sp` adds, on top of C's runs allowed, so the
+    pair isolates what the bottom-up rebuild is worth with the pitcher held
+    fixed. When no probable is posted it falls back to `pythag_C`.
+
+    Note that the starter is added as the same *delta from league average* it
+    is everywhere else, on top of a runs-allowed rate that already contains
+    half a rotation term over the same 5.5 innings. That is a mild
+    double-count — and it is exactly the one `pythag_60_sp` already makes
+    against a team RA/9 that contains the club's whole rotation, which is what
+    keeps the two directly comparable. Replacing C's rotation slot with
+    tonight's starter instead of adding to it is a cleaner construction and is
+    untested (docs/market-benchmark-2026.md).
+    """
+    team, lg_ra9 = c_day["team"], c_day["lg_ra9"]
+    sp_ids = sp_day["probables"].get(int(g.game_pk))
+    talent, talent_sp = {}, {}
+    for side, team_id, i in (("home", g.home_id, 0), ("away", g.away_id, 1)):
+        rs9 = max(float(team.loc[team_id, "rs_pg"]), MIN_R9)
+        ra9 = max(float(team.loc[team_id, "ra_pg"]), MIN_R9)
+        talent[side] = pythagenpat(rs9, ra9, 1.0)
+        if sp_ids is not None:
+            ra9_sp = sp_model.blend_starter_team(
+                sp_day["sp_ra9"].get(int(sp_ids[i]), lg_ra9), ra9, lg_ra9,
+                starter_ip=c_day["starter_ip"])
+            talent_sp[side] = pythagenpat(rs9, max(float(ra9_sp), MIN_R9), 1.0)
+    p_c = float(home_win_prob(talent["home"], talent["away"], hfa))
+    p_c_sp = (p_c if sp_ids is None else
+              float(home_win_prob(talent_sp["home"], talent_sp["away"], hfa)))
+    missing = sum(int(t) in c_day["rs_missing"] or int(t) in c_day["ra_missing"]
+                  for t in (g.home_id, g.away_id))
+    return {C_MODEL: p_c, C_SP_MODEL: p_c_sp,
+            "c_sp_fallback": sp_ids is None, "c_partial": missing}
+
+
+def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
+                    share_window: int | None, rotation_days: int | None,
+                    rotation_top_n: int, pa_per_game: float,
+                    control: str = "none") -> dict:
+    """Fetch the club-attributed hitting logs station C needs, once.
+
+    `lu_ctx["game_logs"]` cannot be reused for this: `fetch_batter_game_logs`
+    drops `team_id`, and station C's whole point is *which club* a hitter has
+    been taking his plate appearances for. `fetch_hitter_game_logs` reads the
+    same cached responses and keeps the team, so the extra fetch is free after
+    the lineup context has run.
+
+    The batter universe is every hitter who has appeared in a posted lineup
+    this season (`lu_ctx`) — 661 men on 2025, 637 on 2026. Measured against
+    the clubs' own team hitting logs that covers **99.98%** of all plate
+    appearances taken in 2026 (99.99% in 2025), worst club 99.75%: what it
+    misses is the pinch hitter who never started a game all year. Shares are
+    normalised within the club, so a fraction of a percent of missing plate
+    appearances moves a share by a fraction of a percent.
+    """
+    batters = pd.unique(lu_ctx["game_logs"]["batter"]) if len(lu_ctx["game_logs"]) else []
+    logs = fetch_hitter_game_logs(batters, season)
+    logs = logs.loc[:, ["batter", "team_id", "date", "pa"]].dropna(subset=["team_id"])
+    return {"hitter_logs": logs, "starts": bp_ctx["starts"], "weight": weight,
+            "share_window": share_window, "rotation_days": rotation_days,
+            "rotation_top_n": rotation_top_n, "pa_per_game": pa_per_game,
+            "control": control}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -471,6 +623,27 @@ def main() -> None:
                              "reliever unavailable (2 = back-to-back)")
     parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
                         help="innings the bullpen is assumed to cover")
+    parser.add_argument("--no-run-env", action="store_true",
+                        help="skip the station C pythag_C / pythag_C_sp models")
+    parser.add_argument("--c-weight", type=float, default=C_WEIGHT,
+                        help="how much of the bottom-up run environment to use "
+                             "(0 = the production top-down rates exactly)")
+    parser.add_argument("--c-share-window", type=int, default=C_SHARE_WINDOW,
+                        help="trailing days of plate appearances that define a "
+                             "club's hitters and their PA shares "
+                             "(0 = the season to date)")
+    parser.add_argument("--c-rotation-days", type=int, default=C_ROTATION_DAYS,
+                        help="trailing days of starts that define a rotation "
+                             "(0 = the season to date)")
+    parser.add_argument("--c-control", choices=("none", "league"), default="none",
+                        help="replace the bottom-up half with league average, "
+                             "so pythag_C is pythag_60 shrunk --c-weight of the "
+                             "way to the league and nothing else — the control "
+                             "that says whether C's gain is roster information "
+                             "or plain shrinkage")
+    parser.add_argument("--c-rotation-top-n", type=int,
+                        default=rn_model.ROTATION_TOP_N,
+                        help="how many starters make a rotation")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game prediction frame here (parquet) "
                              "for follow-up analysis")
@@ -518,8 +691,16 @@ def main() -> None:
             args.bp_rest_min_days, args.relief_ip,
             sp_ctx["league"], sp_ctx["prior_counts"])
 
+    c_ctx = None
+    if bp_ctx is not None and not args.no_run_env:
+        c_ctx = build_c_context(
+            args.season, lu_ctx, bp_ctx, args.c_weight,
+            args.c_share_window if args.c_share_window > 0 else None,
+            args.c_rotation_days if args.c_rotation_days > 0 else None,
+            args.c_rotation_top_n, lu_ctx["pa_per_game"], args.c_control)
+
     preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
-                         ballasts, sp_ctx, lu_ctx, bp_ctx)
+                         ballasts, sp_ctx, lu_ctx, bp_ctx, c_ctx)
     models = ["home_constant", "win_pct_log5"] + [f"pythag_{int(k)}" for k in ballasts]
     if sp_ctx is not None:
         models.append(SP_MODEL)
@@ -527,6 +708,8 @@ def main() -> None:
         models.append(LU_MODEL)
     if bp_ctx is not None:
         models.append(BP_MODEL)
+    if c_ctx is not None:
+        models += [C_MODEL, C_SP_MODEL]
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -546,6 +729,16 @@ def main() -> None:
               f"baseline={args.bp_baseline}, pen={args.bp_roster_days}d, "
               f"rest={args.bp_rest_min_days}/{args.bp_rest_days}d, "
               f"relief_ip={args.relief_ip}.")
+    if c_ctx is not None:
+        print(f"{C_SP_MODEL}: {int(preds['c_sp_fallback'].sum())} of {len(preds)} games "
+              f"fell back to {C_MODEL} for a missing starter; "
+              f"{int(preds['c_partial'].sum())} of {2 * len(preds)} club-games had no "
+              f"bottom-up estimate for one half and kept the top-down rate. "
+              f"weight={args.c_weight}, "
+              f"shares={str(args.c_share_window) + 'd' if args.c_share_window > 0 else 'season'}, "
+              f"control={args.c_control}, "
+              f"rotation=top{args.c_rotation_top_n}/"
+              f"{args.c_rotation_days if args.c_rotation_days > 0 else 'season'}.")
 
     if args.market is not None:
         preds, market_models = join_market(preds, pd.read_parquet(args.market))
@@ -562,6 +755,10 @@ def main() -> None:
         if bp_ctx is not None:
             print(f"  of these, {int(preds['bp_short'].sum())} of "
                   f"{2 * len(preds)} club-games were a reliever short.")
+        if c_ctx is not None:
+            print(f"  of these, {int(preds['c_sp_fallback'].sum())} fell back to "
+                  f"{C_MODEL} for a missing starter and {int(preds['c_partial'].sum())} "
+                  f"of {2 * len(preds)} club-games kept a top-down half.")
 
     # Paired comparisons on the scored population: is the new term's gain real?
     pairs = []
@@ -571,13 +768,18 @@ def main() -> None:
         pairs += [(LU_MODEL, SP_MODEL), (LU_MODEL, "pythag_60")]
     if bp_ctx is not None:
         pairs += [(BP_MODEL, LU_MODEL), (BP_MODEL, SP_MODEL)]
+    if c_ctx is not None:
+        # The gate: C with the starter on top against the same model without
+        # the bottom-up rebuild, and C alone against the production model.
+        pairs += [(C_SP_MODEL, SP_MODEL), (C_MODEL, "pythag_60")]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 
     # Calibration of the production model, and of the challengers
     for model in ["pythag_60"] + ([SP_MODEL] if sp_ctx is not None else []) + \
                  ([LU_MODEL] if lu_ctx is not None else []) + \
-                 ([BP_MODEL] if bp_ctx is not None else []):
+                 ([BP_MODEL] if bp_ctx is not None else []) + \
+                 ([C_SP_MODEL] if c_ctx is not None else []):
         buckets = pd.cut(preds[model], [0, .4, .45, .5, .55, .6, .65, 1.0])
         cal = preds.groupby(buckets, observed=True).agg(n=("home_win", "size"),
                                                         predicted=(model, "mean"),
