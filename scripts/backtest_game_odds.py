@@ -67,7 +67,8 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
         wp = (tot["w"] / tot["g"]).clip(0.2, 0.8)
         s_by_k = {k: strengths(tot, k) for k in ballasts}
         for g in day.itertuples(index=False):
-            row = {"date": date, "home_id": g.home_id, "away_id": g.away_id,
+            row = {"date": date, "game_pk": int(g.game_pk),
+                   "home_id": g.home_id, "away_id": g.away_id,
                    "home_win": bool(g.home_win),
                    "home_constant": hfa_obs,
                    "win_pct_log5": float(home_win_prob(wp[g.home_id], wp[g.away_id], hfa_obs))}
@@ -75,6 +76,17 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                 row[f"pythag_{int(k)}"] = float(home_win_prob(s[g.home_id], s[g.away_id], hfa_obs))
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
+    """Add one column per venue (P(home) at the close) and keep only games
+    every venue priced, so all models are scored on the same population."""
+    wide = closes.pivot_table(index="game_pk", columns="venue", values="p_home_close")
+    wide.columns = [f"{v}_close" for v in wide.columns]
+    joined = preds.merge(wide, left_on="game_pk", right_index=True, how="inner")
+    market_models = list(wide.columns)
+    joined = joined.dropna(subset=market_models)
+    return joined, market_models
 
 
 def score(df: pd.DataFrame, models: list[str]) -> pd.DataFrame:
@@ -95,6 +107,9 @@ def main() -> None:
     parser.add_argument("--min-games", type=int, default=20,
                         help="skip dates until every team has this many games")
     parser.add_argument("--ballasts", default="0,30,60,100,160")
+    parser.add_argument("--market", type=Path, default=None,
+                        help="market_closes parquet from scripts/backfill_market_closes.py; "
+                             "scores each venue's pre-game close as a model on the common games")
     args = parser.parse_args()
     ballasts = [float(b) for b in args.ballasts.split(",")]
 
@@ -111,6 +126,12 @@ def main() -> None:
     models = ["home_constant", "win_pct_log5"] + [f"pythag_{int(k)}" for k in ballasts]
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
+
+    if args.market is not None:
+        preds, market_models = join_market(preds, pd.read_parquet(args.market))
+        print(f"\n{len(preds)} games also priced by every venue in {args.market.name} — "
+              f"the market is the bar (docs/architecture.md §0):\n")
+        print(score(preds, models + market_models).round(4).to_string(index=False))
     # Calibration of the production model
     prod = preds[["home_win", "pythag_60"]].copy()
     prod["bucket"] = pd.cut(prod["pythag_60"], [0, .4, .45, .5, .55, .6, .65, 1.0])
