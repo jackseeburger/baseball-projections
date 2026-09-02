@@ -207,6 +207,41 @@ def chosen_table(res: pd.DataFrame, staking: str, models: list[str]) -> str:
     return md_table(header, rows)
 
 
+def taker_compare_table(preds: pd.DataFrame, closes: pd.DataFrame, res: pd.DataFrame,
+                        models: list[str], threshold: float, venue,
+                        draws: int, seed: int) -> str:
+    """The same games, crossed instead of quoted — the whole point of the exercise.
+
+    The maker table is scored on the second half of the window; the taker
+    table in this doc is scored on all of it. This runs the taker rule on
+    *exactly* the second half so the two columns are the same games, and puts
+    the maker's chosen-margin ROI beside it.
+    """
+    df = pnl.add_controls(pnl.prepare_maker(preds, closes, venue.name))
+    _, second = pnl.split_halves(df)
+    header = ["Model", "taker n", "taker ROI", "taker 95% CI", "maker m",
+              "maker n filled", "maker ROI", "maker 95% CI"]
+    rows = []
+    for model in models:
+        if model not in second.columns:
+            continue
+        t = pnl.evaluate(second, model, venue, threshold, "flat", draws=draws,
+                         seed=seed)
+        m = pnl.choose_margin(res, model, "flat", half="first")
+        mk = res[(res["model"] == model) & (res["staking"] == "flat")
+                 & (res["half"] == "second") & (res["margin"] == m)]
+        rows.append([
+            LABELS.get(model, model), f"{int(t['n_bets'])}", pct(t["roi"]),
+            f"({pct(t['roi_lo'])}, {pct(t['roi_hi'])})" if t["n_bets"] else "—",
+            "—" if pd.isna(m) else f"{m:.2f}",
+            "—" if mk.empty else f"{int(mk['n_filled'].iloc[0])}",
+            "—" if mk.empty else pct(mk["roi"].iloc[0]),
+            "—" if mk.empty else
+            f"({pct(mk['roi_lo'].iloc[0])}, {pct(mk['roi_hi'].iloc[0])})",
+        ])
+    return md_table(header, rows)
+
+
 def run_maker(args) -> None:
     """The maker exam: quote, wait, get filled or cancel at first pitch."""
     preds = pd.read_parquet(args.preds)
@@ -263,6 +298,15 @@ def run_maker(args) -> None:
         print("\nMargin chosen on the first half, scored on the second:\n")
         print(chosen_table(res, staking, args.models))
         print()
+    print(f"**Crossing vs quoting on the same second half** "
+          f"(taker at edge ≥ {100 * args.detail_threshold:.0f} pts, flat; maker "
+          f"at its chosen margin, flat)\n")
+    print(taker_compare_table(preds, closes, res, args.models,
+                              args.detail_threshold,
+                              replace(pnl.VENUES["kalshi"],
+                                      taker_rate=args.kalshi_fee_rate),
+                              args.bootstrap, args.seed))
+    print()
     if args.csv_out is not None:
         print(f"\nwrote {args.csv_out}")
 
