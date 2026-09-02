@@ -270,10 +270,13 @@ python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
 
 **`pythag_C_sp` beats `pythag_60_sp` by 0.00055** — paired Brier −0.00055
 (se 0.00086, t = −0.64, n = 756). It clears the gate, and it does so on the
-wider sets too: 0.24603 vs 0.24657 on all 1,776 games of 2026 (−0.00054,
-se 0.00051, t = −1.06) and 0.24401 vs 0.24468 on all 2,105 of 2025
-(−0.00067, se 0.00049, t = −1.36). Without the starter, `pythag_C` beats
-`pythag_60` by the same amount (0.24565 vs 0.24619, −0.00054, se 0.00087).
+wider sets too: 0.24606 vs 0.24661 on all 1,777 games of 2026 through
+2026-09-02 (−0.00055, se 0.00056, t = −0.98) and 0.24401 vs 0.24468 on all
+2,105 of 2025 (−0.00067, se 0.00049, t = −1.36). Without the starter,
+`pythag_C` beats `pythag_60` by the same amount (0.24565 vs 0.24619,
+−0.00054, se 0.00087 on the 756; −0.00067, se 0.00056 on all 1,777).
+The 2026 season is still running, so the wider set grows by a game or two a
+day; the 756 the exchanges priced is fixed.
 Every one of those is inside one standard error on its own set; the sign is
 the same on all three, which is the only reason to believe it — the same
 standard the starter, lineup and bullpen terms are held to.
@@ -312,15 +315,15 @@ Split by month on 2026 (all games, `pythag_C_sp` − `pythag_60_sp`):
 
 | slice | n | pythag_60_sp | pythag_C_sp | paired |
 |---|---|---|---|---|
-| July (up to and around the deadline) | 335 | 0.24733 | 0.24710 | −0.00023 (se 0.00132) |
+| July (up to and around the deadline) | 371 | 0.24689 | 0.24666 | −0.00023 (se 0.00125) |
 | **August (post-deadline)** | 417 | 0.24303 | **0.24217** | **−0.00086** (se 0.00113) |
-| September | 19 | 0.25123 | 0.24894 | −0.00229 (se 0.00553) |
+| September | 20 | 0.25468 | 0.25189 | −0.00279 (se 0.00527) |
 
 The post-deadline month is where C is worth the most and July is where it is
 worth the least, which is the direction the station was built for — but at
 these sample sizes the difference between the two months is itself well
 inside noise, so it is a lead, not a finding. **The September call-up slice
-cannot be measured on 2026 at all**: the season is 19 games old on the last
+cannot be measured on 2026 at all**: September is 20 games old on the last
 scored date (2026-09-02). On 2025's full September (374 games) C is worth
 −0.00068 (se 0.00112), indistinguishable from its August value there
 (−0.00052, se 0.00109). Nothing in the data yet separates "C helps after the
@@ -378,7 +381,7 @@ the league by construction: a club of league-average hitters returns exactly
 league RS/G and a league-average staff exactly league RA/9, so the bottom-up
 estimate can only redistribute runs across clubs, never move the league.
 
-**Coverage is total.** Across all 1,776 games of 2026, 0 of 3,552 club-games
+**Coverage is total.** Across all 1,777 games of 2026, 0 of 3,554 club-games
 failed to get a bottom-up estimate for either half (0 of 1,512 on the 756),
 and 2 games fell back to `pythag_C` for a missing probable. The batter
 universe — every hitter who has appeared in a posted lineup this season, 637
