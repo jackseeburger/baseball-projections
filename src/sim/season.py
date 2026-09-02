@@ -20,7 +20,7 @@ from src.sim.strength import home_win_prob
 class SeasonState:
     teams: pd.DataFrame          # team_id, abbrev, name, league_id, division_id
     completed: pd.DataFrame      # date, home_id, away_id, home_win
-    remaining: pd.DataFrame      # date, home_id, away_id
+    remaining: pd.DataFrame      # game_pk, date, home_id, away_id
 
     @property
     def team_ids(self) -> np.ndarray:
@@ -48,6 +48,10 @@ def from_schedule(schedule: pd.DataFrame, teams: pd.DataFrame) -> SeasonState:
     remaining = reg[~is_final].copy()
 
     cols = ["date", "home_id", "away_id"]
+    # game_pk rides along so a per-game probability (station E's starting
+    # pitcher term) can be keyed to a specific remaining game.
+    if "game_pk" in reg.columns:
+        cols = ["game_pk"] + cols
     return SeasonState(
         teams=teams.sort_values("team_id").reset_index(drop=True),
         completed=done[cols + ["home_win"]].sort_values("date").reset_index(drop=True),
@@ -58,13 +62,37 @@ def from_schedule(schedule: pd.DataFrame, teams: pd.DataFrame) -> SeasonState:
 def simulate_remaining(
     state: SeasonState, strength: pd.Series, hfa: float,
     n_sims: int, rng: np.random.Generator,
+    p_home_overrides: dict[int, float] | None = None,
 ) -> np.ndarray:
-    """Boolean (n_sims, n_remaining): True where the home team wins."""
+    """Boolean (n_sims, n_remaining): True where the home team wins.
+
+    Every remaining game gets log5 + HFA on team strength, which is the right
+    rotation-average expectation for a game whose starters are not known yet.
+    `p_home_overrides` (game_pk → P(home)) replaces that probability for the
+    games it names and nothing else: the nightly job passes the
+    starter-adjusted probability for the handful of upcoming games whose
+    probables the Stats API has posted (`scripts/run_playoff_odds.py`).
+    A game_pk that is not in the remaining schedule — it finished between the
+    probables fetch and now — is ignored.
+
+    The draw stays one vectorized comparison against a per-game probability
+    vector, so the same seed gives the same outcome on every game the
+    overrides do not touch.
+    """
     p_home = home_win_prob(
         strength.reindex(state.remaining["home_id"]).to_numpy(),
         strength.reindex(state.remaining["away_id"]).to_numpy(),
         hfa=hfa,
     )
+    if p_home_overrides:
+        p_home = np.array(p_home, dtype=float, copy=True)
+        if "game_pk" not in state.remaining.columns:
+            raise KeyError("p_home_overrides needs a game_pk column on state.remaining")
+        pos = {int(pk): i for i, pk in enumerate(state.remaining["game_pk"])}
+        for game_pk, p in p_home_overrides.items():
+            i = pos.get(int(game_pk))
+            if i is not None:
+                p_home[i] = float(p)
     return rng.random((n_sims, len(state.remaining))) < p_home
 
 

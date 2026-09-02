@@ -5,3 +5,6 @@ data/parquet/
 data/raw/*.parquet
 data/statcast/*.parquet
 data/cache/
+
+# Claude Code agent worktrees (per-session, never source)
+.claude/worktrees/

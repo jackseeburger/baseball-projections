@@ -278,3 +278,100 @@ def test_absurd_rates_are_clamped_to_a_positive_run_rate():
     rates = pd.DataFrame([{"rate_k": 0.95, "rate_bbhbp": 0.0, "rate_hr": 0.0}],
                          index=pd.Index([1], name="pitcher"))
     assert st.fip_ra9(rates, LEAGUE, LG_RA9).loc[1] == pytest.approx(st.MIN_RA9)
+
+
+# ─── rate_table: the as-of-date assembly both callers share ───
+
+def sp_inputs():
+    """What `rate_inputs` returns, hand-built so no network is needed."""
+    prior = frame([counts(1, 2025, 600, 132, 48, 18, outs=420),
+                   counts(2, 2025, 600, 132, 48, 18, outs=420),
+                   counts(1, 2024, 600, 132, 48, 18, outs=420),
+                   counts(2, 2024, 600, 132, 48, 18, outs=420)])
+    return {"season": 2026, "prior_counts": prior, "game_logs": logs(),
+            "league": st.league_rates(prior)}
+
+
+def test_rate_table_is_the_walk_forward_chain_in_one_call():
+    inputs = sp_inputs()
+    lg = inputs["league"]
+    out = st.rate_table(inputs, "2026-04-13", LG_RA9)
+    manual = st.starter_ra9_lookup(
+        st.marcel_rates(
+            pd.concat([inputs["prior_counts"],
+                       st.appearances_before(inputs["game_logs"], "2026-04-13")],
+                      ignore_index=True),
+            2026, lg),
+        lg, LG_RA9)
+    assert out == manual
+
+
+def test_rate_table_respects_the_as_of_cut():
+    """Pitcher 1's April 13 start must not move his April 13 rate."""
+    inputs = sp_inputs()
+    on_the_day = st.rate_table(inputs, "2026-04-13", LG_RA9)
+    day_after = st.rate_table(inputs, "2026-04-14", LG_RA9)
+    assert on_the_day[1] != day_after[1]
+    # Pitcher 2 has no 2026 logs at all, so no date moves him.
+    assert on_the_day[2] == pytest.approx(day_after[2])
+
+
+def test_a_pitcher_with_only_league_average_history_scores_league_ra9():
+    inputs = sp_inputs()
+    # Pitcher 2's prior seasons are exactly the league rates by construction.
+    assert st.rate_table(inputs, "2026-03-01", LG_RA9)[2] == pytest.approx(LG_RA9)
+
+
+# ─── game_home_prob: the whole per-game chain ───
+
+TEAM_RATES = pd.DataFrame(
+    {"rs_pg": [4.5, 4.5, 5.2], "ra_pg": [4.5, 4.5, 4.0]}, index=[108, 109, 110])
+
+
+def test_two_league_average_starters_reproduce_plain_log5():
+    """The property that makes this term safe to wire in: no pitcher
+    information, no change to the production number."""
+    from src.sim.strength import home_win_prob, pythagenpat
+    p, no_history = st.game_home_prob(
+        TEAM_RATES, 110, 109, (1, 2), {1: LG_RA9, 2: LG_RA9}, LG_RA9, hfa=0.54)
+    plain = home_win_prob(pythagenpat(5.2, 4.0, 1.0), pythagenpat(4.5, 4.5, 1.0), 0.54)
+    assert p == pytest.approx(float(plain))
+    assert no_history == 0
+
+
+def test_an_ace_on_the_mound_raises_his_side():
+    even = st.game_home_prob(TEAM_RATES, 108, 109, (1, 2),
+                             {1: LG_RA9, 2: LG_RA9}, LG_RA9, hfa=0.54)[0]
+    home_ace = st.game_home_prob(TEAM_RATES, 108, 109, (1, 2),
+                                 {1: 2.9, 2: LG_RA9}, LG_RA9, hfa=0.54)[0]
+    away_ace = st.game_home_prob(TEAM_RATES, 108, 109, (1, 2),
+                                 {1: LG_RA9, 2: 2.9}, LG_RA9, hfa=0.54)[0]
+    assert away_ace < even < home_ace
+    # Two identical teams and mirrored aces: near-symmetric about the even
+    # number, but only near — Pythagenpat's exponent moves with the game's run
+    # environment, so putting the ace on the home side is not the exact
+    # reflection of putting him on the road side.
+    assert (home_ace - even) == pytest.approx(even - away_ace, abs=0.01)
+
+
+def test_a_starter_with_no_history_is_counted_and_scored_league_average():
+    p, no_history = st.game_home_prob(TEAM_RATES, 108, 109, (7, 8), {}, LG_RA9,
+                                      hfa=0.54)
+    assert no_history == 2
+    assert p == pytest.approx(0.54)      # two identical teams, both arms average
+
+
+def test_hfa_still_applies_on_top_of_the_starter_adjustment():
+    no_hfa = st.game_home_prob(TEAM_RATES, 108, 109, (1, 2),
+                               {1: 3.2, 2: 5.2}, LG_RA9, hfa=0.5)[0]
+    with_hfa = st.game_home_prob(TEAM_RATES, 108, 109, (1, 2),
+                                 {1: 3.2, 2: 5.2}, LG_RA9, hfa=0.54)[0]
+    assert with_hfa > no_hfa > 0.5
+
+
+def test_starter_ip_zero_collapses_to_the_team_only_model():
+    from src.sim.strength import home_win_prob, pythagenpat
+    p = st.game_home_prob(TEAM_RATES, 110, 109, (1, 2), {1: 2.5, 2: 6.5},
+                          LG_RA9, hfa=0.54, starter_ip=0.0)[0]
+    plain = home_win_prob(pythagenpat(5.2, 4.0, 1.0), pythagenpat(4.5, 4.5, 1.0), 0.54)
+    assert p == pytest.approx(float(plain))
