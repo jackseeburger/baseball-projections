@@ -150,6 +150,18 @@ def test_game_odds_without_market_is_stale_with_a_reason():
     assert not any(r["is_market"] for r in section["rows"])
 
 
+def test_game_odds_lists_each_price_once(doc):
+    """The backtester emits a market close once per model subset it scores.
+    The same Kalshi price twice reads as two contenders tying with the bar."""
+    payload = json.loads((FIXTURES / "game_odds_market.json").read_text())
+    doubled = dict(payload, scores=payload["scores"] + payload["scores"])
+    section = build.section_game_odds(doubled, None)
+    models = [r["model"] for r in section["rows"]]
+    assert len(models) == len(set(models))
+    assert models == [r["model"] for r in doc["sections"]["game_odds"]["rows"]]
+    assert [r["rank"] for r in section["rows"]] == list(range(1, len(models) + 1))
+
+
 def test_control_section_parses_the_coin_flip_table(doc):
     section = doc["sections"]["playoff_odds_control"]
     models = {r["model"] for r in section["rows"]}

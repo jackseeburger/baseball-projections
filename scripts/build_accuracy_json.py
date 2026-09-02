@@ -361,8 +361,16 @@ def section_ros(payload: dict) -> dict:
 def section_game_odds(payload: dict, market_note: str | None) -> dict:
     """Walk-forward per-game table, market closes included when we have them."""
     rows = []
+    # One row per model. The backtester emits a market price once per model
+    # subset it scores, so a run that carries the lineup and bullpen arms lists
+    # the same Kalshi close two or three times — the same price is not two
+    # contenders, and duplicating the bar makes it look beatable by tie.
+    seen = set()
     for r in sorted(payload["scores"], key=lambda r: r["brier"]):
         model = r["model"]
+        if model in seen:
+            continue
+        seen.add(model)
         rows.append({
             "model": model,
             "label": label_for(model),

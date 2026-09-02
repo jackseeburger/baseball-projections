@@ -304,9 +304,15 @@ function renderPlayerPage() {
 
   input.addEventListener("blur", () => setTimeout(() => sugDiv.classList.remove("visible"), 200));
 
-  // Default: show first player
+  // Default: the best hitter who actually has a rest-of-season projection.
+  // Ranking by the preseason number alone lands on whoever is hurt — a card
+  // whose headline block says "no projected plate appearances".
   if (players.length) {
-    const defaultPlayer = players.sort((a, b) => (b.our_woba || 0) - (a.our_woba || 0))[0];
+    const byPreseason = [...players].sort((a, b) => (b.our_woba || 0) - (a.our_woba || 0));
+    const defaultPlayer = byPreseason.find(p => {
+      const row = rosPlayer(p.batter);
+      return row && +row.pa_ros >= 50;
+    }) || byPreseason[0];
     input.value = defaultPlayer.name;
     renderPlayerCard(defaultPlayer);
   }
@@ -493,6 +499,14 @@ const ROS_FALLBACK_ARMS = [
   { key: "marcel_preseason", label: "Preseason Marcel", is_live: false },
 ];
 
+// Short header labels for the leaderboard, where the arm name is prefixed by
+// the component and the full "Live (Marcel + 2026)" pushes the third arm off
+// a 1280px screen. The player card, which has one column per arm and room to
+// spare, uses the long labels from the file.
+const ROS_SHORT_LABELS = {
+  marcel: "live", bayes: "pre. Bayes", marcel_preseason: "pre. Marcel",
+};
+
 let _rosIndex = null;
 
 function rosDoc() {
@@ -634,7 +648,9 @@ function renderROSLeaderboardTable(statKey, minPA, count) {
     '<th class="num">PA</th><th class="num">K</th><th class="num">BB</th>' +
     '<th class="num">HR</th><th class="num ros-live-col">wOBA</th>';
   arms.forEach(a => {
-    h += `<th class="num${a.is_live ? " ros-live-col" : ""}">${esc(stat.label)} · ${esc(a.label)}</th>`;
+    const label = ROS_SHORT_LABELS[a.key] || a.label;
+    h += `<th class="num${a.is_live ? " ros-live-col" : ""}" title="${esc(a.label)}">` +
+      `${esc(stat.label)} ${esc(label)}</th>`;
   });
   h += "</tr></thead><tbody>";
 
