@@ -277,11 +277,17 @@ def join_closes(preds: pd.DataFrame, closes: pd.DataFrame, venue: str) -> pd.Dat
     Every prediction was built from games, appearances and lineups strictly
     before its own date; every close is the last quote before that game's
     first pitch. The join is the only place the two meet.
+
+    A game suspended and resumed the next day is scored twice by the
+    backtest; the exchange has one contract for it, so the first prediction
+    — the one made before the original first pitch, which is the one the
+    close is a quote on — is the one kept.
     """
     c = closes[closes["venue"] == venue][
         ["game_pk", "p_home_close", "bid", "ask", "home_won", "minutes_before_pitch"]
     ]
-    df = preds.merge(c, on="game_pk", how="inner", validate="one_to_one")
+    df = preds.drop_duplicates("game_pk", keep="first").merge(
+        c, on="game_pk", how="inner", validate="one_to_one")
     if "home_win" in df and df["home_won"].notna().any():
         mismatch = int((df["home_win"].astype(bool) != df["home_won"].astype(bool)).sum())
         if mismatch:

@@ -214,3 +214,15 @@ def test_join_refuses_closes_that_disagree_about_the_winner():
                            "minutes_before_pitch": [15.0]})
     with pytest.raises(ValueError, match="disagree"):
         pnl.join_closes(preds, closes, "kalshi")
+
+
+def test_join_keeps_the_first_prediction_for_a_resumed_game():
+    # A suspended game is scored on both dates; the exchange has one contract.
+    preds = games([0.60, 0.30], [0.55, 0.55], [True, True]).drop(
+        columns=["p_home_close", "bid", "ask"])
+    preds["game_pk"] = [1, 1]
+    closes = pd.DataFrame({"venue": ["kalshi"], "game_pk": [1], "p_home_close": [0.55],
+                           "bid": [0.54], "ask": [0.56], "home_won": [True],
+                           "minutes_before_pitch": [15.0]})
+    df = pnl.join_closes(preds, closes, "kalshi")
+    assert len(df) == 1 and df.loc[0, "m"] == pytest.approx(0.60)
