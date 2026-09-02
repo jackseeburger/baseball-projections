@@ -6,7 +6,11 @@ name: Nightly playoff odds
 # Bayesian refits.
 on:
   schedule:
+    # GitHub cron is best-effort: the first run fired 4h25m late. Two
+    # slots give redundancy — the script never overwrites a dated
+    # snapshot, so a second run only refreshes latest.json.
     - cron: "15 9 * * *"     # 09:15 UTC ≈ 5:15am ET, after West Coast finals
+    - cron: "45 11 * * *"    # 11:45 UTC backup
   workflow_dispatch:
 
 permissions:
