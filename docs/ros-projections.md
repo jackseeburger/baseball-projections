@@ -22,7 +22,11 @@ and the intra-season walk-forward
 ([backtest-baselines.md](backtest-baselines.md#intra-season-walk-forward--rest-of-2026-rates))
 answered it:
 
-| Component | Cutoff | `marcel` (live) | `bayes_preseason` (was live) | Gap |
+(The `marcel` column here is *stock* Marcel — the arm that won this
+comparison and shipped on Sept 2. The engine was tuned later the same day;
+the next section has the current numbers.)
+
+| Component | Cutoff | `marcel` (stock) | `bayes_preseason` (was live) | Gap |
 |---|---|---|---|---|
 | k_rate | May 1 | **.0278** | .0296 | −6.3% |
 | k_rate | Jul 1 | **.0296** | .0325 | −8.9% |
@@ -31,12 +35,12 @@ answered it:
 | hr_rate | Aug 1 | **.0152** | .0153 | −1.0% |
 | iso | Aug 1 | .0567 | **.0551** | +2.9% |
 
-Marcel with the current season folded in wins 11 of the 12
-component-cutoff cells the accuracy page shows, and it beats *Marcel with
-2026 withheld* on the same 11 — so the gain is in-season information, not a
-better prior. Our Bayesian components never beat `marcel_preseason` on K%
-either: on the same information they buy nothing, and they were giving up
-the information advantage on top of it. Shipping them as the live number
+Marcel with the current season folded in won 11 of the 12 component-cutoff
+cells the accuracy page shows, and beat *Marcel with 2026 withheld* on the
+same 11 — so the gain is in-season information, not a better prior. Our
+Bayesian components never beat `marcel_preseason` on K% either: on the same
+information they buy nothing, and they were giving up the information
+advantage on top of it. Shipping them as the live number
 was the one thing the gate rule forbids.
 
 BABIP is the exception in both directions: in-season data adds nothing to
@@ -169,6 +173,12 @@ the labels ("Live (tuned Marcel + 2026)") and the `method` sentence instead.
 `engine` is the field that says which Marcel filled the slot:
 `"marcel_tuned"` from Sept 2, 2026 on, and absent in the dated snapshots
 written before the switch.
+
+That includes `2026-09-02.json` itself, which was written by stock Marcel
+that morning and is **not** rewritten — the archive records what was served,
+and the dated snapshot is never overwritten. So for one date the archive and
+`latest.json` disagree, and `engine` (null against `"marcel_tuned"`) is what
+tells them apart. From Sept 3 the two agree again.
 
 ## Failure modes, and what the page shows
 
