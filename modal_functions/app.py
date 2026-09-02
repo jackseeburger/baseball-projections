@@ -31,12 +31,13 @@ VOLUME_MOUNTS = {
     "/models": models_volume,
 }
 
-# Secrets — Turso DB + Weights & Biases
-_turso = modal.Secret.from_name("turso-baseball")
+# Secrets — Weights & Biases. Every secret listed here must exist in the
+# Modal workspace or the function fails before it starts, so keep this to
+# what the code actually reads.
 _wandb = modal.Secret.from_name("wandb-baseball")
-ALL_SECRETS = [_turso, _wandb]
+ALL_SECRETS = [_wandb]
 
-# Container image — PyMC + data stack + Turso client + wandb
+# Container image — PyMC + data stack + wandb
 pymc_image = (
     modal.Image.debian_slim(python_version="3.11")
     .pip_install(
@@ -49,8 +50,6 @@ pymc_image = (
         "pandas>=2.2",
         "pyarrow>=18",
         "numpy>=1.26",
-        # Turso / libSQL
-        "libsql-experimental>=0.0.50",
         # Experiment tracking
         "wandb>=0.19",
         # Utilities
@@ -99,24 +98,7 @@ def smoke_test():
         results["parquet_files"] = 0
         results["note"] = "Run upload_data first"
 
-    # 3. Turso connection
-    try:
-        import libsql_experimental as libsql
-        conn = libsql.connect(
-            "baseball.db",
-            sync_url=os.environ["TURSO_DATABASE_URL"],
-            auth_token=os.environ["TURSO_AUTH_TOKEN"],
-        )
-        conn.sync()
-        tables = [r[0] for r in conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
-        ).fetchall()]
-        results["turso_tables"] = tables
-        results["turso"] = "connected"
-    except Exception as e:
-        results["turso"] = f"FAILED: {e}"
-
-    # 4. PyMC sampling (tiny model — proves MCMC works)
+    # 3. PyMC sampling (tiny model — proves MCMC works)
     with pm.Model():
         mu = pm.Normal("mu", mu=0.260, sigma=0.05)
         pm.Normal("obs", mu=mu, sigma=0.03,
@@ -126,10 +108,10 @@ def smoke_test():
     results["pymc_sampling"] = "OK"
     results["mu_posterior_mean"] = round(float(trace.posterior["mu"].mean()), 4)
 
-    # 5. Models volume
+    # 4. Models volume
     results["models_volume"] = Path("/models").exists()
 
-    # 6. wandb connectivity
+    # 5. wandb connectivity
     try:
         import wandb
         results["wandb_version"] = wandb.__version__
@@ -146,7 +128,7 @@ def smoke_test():
 
 @app.local_entrypoint()
 def run_smoke_test():
-    """Run full smoke test — verifies image, volumes, Turso, PyMC."""
+    """Run full smoke test — verifies image, volumes, PyMC, wandb."""
     print("🧪 Running Modal smoke test...")
     results = smoke_test.remote()
     print("\n" + "=" * 60)
@@ -155,7 +137,7 @@ def run_smoke_test():
     for k, v in results.items():
         print(f"  {k}: {v}")
     print("=" * 60)
-    if results.get("turso") == "connected" and results.get("pymc_sampling") == "OK":
+    if results.get("pymc_sampling") == "OK" and results.get("wandb_api_key") == "configured":
         print("\n✅ All systems go! Modal infrastructure is ready.")
     else:
         print("\n⚠️  Some checks failed — review above.")
