@@ -129,102 +129,31 @@
         "generalises": true
       },
       "kept_stock": false,
-      "search_trace": [
-        {
-          "pass": 2,
-          "axis": "age_slope_young",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
-        },
+      "final_pass": [
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
+          "mae": 0.029707607822458397
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
+          "mae": 0.029707607822458397
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
+          "mae": 0.029707607822458397
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
+          "mae": 0.029707607822458397
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.029707607822458397,
-          "params": {
-            "ballast": 100.0,
-            "weights": [
-              1.0,
-              0.4,
-              0.2
-            ],
-            "peak_age": 31.0,
-            "age_slope_young": 0.006,
-            "age_slope_old": 0.012
-          }
+          "mae": 0.029707607822458397
         }
       ]
     },
@@ -300,102 +229,31 @@
         "generalises": false
       },
       "kept_stock": true,
-      "search_trace": [
-        {
-          "pass": 2,
-          "axis": "age_slope_young",
-          "mae": 0.017477497873502886,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
-        },
+      "final_pass": [
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.01747583928887762,
-          "params": {
-            "ballast": 150.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
+          "mae": 0.01747583928887762
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.01747583928887762,
-          "params": {
-            "ballast": 150.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
+          "mae": 0.01747583928887762
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.01747583928887762,
-          "params": {
-            "ballast": 150.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
+          "mae": 0.01747583928887762
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.01747583928887762,
-          "params": {
-            "ballast": 150.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
+          "mae": 0.01747583928887762
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.01747583928887762,
-          "params": {
-            "ballast": 150.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 28.0,
-            "age_slope_young": 0.008,
-            "age_slope_old": -0.008
-          }
+          "mae": 0.01747583928887762
         }
       ]
     },
@@ -471,102 +329,31 @@
         "generalises": true
       },
       "kept_stock": false,
-      "search_trace": [
-        {
-          "pass": 2,
-          "axis": "age_slope_young",
-          "mae": 0.010306234507395366,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.4
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
-        },
+      "final_pass": [
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.010305793304776862,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.4
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.010305793304776862
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.010288218339252583,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.010288218339252583
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.010288218339252583,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.010288218339252583
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.010288218339252583,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.010288218339252583
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.010288218339252583,
-          "params": {
-            "ballast": 200.0,
-            "weights": [
-              1.0,
-              0.6,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.010288218339252583
         }
       ]
     },
@@ -642,102 +429,31 @@
         "generalises": true
       },
       "kept_stock": false,
-      "search_trace": [
-        {
-          "pass": 1,
-          "axis": "age_slope_young",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
-        },
+      "final_pass": [
         {
           "pass": 2,
           "axis": "ballast",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
+          "mae": 0.026850558423150307
         },
         {
           "pass": 2,
           "axis": "weights",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
+          "mae": 0.026850558423150307
         },
         {
           "pass": 2,
           "axis": "peak_age",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
+          "mae": 0.026850558423150307
         },
         {
           "pass": 2,
           "axis": "age_slope_old",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
+          "mae": 0.026850558423150307
         },
         {
           "pass": 2,
           "axis": "age_slope_young",
-          "mae": 0.026850558423150307,
-          "params": {
-            "ballast": 600.0,
-            "weights": [
-              1.0,
-              0.8,
-              1.0
-            ],
-            "peak_age": 26.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.003
-          }
+          "mae": 0.026850558423150307
         }
       ]
     },
@@ -813,102 +529,31 @@
         "generalises": true
       },
       "kept_stock": false,
-      "search_trace": [
-        {
-          "pass": 2,
-          "axis": "age_slope_young",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
-        },
+      "final_pass": [
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.03716737978366478
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.03716737978366478
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.03716737978366478
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.03716737978366478
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.03716737978366478,
-          "params": {
-            "ballast": 300.0,
-            "weights": [
-              1.0,
-              0.8,
-              0.6
-            ],
-            "peak_age": 23.0,
-            "age_slope_young": -0.012,
-            "age_slope_old": -0.012
-          }
+          "mae": 0.03716737978366478
         }
       ]
     }

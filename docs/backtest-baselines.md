@@ -1,8 +1,11 @@
 # Baseline Backtest Scores (roadmap 0.3, baseline half)
 
-Two halves: **season-level** splits (below) and the **intra-season
+Three parts: **season-level** splits (below), the **intra-season
 walk-forward** at date cutoffs ([jump](#intra-season-walk-forward--rest-of-2026-rates)),
-which is the one that judges rest-of-season projections.
+which is the one that judges rest-of-season projections, and **tuning
+Marcel's own constants**
+([jump](#tuning-marcel--fitted-constants-beat-tangos-defaults)), which moves
+this bar up.
 
 **Run:** Sept 1, 2026 · **Data:** MLB Stats API season hitting totals 2015–2026
 (`data/parquet/hitter_seasons_api.parquet`, MLBAM-keyed, rebuildable via

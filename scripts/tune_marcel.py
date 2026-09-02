@@ -171,7 +171,10 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
             },
             "inner_validation": inner,
             "kept_stock": bool(guard and not inner["generalises"]),
-            "search_trace": trace[-len(tuning.AXES) - 1:],
+            # The last full pass, as "what each axis was worth" — the params
+            # at every step would triple the file for no reader's benefit.
+            "final_pass": [{k: t[k] for k in ("pass", "axis", "mae")}
+                           for t in trace[-len(tuning.AXES):]],
         }
     return params, restricted, summary
 
