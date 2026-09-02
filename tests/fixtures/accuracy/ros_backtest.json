@@ -1,0 +1,747 @@
+{
+ "generated_at": "2026-09-02T22:34:02.447138+00:00",
+ "predict_year": 2026,
+ "min_trials": 100,
+ "components": [
+  "k_rate",
+  "bb_rate",
+  "hr_rate",
+  "iso"
+ ],
+ "cutoffs": [
+  "2026-05-01",
+  "2026-07-01",
+  "2026-08-01"
+ ],
+ "arms": [
+  "marcel",
+  "season_to_date",
+  "marcel_preseason",
+  "bayes_preseason",
+  "previous_season",
+  "league_average"
+ ],
+ "last_pa_date": "2026-09-01",
+ "scores": [
+  {
+   "component": "k_rate",
+   "model": "marcel",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5115672092,
+   "mae": 0.0277551263,
+   "rmse": 0.0351307936,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5118342478,
+   "mae": 0.0292560243,
+   "rmse": 0.0364757419,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "bayes_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5122136068,
+   "mae": 0.0296109577,
+   "rmse": 0.0381819547,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "previous_season",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5129336543,
+   "mae": 0.0318816377,
+   "rmse": 0.0424493872,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "season_to_date",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5140823642,
+   "mae": 0.0354873818,
+   "rmse": 0.0451067147,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "league_average",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5203353302,
+   "mae": 0.0507060416,
+   "rmse": 0.0638127383,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5070433994,
+   "mae": 0.0295917917,
+   "rmse": 0.0375517968,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5074980358,
+   "mae": 0.0310199,
+   "rmse": 0.0395676857,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "bayes_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5078351917,
+   "mae": 0.0324828285,
+   "rmse": 0.0410620736,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "season_to_date",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5083371626,
+   "mae": 0.0339929439,
+   "rmse": 0.0427883621,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "previous_season",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5082770653,
+   "mae": 0.0342062778,
+   "rmse": 0.0438393621,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "league_average",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5158702404,
+   "mae": 0.0517514389,
+   "rmse": 0.0650090792,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4926355829,
+   "mae": 0.0343107329,
+   "rmse": 0.0459860943,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "previous_season",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4931247425,
+   "mae": 0.0362586265,
+   "rmse": 0.048016275,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4934955516,
+   "mae": 0.0365398699,
+   "rmse": 0.0489485157,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "season_to_date",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4930788478,
+   "mae": 0.0370703041,
+   "rmse": 0.0475800274,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "bayes_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4944697484,
+   "mae": 0.0385575664,
+   "rmse": 0.0519787337,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "league_average",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.5032124819,
+   "mae": 0.0587642351,
+   "rmse": 0.0733227008,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2962719176,
+   "mae": 0.0171962434,
+   "rmse": 0.0223838465,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "bayes_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2964880901,
+   "mae": 0.017854727,
+   "rmse": 0.0230199472,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2966033506,
+   "mae": 0.0178926761,
+   "rmse": 0.0234484237,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "previous_season",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2982465498,
+   "mae": 0.0210488992,
+   "rmse": 0.0275095554,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "season_to_date",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2977621084,
+   "mae": 0.0223860997,
+   "rmse": 0.0274683321,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "league_average",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2992683546,
+   "mae": 0.0253610984,
+   "rmse": 0.0314275544,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3026115261,
+   "mae": 0.0205701824,
+   "rmse": 0.0264937878,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.303258714,
+   "mae": 0.0217817448,
+   "rmse": 0.0281808717,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "bayes_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3033588725,
+   "mae": 0.0222355698,
+   "rmse": 0.0284515697,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "season_to_date",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3033369245,
+   "mae": 0.0224549973,
+   "rmse": 0.0284871798,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "previous_season",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3047401409,
+   "mae": 0.024641309,
+   "rmse": 0.031597398,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "league_average",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3051666661,
+   "mae": 0.0263101001,
+   "rmse": 0.0332324193,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.3133117527,
+   "mae": 0.0267864446,
+   "rmse": 0.0347569985,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.313982112,
+   "mae": 0.027519499,
+   "rmse": 0.0361497448,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "bayes_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.313947679,
+   "mae": 0.0279278295,
+   "rmse": 0.0359416953,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "season_to_date",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.3139207471,
+   "mae": 0.0280419587,
+   "rmse": 0.0358646666,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "previous_season",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.3150037708,
+   "mae": 0.0285706121,
+   "rmse": 0.0377543394,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "league_average",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.3167516894,
+   "mae": 0.0320526214,
+   "rmse": 0.0420191986,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1419258891,
+   "mae": 0.0098262487,
+   "rmse": 0.0126225622,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1418997236,
+   "mae": 0.0098283242,
+   "rmse": 0.0126055486,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "bayes_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1419412755,
+   "mae": 0.0099258854,
+   "rmse": 0.0126770303,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "season_to_date",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1430644462,
+   "mae": 0.0114724355,
+   "rmse": 0.0148546283,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "previous_season",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1546697683,
+   "mae": 0.0120875463,
+   "rmse": 0.0156821682,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "league_average",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1435137037,
+   "mae": 0.0127779214,
+   "rmse": 0.0159094045,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1420169598,
+   "mae": 0.0114878766,
+   "rmse": 0.0149882074,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "bayes_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1420069218,
+   "mae": 0.011671744,
+   "rmse": 0.01501725,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1420961102,
+   "mae": 0.0117535952,
+   "rmse": 0.0152243792,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "season_to_date",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1425053866,
+   "mae": 0.0122783237,
+   "rmse": 0.0158210388,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "league_average",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1432017014,
+   "mae": 0.0134523241,
+   "rmse": 0.0170942003,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "previous_season",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1580648814,
+   "mae": 0.0141006648,
+   "rmse": 0.0182190637,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1434625821,
+   "mae": 0.0151689375,
+   "rmse": 0.0193064561,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "bayes_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1433705459,
+   "mae": 0.0153200561,
+   "rmse": 0.0191220813,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1434292041,
+   "mae": 0.0155223171,
+   "rmse": 0.0192499376,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "season_to_date",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1443344176,
+   "mae": 0.0155606469,
+   "rmse": 0.0206892488,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "league_average",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1446137595,
+   "mae": 0.01610514,
+   "rmse": 0.0207970824,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "previous_season",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1513446271,
+   "mae": 0.0166630376,
+   "rmse": 0.0205848452,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0344816923,
+   "rmse": 0.0452585549,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_preseason",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0351762321,
+   "rmse": 0.0458111161,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "bayes_preseason",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0358324405,
+   "rmse": 0.0466144365,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "season_to_date",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0410496829,
+   "rmse": 0.0528067404,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "previous_season",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0417707545,
+   "rmse": 0.0559968981,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "league_average",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0447603575,
+   "rmse": 0.0563943942,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0412670942,
+   "rmse": 0.0535631954,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_preseason",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0427682342,
+   "rmse": 0.0552465989,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "season_to_date",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.043499871,
+   "rmse": 0.05685436,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "bayes_preseason",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0436414725,
+   "rmse": 0.0554594653,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "league_average",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0471880187,
+   "rmse": 0.0612601362,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "previous_season",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0493217835,
+   "rmse": 0.0642724312,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "bayes_preseason",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0550834741,
+   "rmse": 0.0697327265,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_preseason",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0558105654,
+   "rmse": 0.0683258001,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0566780999,
+   "rmse": 0.0703994951,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "previous_season",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0583925322,
+   "rmse": 0.0712465577,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "season_to_date",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.059435633,
+   "rmse": 0.0769848771,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "league_average",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0609070956,
+   "rmse": 0.0780289835,
+   "cutoff": "2026-08-01"
+  }
+ ]
+}

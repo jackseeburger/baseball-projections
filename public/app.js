@@ -24,7 +24,7 @@ let tooltip;
 
 // ─── Data Loading ────────────────────────────────────────────────
 async function loadData() {
-  const [comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy] = await Promise.all([
+  const [comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros] = await Promise.all([
     d3.json("data/comparison.json"),
     d3.json("data/our_model.json"),
     d3.json("data/aging_curves.json"),
@@ -32,8 +32,12 @@ async function loadData() {
     d3.json("data/career_war.json"),
     d3.json("data/playoff_odds/latest.json").catch(() => null),
     d3.json("data/accuracy/latest.json").catch(() => null),
+    // The live rest-of-season projection. Every page that uses it checks for
+    // null first: a checkout that has never run build_ros_projections.py still
+    // renders, it just shows the preseason numbers alone.
+    d3.json("data/projections/latest.json").catch(() => null),
   ]);
-  DATA = { comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy };
+  DATA = { comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros };
 }
 
 // ─── Navigation ──────────────────────────────────────────────────
@@ -321,15 +325,18 @@ function renderPlayerCard(player) {
         <span>Bats ${player.stand}</span>
       </div>
     </div>
+    <div id="player-ros"></div>
     <div class="grid-2">
-      <div class="card"><h3>Component Rates</h3><div id="player-components"></div></div>
-      <div class="card"><h3>Projection Uncertainty</h3><div id="player-uncertainty"></div></div>
+      <div class="card"><h3>Component Rates <span class="card-sub">preseason</span></h3><div id="player-components"></div></div>
+      <div class="card"><h3>Projection Uncertainty <span class="card-sub">preseason</span></h3><div id="player-uncertainty"></div></div>
     </div>
-    <div class="card"><h3>Aggregate Projections</h3><div id="player-agg-table"></div></div>
+    <div class="card"><h3>Aggregate Projections <span class="card-sub">preseason, full season</span></h3><div id="player-agg-table"></div></div>
   `;
   container.innerHTML = html;
 
-  // Component bar chart
+  // The live rest-of-season projection leads; everything below it is the
+  // preseason card this page used to be.
+  renderPlayerROS(player);
   renderComponentBars(player);
   renderUncertainty(player);
   renderPlayerAggTable(player);
@@ -460,6 +467,200 @@ function renderPlayerAggTable(player) {
   html += "</tbody></table>";
   document.getElementById("player-agg-table").innerHTML = html;
 }
+
+// ══════════════════════════════════════════════════════════════════
+// REST-OF-SEASON PROJECTION (station A, live)
+// ══════════════════════════════════════════════════════════════════
+// The number the site leads with. `data/projections/latest.json` is written by
+// scripts/build_ros_projections.py: Marcel fed the season to date — the arm
+// that wins the intra-season walk-forward — times station B's projected PA.
+// The preseason Bayesian components ride along as a labelled comparison
+// because they are what this page used to show, and they lose.
+//
+// Every function here returns early when the file is absent. That is the
+// contract: the page predates the projection and must keep working without it.
+
+const ROS_STATS = [
+  { key: "k", label: "K%", asc: true },
+  { key: "bb", label: "BB%", asc: false },
+  { key: "hr", label: "HR/PA", asc: false },
+  { key: "iso", label: "ISO", asc: false },
+  { key: "babip", label: "BABIP", asc: false },
+];
+const ROS_FALLBACK_ARMS = [
+  { key: "marcel", label: "Live (Marcel + 2026)", is_live: true },
+  { key: "bayes", label: "Preseason Bayesian", is_live: false },
+  { key: "marcel_preseason", label: "Preseason Marcel", is_live: false },
+];
+
+let _rosIndex = null;
+
+function rosDoc() {
+  return DATA.ros && Array.isArray(DATA.ros.players) ? DATA.ros : null;
+}
+
+function rosArms() {
+  const doc = rosDoc();
+  return (doc && doc.arms && doc.arms.length) ? doc.arms : ROS_FALLBACK_ARMS;
+}
+
+function rosPlayer(batter) {
+  const doc = rosDoc();
+  if (!doc) return null;
+  if (!_rosIndex) {
+    _rosIndex = new Map();
+    doc.players.forEach(p => _rosIndex.set(+p.batter, p));
+  }
+  return _rosIndex.get(+batter) || null;
+}
+
+function rosFmt(v, digits = 3) {
+  if (v == null || isNaN(v)) return "—";
+  return (+v).toFixed(digits).replace(/^0\./, ".");
+}
+
+/** The one-line claim, plus a stale badge when the build could not refresh. */
+function rosFramingHTML() {
+  const doc = rosDoc();
+  if (!doc) return "";
+  const badge = doc.stale
+    ? '<span class="badge-stale" title="not rebuilt by the latest run">stale</span>'
+    : '<span class="badge-fresh">live</span>';
+  const reason = doc.stale && doc.stale_reason
+    ? `<p class="acc-stale-reason">⚠ ${esc(doc.stale_reason)}</p>` : "";
+  return `<p class="ros-framing">${badge} ${esc(doc.framing || "")}
+    <a href="#" data-page="accuracy" class="ros-link">Model Accuracy →</a></p>${reason}`;
+}
+
+/** Re-arm the sidebar navigation for links rendered after initNav ran. */
+function wireROSLinks(root) {
+  root.querySelectorAll("a.ros-link").forEach(a => {
+    a.addEventListener("click", e => {
+      e.preventDefault();
+      document.querySelector('#sidebar [data-page="accuracy"]').click();
+    });
+  });
+}
+
+// ─── player card block ───────────────────────────────────────────
+function renderPlayerROS(player) {
+  const host = document.getElementById("player-ros");
+  if (!host) return;
+  const row = rosPlayer(player.batter);
+  const doc = rosDoc();
+  if (!row) {
+    // No projected rest-of-season plate appearances: injured, optioned, or the
+    // projection has not been built here. Say which rather than showing zeros.
+    host.innerHTML = `<div class="card"><h3>Rest of season</h3>
+      <p class="method-note">${doc
+        ? "No projected rest-of-season plate appearances for this hitter — he is on the injured list, optioned, or off a 40-man roster as of "
+          + esc(doc.as_of) + "."
+        : "The live rest-of-season projection has not been built in this checkout (run <code>scripts/build_ros_projections.py</code>)."}</p></div>`;
+    return;
+  }
+
+  const arms = rosArms();
+  let table = '<table class="ros-table"><thead><tr><th>Component</th>';
+  arms.forEach(a => {
+    table += `<th class="num${a.is_live ? " ros-live-col" : ""}">${esc(a.label)}</th>`;
+  });
+  table += "</tr></thead><tbody>";
+  ROS_STATS.forEach(stat => {
+    table += `<tr><td class="name-cell">${stat.label}</td>`;
+    arms.forEach(a => {
+      const v = row[`${stat.key}_rate_${a.key}`];
+      table += `<td class="num${a.is_live ? " ros-live-col" : ""}">${rosFmt(v)}</td>`;
+    });
+    table += "</tr>";
+  });
+  table += "</tbody></table>";
+
+  const tiles = [
+    ["PA", rosFmt(row.pa_ros, 0)],
+    ["wOBA", rosFmt(row.woba_ros)],
+    ["HR", rosFmt(row.hr_ros, 1)],
+    ["BB", rosFmt(row.bb_ros, 1)],
+    ["K", rosFmt(row.k_ros, 1)],
+  ].map(([label, value]) =>
+    `<div class="ros-tile"><span class="ros-tile-value">${value}</span>
+       <span class="ros-tile-label">${label}</span></div>`).join("");
+
+  host.innerHTML = `<div class="card ros-card">
+    <h3>Rest of season — ${esc(row.team_abbrev || "")} <span class="ros-asof">as of ${esc(row.as_of)}</span></h3>
+    ${rosFramingHTML()}
+    <div class="ros-tiles">${tiles}</div>
+    <div class="table-scroll">${table}</div>
+    <p class="method-note">${esc((doc && doc.method) || "")}</p>
+  </div>`;
+  wireROSLinks(host);
+}
+
+// ─── leaderboard block ───────────────────────────────────────────
+function renderROSLeaderboard() {
+  const card = document.getElementById("ros-leaderboard-card");
+  if (!card) return;
+  const doc = rosDoc();
+  if (!doc) {
+    card.innerHTML = `<h3>Rest of season — live projection</h3>
+      <p class="method-note">Not built in this checkout — run
+      <code>scripts/build_ros_projections.py</code> to generate
+      <code>public/data/projections/latest.json</code>. The preseason
+      leaderboard below is unaffected.</p>`;
+    return;
+  }
+  document.getElementById("ros-framing").innerHTML = rosFramingHTML();
+  wireROSLinks(card);
+
+  const statSel = document.getElementById("ros-component");
+  const paSel = document.getElementById("ros-minpa");
+  const countSel = document.getElementById("ros-count");
+  const draw = () => renderROSLeaderboardTable(statSel.value, +paSel.value, +countSel.value);
+  [statSel, paSel, countSel].forEach(el => el.addEventListener("change", draw));
+  document.getElementById("ros-method").textContent = doc.method || "";
+  draw();
+}
+
+function renderROSLeaderboardTable(statKey, minPA, count) {
+  const doc = rosDoc();
+  const stat = ROS_STATS.find(s => s.key === statKey) || ROS_STATS[0];
+  const arms = rosArms();
+  const rows = doc.players
+    .filter(p => p.woba_ros != null && +p.pa_ros >= minPA)
+    .sort((a, b) => (+b.woba_ros) - (+a.woba_ros))
+    .slice(0, count);
+
+  let h = '<table class="acc-table ros-table"><thead><tr>' +
+    "<th>#</th><th>Player</th><th>Team</th>" +
+    '<th class="num">PA</th><th class="num">K</th><th class="num">BB</th>' +
+    '<th class="num">HR</th><th class="num ros-live-col">wOBA</th>';
+  arms.forEach(a => {
+    h += `<th class="num${a.is_live ? " ros-live-col" : ""}">${esc(stat.label)} · ${esc(a.label)}</th>`;
+  });
+  h += "</tr></thead><tbody>";
+
+  rows.forEach((p, i) => {
+    h += `<tr><td>${i + 1}</td>` +
+      `<td class="name-cell">${esc(p.name || p.batter)}</td>` +
+      `<td class="team-cell">${esc(p.team_abbrev || "")}</td>` +
+      `<td class="num">${rosFmt(p.pa_ros, 0)}</td>` +
+      `<td class="num">${rosFmt(p.k_ros, 1)}</td>` +
+      `<td class="num">${rosFmt(p.bb_ros, 1)}</td>` +
+      `<td class="num">${rosFmt(p.hr_ros, 1)}</td>` +
+      `<td class="num ros-live-col">${rosFmt(p.woba_ros)}</td>`;
+    arms.forEach(a => {
+      h += `<td class="num${a.is_live ? " ros-live-col" : ""}">` +
+        `${rosFmt(p[`${stat.key}_rate_${a.key}`])}</td>`;
+    });
+    h += "</tr>";
+  });
+  h += "</tbody></table>";
+  document.getElementById("ros-leaderboard-table").innerHTML = h;
+  document.getElementById("ros-count-note").textContent =
+    `${rows.length} of ${doc.n_hitters} projected hitters shown ` +
+    `(at least ${minPA} projected plate appearances), ranked by projected ` +
+    `rest-of-season wOBA.`;
+}
+
 
 // ══════════════════════════════════════════════════════════════════
 // CAREER WAR CHART — with Bayesian uncertainty bands
@@ -1162,6 +1363,7 @@ function renderAgingDetail(stat) {
 // LEADERBOARD PAGE
 // ══════════════════════════════════════════════════════════════════
 function renderLeaderboard() {
+  renderROSLeaderboard();
   const statSelect = document.getElementById("lb-stat");
   const countSelect = document.getElementById("lb-count");
   const render = () => renderLeaderboardTable(statSelect.value, +countSelect.value);
@@ -1358,7 +1560,7 @@ function renderBracket(teams) {
 // scripts/build_accuracy_json.py generates from the scoring scripts.
 // Nothing here is hard-coded: this renderer only formats and labels.
 // ══════════════════════════════════════════════════════════════════
-const ACCURACY_ORDER = ["components", "game_odds", "playoff_odds_control"];
+const ACCURACY_ORDER = ["ros_backtest", "components", "game_odds", "playoff_odds_control"];
 
 function esc(v) {
   return String(v == null ? "" : v)
@@ -1393,32 +1595,43 @@ function accuracyTable(section) {
   if (!cols.length || !rows.length) return '<p class="method-note">No rows in this section.</p>';
 
   // Best value per lower-is-better column, so the winner is visible at a glance.
+  // A section whose rows are not comparable top to bottom (the rest-of-season
+  // table: a later cutoff scores a shorter, noisier window) sets
+  // highlight_best:false and marks the winners itself, per row, in `best`.
   const best = {};
-  cols.forEach(c => {
-    if (!LOWER_IS_BETTER.has(c.type)) return;
-    const vals = rows.map(r => accCellValue(r, c)).filter(v => typeof v === "number");
-    if (vals.length) best[c.key] = Math.min(...vals);
-  });
+  if (section.highlight_best !== false) {
+    cols.forEach(c => {
+      if (!LOWER_IS_BETTER.has(c.type)) return;
+      const vals = rows.map(r => accCellValue(r, c)).filter(v => typeof v === "number");
+      if (vals.length) best[c.key] = Math.min(...vals);
+    });
+  }
 
   let h = '<table class="acc-table"><thead><tr>';
   cols.forEach(c => {
     h += `<th class="${c.type === "text" ? "" : "num"}">${esc(c.label)}</th>`;
   });
   h += "</tr></thead><tbody>";
+  // Tags belong on the row's *name*, which is the first text column — a second
+  // text column (the rest-of-season table's cutoff) must not repeat them.
+  const nameKey = (cols.find(c => c.type === "text") || {}).key;
   rows.forEach(r => {
     const cls = [r.is_market ? "acc-market-row" : "", r.is_control ? "acc-control-row" : "",
-                 r.is_ours ? "acc-ours-row" : ""].filter(Boolean).join(" ");
+                 r.is_ours ? "acc-ours-row" : "",
+                 r.is_production ? "acc-live-row" : ""].filter(Boolean).join(" ");
     h += `<tr class="${cls}">`;
     cols.forEach(c => {
       const v = accCellValue(r, c);
       if (c.type === "text") {
-        const tags = [r.is_market ? '<span class="acc-tag acc-tag-market">market</span>' : "",
-                      r.is_control ? '<span class="acc-tag acc-tag-control">control</span>' : "",
-                      r.is_ours ? '<span class="acc-tag acc-tag-ours">ours</span>' : "",
-                      r.is_production ? '<span class="acc-tag acc-tag-prod">live</span>' : ""].join("");
+        const tags = c.key !== nameKey ? "" :
+          [r.is_market ? '<span class="acc-tag acc-tag-market">market</span>' : "",
+           r.is_control ? '<span class="acc-tag acc-tag-control">control</span>' : "",
+           r.is_ours ? '<span class="acc-tag acc-tag-ours">ours</span>' : "",
+           r.is_production ? '<span class="acc-tag acc-tag-prod">live</span>' : ""].join("");
         h += `<td class="name-cell">${esc(v)}${tags}</td>`;
       } else {
-        const isBest = c.key in best && v === best[c.key];
+        const isBest = (c.key in best && v === best[c.key])
+          || (Array.isArray(r.best) && r.best.includes(c.key));
         h += `<td class="num${isBest ? " best" : ""}">${accFmt(v, c.type)}</td>`;
       }
     });

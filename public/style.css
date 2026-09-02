@@ -473,6 +473,40 @@ select:focus { border-color: var(--accent); }
 /* Our own rows carry only a tag: the market/control borders stay unique so the
    bar is obvious even in a table that is mostly our own sweep. */
 
+/* The live rest-of-season projection ships in the live column: it is the
+   number, the preseason columns beside it are the comparison. */
+.acc-table tr.acc-live-row td { background: rgba(52, 211, 153, 0.06); }
+.acc-table tr.acc-live-row td:first-child { border-left: 3px solid var(--green); }
+
+/* ─── Rest-of-season projection (station A, live) ───────────────── */
+.ros-card h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ros-asof { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+.ros-framing { color: var(--text); font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
+.ros-framing .badge-fresh, .ros-framing .badge-stale { margin-right: 4px; }
+.ros-link { color: var(--accent); text-decoration: none; white-space: nowrap; }
+.ros-link:hover { text-decoration: underline; }
+
+.ros-table { min-width: 100%; white-space: nowrap; }
+.ros-table th.num, .ros-table td.num { text-align: right; font-family: var(--mono); }
+.ros-table td.name-cell, .ros-table td.team-cell { white-space: nowrap; }
+/* One column is the projection and the rest are context — say so in the ink,
+   not only in the header. */
+.ros-table th.ros-live-col { color: var(--green); }
+.ros-table td.ros-live-col { color: var(--text); font-weight: 700;
+  background: rgba(52, 211, 153, 0.07); }
+
+.ros-tiles { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ros-tile { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+  padding: 10px 16px; min-width: 78px; display: flex; flex-direction: column; gap: 2px; }
+.ros-tile-value { font-family: var(--mono); font-size: 19px; font-weight: 700; color: var(--text); }
+.ros-tile-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted); }
+
+.section-heading { font-size: 14px; color: var(--text-dim); font-weight: 600;
+  margin: 26px 0 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.card-sub { font-size: 11px; color: var(--text-muted); font-weight: 500;
+  text-transform: none; letter-spacing: 0; }
+
 /* Narrow screens: the sidebar becomes a header strip so the tables get the
    full viewport width instead of ~150px next to a fixed 200px rail. */
 @media (max-width: 700px) {
@@ -489,4 +523,6 @@ select:focus { border-color: var(--accent); }
   #content { margin-left: 0; padding: 20px 14px; }
   .card { padding: 16px 14px; }
   .acc-table td.reason-cell { min-width: 200px; }
+  .ros-tile { padding: 8px 12px; min-width: 66px; }
+  .ros-tile-value { font-size: 16px; }
 }

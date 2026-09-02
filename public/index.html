@@ -188,6 +188,44 @@
     <!-- Leaderboard Page -->
     <section id="page-leaderboard" class="page">
       <h1>2026 Projection Leaderboards</h1>
+
+      <!-- Station A, live. Ranked by the projection that wins the intra-season
+           walk-forward (Marcel fed the season to date); the preseason columns
+           are the comparison, not the product. Data:
+           public/data/projections/latest.json — absent, the card says so and
+           the preseason leaderboard below is unaffected. -->
+      <div class="card ros-card" id="ros-leaderboard-card">
+        <h3>Rest of season — live projection</h3>
+        <div id="ros-framing"></div>
+        <div class="control-row">
+          <label>Compare: </label>
+          <select id="ros-component">
+            <option value="k" selected>K%</option>
+            <option value="bb">BB%</option>
+            <option value="hr">HR/PA</option>
+            <option value="iso">ISO</option>
+            <option value="babip">BABIP</option>
+          </select>
+          <label>Min PA: </label>
+          <select id="ros-minpa">
+            <option value="0">Any</option>
+            <option value="25">25+</option>
+            <option value="50" selected>50+</option>
+            <option value="80">80+</option>
+          </select>
+          <label>Show: </label>
+          <select id="ros-count">
+            <option value="25" selected>Top 25</option>
+            <option value="50">Top 50</option>
+            <option value="100">Top 100</option>
+          </select>
+        </div>
+        <div class="table-scroll" id="ros-leaderboard-table"></div>
+        <p class="method-note" id="ros-count-note"></p>
+        <p class="method-note" id="ros-method"></p>
+      </div>
+
+      <h3 class="section-heading">Preseason projections, full season</h3>
       <div class="control-row">
         <label>Rank By: </label>
         <select id="lb-stat">
