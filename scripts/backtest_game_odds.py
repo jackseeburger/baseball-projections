@@ -11,9 +11,13 @@ Metrics: Brier score and log loss (lower is better). Baselines:
     win_pct_log5    — raw season win% into log5 + HFA (no regression)
     pythag_60       — the production model (regressed Pythagenpat, 60 games)
     pythag_{k}      — ballast sweep to see what the data prefers
+    pythag_60_sp    — pythag_60 with each side's runs allowed re-weighted
+                      toward its announced starting pitcher (src/sim/starters)
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
+    python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+        --market data/parquet/market_closes_2026.parquet
 """
 from __future__ import annotations
 
@@ -26,10 +30,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
-from src.data.mlb_stats_api import fetch_schedule
+from src.data.mlb_stats_api import (
+    fetch_pitcher_game_logs, fetch_probables, fetch_schedule, fetch_season_pitching,
+)
+from src.sim import starters as sp_model
 from src.sim.season import from_schedule
 from src.sim.strength import HFA_PRIOR, home_win_prob, pythagenpat
 from src.sim.teams import fetch_teams
+
+SP_MODEL = "pythag_60_sp"
+SP_BALLAST_GAMES = 60.0   # the production team-strength ballast this model extends
 
 
 def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
@@ -42,20 +52,29 @@ def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
     return tot
 
 
-def strengths(tot: pd.DataFrame, regress_games: float) -> pd.Series:
+def team_rates(tot: pd.DataFrame, regress_games: float) -> pd.DataFrame:
+    """Runs scored/allowed per game, regressed toward league average."""
     lg_rs = tot["rs"].sum() / max(tot["g"].sum(), 1)
     lg_ra = tot["ra"].sum() / max(tot["g"].sum(), 1)
-    out = {}
-    for t, r in tot.iterrows():
-        rs_pg = (r["rs"] + regress_games * lg_rs) / (r["g"] + regress_games)
-        ra_pg = (r["ra"] + regress_games * lg_ra) / (r["g"] + regress_games)
-        out[t] = pythagenpat(rs_pg, ra_pg, 1.0)
-    return pd.Series(out)
+    return pd.DataFrame({
+        "rs_pg": (tot["rs"] + regress_games * lg_rs) / (tot["g"] + regress_games),
+        "ra_pg": (tot["ra"] + regress_games * lg_ra) / (tot["g"] + regress_games),
+    })
+
+
+def strengths(tot: pd.DataFrame, regress_games: float) -> pd.Series:
+    rates = team_rates(tot, regress_games)
+    return pd.Series({t: pythagenpat(r["rs_pg"], r["ra_pg"], 1.0)
+                      for t, r in rates.iterrows()})
 
 
 def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
-                 ballasts: list[float]) -> pd.DataFrame:
-    """One row per scored game with each model's P(home)."""
+                 ballasts: list[float], sp_ctx: dict | None = None) -> pd.DataFrame:
+    """One row per scored game with each model's P(home).
+
+    Every quantity used on a date is rebuilt from games and pitcher
+    appearances strictly before that date.
+    """
     completed = completed.sort_values("date").reset_index(drop=True)
     rows = []
     for date, day in completed.groupby("date", sort=True):
@@ -66,6 +85,7 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
         hfa_obs = (HFA_PRIOR * 2000 + before["home_win"].sum()) / (2000 + len(before))
         wp = (tot["w"] / tot["g"]).clip(0.2, 0.8)
         s_by_k = {k: strengths(tot, k) for k in ballasts}
+        sp_day = starter_day_context(tot, date, sp_ctx) if sp_ctx else None
         for g in day.itertuples(index=False):
             row = {"date": date, "game_pk": int(g.game_pk),
                    "home_id": g.home_id, "away_id": g.away_id,
@@ -74,8 +94,83 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                    "win_pct_log5": float(home_win_prob(wp[g.home_id], wp[g.away_id], hfa_obs))}
             for k, s in s_by_k.items():
                 row[f"pythag_{int(k)}"] = float(home_win_prob(s[g.home_id], s[g.away_id], hfa_obs))
+            if sp_day is not None:
+                p_sp, flags = starter_game_prob(g, sp_day, hfa_obs)
+                row[SP_MODEL] = p_sp if p_sp is not None else row[f"pythag_{int(SP_BALLAST_GAMES)}"]
+                row.update(flags)
             rows.append(row)
     return pd.DataFrame(rows)
+
+
+# ─── station E starting-pitcher term ───
+
+def starter_day_context(tot: pd.DataFrame, date: str, sp_ctx: dict) -> dict:
+    """Everything the starter model needs for one slate, built from the past only."""
+    current = sp_model.appearances_before(sp_ctx["game_logs"], date)
+    counts = pd.concat([sp_ctx["prior_counts"], current], ignore_index=True)
+    # League rates come from the completed prior seasons only: the current-season
+    # logs we hold are starters-only, so pooling them would bias the regression
+    # target. The current run environment enters through lg_ra9, which anchors
+    # the FIP constant to season-to-date league runs per game.
+    lg = sp_ctx["league"]
+    lg_ra9 = float(tot["ra"].sum() / max(tot["g"].sum(), 1))
+    rates = sp_model.marcel_rates(counts, sp_ctx["season"], lg,
+                                  ballast=sp_ctx["ballast"])
+    return {
+        "sp_ra9": sp_model.starter_ra9_lookup(rates, lg, lg_ra9),
+        "lg_ra9": lg_ra9,
+        "team": team_rates(tot, SP_BALLAST_GAMES),
+        "probables": sp_ctx["probables"],
+        "starter_ip": sp_ctx["starter_ip"],
+    }
+
+
+def starter_game_prob(g, day: dict, hfa: float):
+    """P(home) with each side's runs allowed blended toward its starter.
+
+    Returns (probability or None when a starter is unknown, diagnostic flags).
+    """
+    sp_ids = day["probables"].get(int(g.game_pk))
+    flags = {"sp_fallback": sp_ids is None, "sp_no_history": 0}
+    if sp_ids is None:
+        return None, flags
+    team, lg_ra9 = day["team"], day["lg_ra9"]
+    strength = {}
+    for side, team_id, pid in (("home", g.home_id, sp_ids[0]),
+                               ("away", g.away_id, sp_ids[1])):
+        flags["sp_no_history"] += int(pid not in day["sp_ra9"])
+        ra9 = sp_model.blend_starter_team(day["sp_ra9"].get(pid, lg_ra9),
+                                          team.loc[team_id, "ra_pg"], lg_ra9,
+                                          starter_ip=day["starter_ip"])
+        strength[side] = pythagenpat(float(team.loc[team_id, "rs_pg"]), float(ra9), 1.0)
+    return float(home_win_prob(strength["home"], strength["away"], hfa)), flags
+
+
+def build_sp_context(season: int, scored: pd.DataFrame, ballast: float,
+                     starter_ip: float, prior_seasons: int = 2) -> dict:
+    """Fetch probables + pitcher counts once for the whole backtest.
+
+    `prior_seasons` completed seasons plus the current one are Marcel-weighted,
+    matching the 5/4/3 weights in `src.sim.starters`.
+    """
+    probables = fetch_probables(f"{season}-03-01", f"{season}-11-15")
+    probables = probables.dropna(subset=["home_sp_id", "away_sp_id"])
+    probables = probables[probables["game_pk"].isin(scored["game_pk"])]
+    pmap = {int(r.game_pk): (int(r.home_sp_id), int(r.away_sp_id))
+            for r in probables.itertuples(index=False)}
+
+    prior = pd.concat(
+        [fetch_season_pitching(y) for y in range(season - prior_seasons, season)],
+        ignore_index=True)
+    prior_counts = sp_model.normalize_counts(prior)
+
+    logs = fetch_pitcher_game_logs({p for ids in pmap.values() for p in ids}, season)
+    logs = logs[logs["game_type"] == "R"]
+    game_logs = sp_model.normalize_counts(logs)
+    game_logs["date"] = logs["date"].to_numpy()
+    return {"probables": pmap, "prior_counts": prior_counts, "game_logs": game_logs,
+            "league": sp_model.league_rates(prior_counts), "season": season,
+            "ballast": ballast, "starter_ip": starter_ip}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -107,6 +202,15 @@ def main() -> None:
     parser.add_argument("--min-games", type=int, default=20,
                         help="skip dates until every team has this many games")
     parser.add_argument("--ballasts", default="0,30,60,100,160")
+    parser.add_argument("--no-starters", action="store_true",
+                        help="skip the pythag_60_sp starting-pitcher model")
+    parser.add_argument("--sp-ballast", type=float, default=None,
+                        help="override the per-component regression ballasts in "
+                             "src/sim/starters with one batters-faced number "
+                             "(the defaults are stabilization points from the "
+                             "literature; nothing here is fit to this season)")
+    parser.add_argument("--starter-ip", type=float, default=sp_model.STARTER_IP,
+                        help="innings the starter is assumed to cover")
     parser.add_argument("--market", type=Path, default=None,
                         help="market_closes parquet from scripts/backfill_market_closes.py; "
                              "scores each venue's pre-game close as a model on the common games")
@@ -122,24 +226,42 @@ def main() -> None:
     scored["home_win"] = scored["home_score"] > scored["away_score"]
     scored = scored[scored["game_type"] == "R"]
 
-    preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games, ballasts)
+    sp_ctx = None
+    if not args.no_starters:
+        sp_ctx = build_sp_context(
+            args.season, scored,
+            sp_model.BALLAST_BF if args.sp_ballast is None else args.sp_ballast,
+            args.starter_ip)
+
+    preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
+                         ballasts, sp_ctx)
     models = ["home_constant", "win_pct_log5"] + [f"pythag_{int(k)}" for k in ballasts]
+    if sp_ctx is not None:
+        models.append(SP_MODEL)
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
+    if sp_ctx is not None:
+        print(f"\n{SP_MODEL}: {int(preds['sp_fallback'].sum())} of {len(preds)} games fell back "
+              f"to pythag_{int(SP_BALLAST_GAMES)} for a missing starter; "
+              f"{int(preds['sp_no_history'].sum())} starter slots had no history "
+              f"(scored at league average).")
 
     if args.market is not None:
         preds, market_models = join_market(preds, pd.read_parquet(args.market))
         print(f"\n{len(preds)} games also priced by every venue in {args.market.name} — "
               f"the market is the bar (docs/architecture.md §0):\n")
         print(score(preds, models + market_models).round(4).to_string(index=False))
-    # Calibration of the production model
-    prod = preds[["home_win", "pythag_60"]].copy()
-    prod["bucket"] = pd.cut(prod["pythag_60"], [0, .4, .45, .5, .55, .6, .65, 1.0])
-    cal = prod.groupby("bucket", observed=True).agg(n=("home_win", "size"),
-                                                   predicted=("pythag_60", "mean"),
-                                                   realized=("home_win", "mean"))
-    print("\nCalibration (pythag_60):")
-    print(cal.round(3).to_string())
+        if sp_ctx is not None:
+            print(f"\n  of these, {int(preds['sp_fallback'].sum())} fell back to "
+                  f"pythag_{int(SP_BALLAST_GAMES)} for a missing starter.")
+    # Calibration of the production model, and of the challenger
+    for model in ["pythag_60"] + ([SP_MODEL] if sp_ctx is not None else []):
+        buckets = pd.cut(preds[model], [0, .4, .45, .5, .55, .6, .65, 1.0])
+        cal = preds.groupby(buckets, observed=True).agg(n=("home_win", "size"),
+                                                        predicted=(model, "mean"),
+                                                        realized=("home_win", "mean"))
+        print(f"\nCalibration ({model}):")
+        print(cal.round(3).to_string())
 
 
 if __name__ == "__main__":
