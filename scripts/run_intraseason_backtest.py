@@ -6,10 +6,16 @@ same scoring path as the season-level harness (`src/eval/backtest.py`).
 
 Arms at every cutoff:
 
-    marcel            5/4/3 with the partial current season as the most
-                      recent year (Marcel weights by PA, so it scales itself)
-    marcel_preseason  the same Marcel with the partial season withheld — the
-                      control that isolates the value of in-season data
+    marcel_tuned      the live model (src/projections/ros.py): the same
+                      estimator with per-component ballast, recency weights
+                      and age curve fitted walk-forward on 2020-2024 and
+                      frozen in src/eval/marcel_params.json
+    marcel            stock Marcel — 5/4/3 with the partial current season as
+                      the most recent year (Marcel weights by PA, so it scales
+                      itself). The constants Tango published, unfitted.
+    marcel_tuned_preseason / marcel_preseason
+                      the same two with the partial season withheld — the
+                      controls that isolate the value of in-season data
     season_to_date    this year's rate regressed to league with the
                       component's stabilization-point ballast
     previous_season   the last complete season, unregressed
@@ -40,7 +46,9 @@ from src.eval.baselines import INTRASEASON_BASELINES
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_COMPONENTS = ["k_rate", "bb_rate", "hr_rate", "babip", "iso"]
 DEFAULT_CUTOFFS = ["2026-05-01", "2026-07-01", "2026-08-01"]
-ARM_ORDER = ["marcel", "season_to_date", "marcel_preseason",
+# The live arm first: `marcel_tuned` is what src/projections/ros.py serves.
+ARM_ORDER = ["marcel_tuned", "marcel", "season_to_date",
+             "marcel_tuned_preseason", "marcel_preseason",
              "bayes_preseason", "previous_season", "league_average"]
 
 

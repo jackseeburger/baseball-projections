@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-02T22:34:02.447138+00:00",
+ "generated_at": "2026-09-02T23:34:20.788385+00:00",
  "predict_year": 2026,
  "min_trials": 100,
  "components": [
@@ -14,8 +14,10 @@
   "2026-08-01"
  ],
  "arms": [
+  "marcel_tuned",
   "marcel",
   "season_to_date",
+  "marcel_tuned_preseason",
   "marcel_preseason",
   "bayes_preseason",
   "previous_season",
@@ -25,12 +27,32 @@
  "scores": [
   {
    "component": "k_rate",
+   "model": "marcel_tuned",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5113459661,
+   "mae": 0.0266862516,
+   "rmse": 0.0343048911,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
    "model": "marcel",
    "n_players": 315,
    "total_trials": 93658,
    "log_loss": 0.5115672092,
    "mae": 0.0277551263,
    "rmse": 0.0351307936,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.5116486784,
+   "mae": 0.0282289561,
+   "rmse": 0.0358837739,
    "cutoff": "2026-05-01"
   },
   {
@@ -85,12 +107,32 @@
   },
   {
    "component": "k_rate",
+   "model": "marcel_tuned",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5069964099,
+   "mae": 0.0291720157,
+   "rmse": 0.0374753499,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
    "model": "marcel",
    "n_players": 231,
    "total_trials": 41465,
    "log_loss": 0.5070433994,
    "mae": 0.0295917917,
    "rmse": 0.0375517968,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.5072609136,
+   "mae": 0.0307866369,
+   "rmse": 0.0388412832,
    "cutoff": "2026-07-01"
   },
   {
@@ -155,6 +197,26 @@
   },
   {
    "component": "k_rate",
+   "model": "marcel_tuned",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4924696259,
+   "mae": 0.0345968043,
+   "rmse": 0.0456931288,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.4932086189,
+   "mae": 0.035864552,
+   "rmse": 0.0482782369,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "k_rate",
    "model": "previous_season",
    "n_players": 126,
    "total_trials": 14671,
@@ -215,6 +277,16 @@
   },
   {
    "component": "bb_rate",
+   "model": "marcel_tuned",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2962719176,
+   "mae": 0.0171962434,
+   "rmse": 0.0223838465,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
    "model": "bayes_preseason",
    "n_players": 315,
    "total_trials": 93658,
@@ -226,6 +298,16 @@
   {
    "component": "bb_rate",
    "model": "marcel_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.2966033506,
+   "mae": 0.0178926761,
+   "rmse": 0.0234484237,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_tuned_preseason",
    "n_players": 315,
    "total_trials": 93658,
    "log_loss": 0.2966033506,
@@ -275,7 +357,27 @@
   },
   {
    "component": "bb_rate",
+   "model": "marcel_tuned",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.3026115261,
+   "mae": 0.0205701824,
+   "rmse": 0.0264937878,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
    "model": "marcel_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.303258714,
+   "mae": 0.0217817448,
+   "rmse": 0.0281808717,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_tuned_preseason",
    "n_players": 231,
    "total_trials": 41465,
    "log_loss": 0.303258714,
@@ -335,7 +437,27 @@
   },
   {
    "component": "bb_rate",
+   "model": "marcel_tuned",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.3133117527,
+   "mae": 0.0267864446,
+   "rmse": 0.0347569985,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
    "model": "marcel_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.313982112,
+   "mae": 0.027519499,
+   "rmse": 0.0361497448,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "bb_rate",
+   "model": "marcel_tuned_preseason",
    "n_players": 126,
    "total_trials": 14671,
    "log_loss": 0.313982112,
@@ -405,12 +527,32 @@
   },
   {
    "component": "hr_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1419729325,
+   "mae": 0.0098982853,
+   "rmse": 0.0126531949,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
    "model": "bayes_preseason",
    "n_players": 315,
    "total_trials": 93658,
    "log_loss": 0.1419412755,
    "mae": 0.0099258854,
    "rmse": 0.0126770303,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_tuned",
+   "n_players": 315,
+   "total_trials": 93658,
+   "log_loss": 0.1420563607,
+   "mae": 0.010098424,
+   "rmse": 0.0128358133,
    "cutoff": "2026-05-01"
   },
   {
@@ -445,12 +587,32 @@
   },
   {
    "component": "hr_rate",
+   "model": "marcel_tuned",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1420646995,
+   "mae": 0.0114052568,
+   "rmse": 0.0149827012,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
    "model": "marcel",
    "n_players": 231,
    "total_trials": 41465,
    "log_loss": 0.1420169598,
    "mae": 0.0114878766,
    "rmse": 0.0149882074,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 231,
+   "total_trials": 41465,
+   "log_loss": 0.1421301907,
+   "mae": 0.011635242,
+   "rmse": 0.0151539749,
    "cutoff": "2026-07-01"
   },
   {
@@ -502,6 +664,26 @@
    "mae": 0.0141006648,
    "rmse": 0.0182190637,
    "cutoff": "2026-07-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_tuned",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.143442056,
+   "mae": 0.0148318284,
+   "rmse": 0.0191644683,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "hr_rate",
+   "model": "marcel_tuned_preseason",
+   "n_players": 126,
+   "total_trials": 14671,
+   "log_loss": 0.1433004325,
+   "mae": 0.0150693598,
+   "rmse": 0.0189157748,
+   "cutoff": "2026-08-01"
   },
   {
    "component": "hr_rate",
@@ -585,12 +767,32 @@
   },
   {
    "component": "iso",
+   "model": "marcel_tuned_preseason",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0353120187,
+   "rmse": 0.0459078993,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
    "model": "bayes_preseason",
    "n_players": 308,
    "total_trials": 82508,
    "log_loss": null,
    "mae": 0.0358324405,
    "rmse": 0.0466144365,
+   "cutoff": "2026-05-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_tuned",
+   "n_players": 308,
+   "total_trials": 82508,
+   "log_loss": null,
+   "mae": 0.0360688722,
+   "rmse": 0.0466502601,
    "cutoff": "2026-05-01"
   },
   {
@@ -625,12 +827,32 @@
   },
   {
    "component": "iso",
+   "model": "marcel_tuned",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0412212887,
+   "rmse": 0.0537081043,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
    "model": "marcel",
    "n_players": 213,
    "total_trials": 35100,
    "log_loss": null,
    "mae": 0.0412670942,
    "rmse": 0.0535631954,
+   "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_tuned_preseason",
+   "n_players": 213,
+   "total_trials": 35100,
+   "log_loss": null,
+   "mae": 0.0423627824,
+   "rmse": 0.0546264689,
    "cutoff": "2026-07-01"
   },
   {
@@ -682,6 +904,26 @@
    "mae": 0.0493217835,
    "rmse": 0.0642724312,
    "cutoff": "2026-07-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_tuned_preseason",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0543374558,
+   "rmse": 0.0679994338,
+   "cutoff": "2026-08-01"
+  },
+  {
+   "component": "iso",
+   "model": "marcel_tuned",
+   "n_players": 80,
+   "total_trials": 8676,
+   "log_loss": null,
+   "mae": 0.0550096062,
+   "rmse": 0.0700696722,
+   "cutoff": "2026-08-01"
   },
   {
    "component": "iso",

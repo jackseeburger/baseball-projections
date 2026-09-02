@@ -1,14 +1,15 @@
 # Rest-of-season projections — the number the site serves
 
 **Station A, live.** What a visitor sees on a player page is now
-*Marcel fed the partial current season* × station B's projected
+*tuned Marcel fed the partial current season* × station B's projected
 rest-of-season plate appearances. The preseason Bayesian components — the
 only number this site used to show — are still there, labelled, one column
 to the right.
 
-Shipped Sept 2, 2026 · built by `scripts/build_ros_projections.py` ·
-math in `src/projections/ros.py` · data at
-`public/data/projections/{latest,YYYY-MM-DD}.json`.
+Shipped Sept 2, 2026 · engine switched from stock to tuned Marcel the same
+day · built by `scripts/build_ros_projections.py` · math in
+`src/projections/ros.py` · constants in `src/eval/marcel_params.json` ·
+data at `public/data/projections/{latest,YYYY-MM-DD}.json`.
 
 ## Why the model changed
 
@@ -21,7 +22,11 @@ and the intra-season walk-forward
 ([backtest-baselines.md](backtest-baselines.md#intra-season-walk-forward--rest-of-2026-rates))
 answered it:
 
-| Component | Cutoff | `marcel` (live) | `bayes_preseason` (was live) | Gap |
+(The `marcel` column here is *stock* Marcel — the arm that won this
+comparison and shipped on Sept 2. The engine was tuned later the same day;
+the next section has the current numbers.)
+
+| Component | Cutoff | `marcel` (stock) | `bayes_preseason` (was live) | Gap |
 |---|---|---|---|---|
 | k_rate | May 1 | **.0278** | .0296 | −6.3% |
 | k_rate | Jul 1 | **.0296** | .0325 | −8.9% |
@@ -30,32 +35,74 @@ answered it:
 | hr_rate | Aug 1 | **.0152** | .0153 | −1.0% |
 | iso | Aug 1 | .0567 | **.0551** | +2.9% |
 
-Marcel with the current season folded in wins 11 of the 12
-component-cutoff cells the accuracy page shows, and it beats *Marcel with
-2026 withheld* on the same 11 — so the gain is in-season information, not a
-better prior. Our Bayesian components never beat `marcel_preseason` on K%
-either: on the same information they buy nothing, and they were giving up
-the information advantage on top of it. Shipping them as the live number
+Marcel with the current season folded in won 11 of the 12 component-cutoff
+cells the accuracy page shows, and beat *Marcel with 2026 withheld* on the
+same 11 — so the gain is in-season information, not a better prior. Our
+Bayesian components never beat `marcel_preseason` on K% either: on the same
+information they buy nothing, and they were giving up the information
+advantage on top of it. Shipping them as the live number
 was the one thing the gate rule forbids.
 
 BABIP is the exception in both directions: in-season data adds nothing to
 it, and league average roughly ties Marcel on it. It is projected because
 the wOBA reconstruction needs it, not because it is skill.
 
+## Why the engine changed again — tuned Marcel
+
+Stock Marcel's constants are Tango's defaults: 5/4/3 recency, one 200-trial
+ballast for every component, one age curve. `marcel_tuned`
+([backtest-baselines.md](backtest-baselines.md#tuning-marcel--fitted-constants-beat-tangos-defaults))
+is the same estimator with those made per-component parameters, fitted
+walk-forward on **2020–2024 only** and frozen in `src/eval/marcel_params.json`.
+Scored on the holdout — season-level 2025 and 2026 plus the three 2026
+cutoffs — it wins 15 of 25 component × cell cells at a pooled **−1.10% ±
+0.36** of stock Marcel's MAE, so the gate rule swaps it in.
+
+Tuned minus stock on the three cutoffs the page shows, on the two components
+the tuning actually moved:
+
+| Component | May 1 | Jul 1 | Aug 1 |
+|---|---|---|---|
+| **k_rate** tuned | **.0267** | **.0292** | .0346 |
+| k_rate stock | .0278 | .0296 | **.0343** |
+| | −3.9% | −1.4% | +0.8% |
+| **babip** tuned | **.0267** | **.0340** | **.0415** |
+| babip stock | .0269 | .0350 | .0424 |
+| | −0.7% | −2.8% | −2.1% |
+
+K% wants half stock's ballast (100 PA) and much sharper recency (1 / 0.4 /
+0.2 against 5/4/3); BABIP wants triple it (600 BIP) and flat recency — the
+ballast moving toward each component's stabilization point in both
+directions at once. **BB% keeps Tango's constants exactly**: an inner
+validation inside the tuning window said a BB% fit would not travel, and the
+holdout agreed, so the frozen file ships stock for it and the live BB%
+column is byte-identical to what it was. HR/PA and ISO come out even.
+
+The four components the accuracy page scores exclude BABIP (its 100-trial
+floor leaves four players at Aug 1), so on *that* table the tuned arm beats
+stock on 6 of 12 cells with 3 exact ties — the honest headline for the page,
+and the reason the framing sentence there is a recomputed count rather than
+a claim. The full holdout, BABIP and the two season-level years included, is
+what cleared the gate.
+
 ## The model
 
-    rest-of-season projection = marcel(prior full seasons
-                                       + 2026 through as_of − 1 day)
+    rest-of-season projection = marcel_tuned(prior full seasons
+                                             + 2026 through as_of − 1 day)
                                 x projected_pa_ros
 
 Both halves are code that already existed and was already scored:
 
-* **Rates.** `src/eval/baselines.marcel`, called on exactly the training
-  frame `src/eval/intraseason.build_training_frame` builds at a cutoff.
-  Nothing is re-implemented, so the model that ships is bit-for-bit the arm
-  the harness scored. Marcel weights by trials, so a 480-PA partial season
-  naturally counts more than a 90-PA one — the model scales itself as the
-  year goes on with no extra machinery.
+* **Rates.** `src/eval/baselines.marcel_tuned`, called on exactly the
+  training frame `src/eval/intraseason.build_training_frame` builds at a
+  cutoff. Nothing is re-implemented, so the model that ships is bit-for-bit
+  the arm the harness scored. Marcel weights by trials, so a 480-PA partial
+  season naturally counts more than a 90-PA one — the model scales itself as
+  the year goes on with no extra machinery. The engine is named once, in
+  `ros.LIVE_ENGINE`; the builder stamps it into the document as `engine` and
+  `scripts/build_accuracy_json.py` reads it to decide which arm the accuracy
+  page marks live, so the scoreboard cannot end up scoring a model the site
+  does not serve.
 * **Playing time.** Station B (`src/projections/playing_time.py`): 30-day
   PA share, IL zeroed, one-lineup-slot cap, MAE 22.1 PA at the ~26-game
   horizon it serves ([playing-time.md](playing-time.md)).
@@ -114,9 +161,24 @@ discipline as the playoff odds and the accuracy page. Per hitter:
     {k,bb,hr,babip,iso}_rate_{marcel,marcel_preseason,bayes},
     k_ros, bb_ros, hr_ros, woba_ros
 
-Document level: `as_of`, `through`, `n_hitters`, `method`, `framing`,
-`stale`, `stale_reason`, the arm labels the page renders, and the wOBA
-weights, so the file says which wOBA it means rather than the page assuming.
+Document level: `as_of`, `through`, `n_hitters`, `engine`, `method`,
+`framing`, `stale`, `stale_reason`, the arm labels the page renders, and the
+wOBA weights, so the file says which wOBA it means rather than the page
+assuming.
+
+**The arm keys did not change with the engine.** `..._rate_marcel` is a slot
+on the page — "the live arm" — not a set of constants, so the switch to
+tuned Marcel left the column names and the site's JavaScript alone and moved
+the labels ("Live (tuned Marcel + 2026)") and the `method` sentence instead.
+`engine` is the field that says which Marcel filled the slot:
+`"marcel_tuned"` from Sept 2, 2026 on, and absent in the dated snapshots
+written before the switch.
+
+That includes `2026-09-02.json` itself, which was written by stock Marcel
+that morning and is **not** rewritten — the archive records what was served,
+and the dated snapshot is never overwritten. So for one date the archive and
+`latest.json` disagree, and `engine` (null against `"marcel_tuned"`) is what
+tells them apart. From Sept 3 the two agree again.
 
 ## Failure modes, and what the page shows
 
@@ -148,5 +210,19 @@ The nightly workflow runs the build before the accuracy page and commits
 - **The projection is a point estimate.** The Bayesian components publish an
   interval and this does not; calibrated rest-of-season bands are roadmap
   5.7 and are a real thing the old model had that this one does not.
+- **The tuned age curve is the weak part of the live engine, and it shows on
+  the board.** The search put K%'s peak age at 31 with both slopes positive,
+  which is a straight line in age and therefore partly a *level* correction
+  rather than aging (Marcel regresses to the last season's league rate while
+  the player's history spans three). The visible effect on the Sept 2 board:
+  the PA-weighted mean projected K% moved from .2208 to .2133 against a 2026
+  league rate of .2207 — stock sat exactly on league, tuned sits 0.7 points
+  under it. Decile calibration is *tighter* under tuning (max K% gap .0134
+  against stock's .0179 at the Jul 1 cutoff) and the signed bias is small in
+  the other direction (+.0036 realized-minus-predicted, against stock's
+  −.0022), and the components offset in the rollup — mean projected wOBA
+  moved .3161 → .3141 against a league .3139, i.e. closer. But the level term
+  is bookkeeping wearing an aging curve's clothes, and the fix is to project
+  the league rate forward and refit the age term against that.
 - **This is not station C.** Nothing here feeds the run environment or the
   playoff odds; it is the site's player-level number only.

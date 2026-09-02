@@ -101,15 +101,41 @@ def test_the_document_matches_the_contract(doc):
 
 
 def test_the_framing_names_the_model_and_the_date_it_saw(doc):
-    assert doc["framing"] == ("Live projection: Marcel with 2026 through "
+    assert doc["framing"] == ("Live projection: tuned Marcel with 2026 through "
                               "2026-09-01. Preseason Bayesian shown for "
                               "comparison — see Model Accuracy.")
     assert doc["through"] == "2026-09-01", "the as-of day itself is not in the data"
 
 
+def test_the_document_names_the_engine_it_was_built_with(doc):
+    """The arm *keys* are page slots (`marcel`, `marcel_preseason`) and stayed
+    put through the switch to the tuned constants, so the file has to say
+    outright which Marcel filled them — otherwise two snapshots with the same
+    column names mean different models with nothing to tell them apart."""
+    from src.projections.ros import LIVE_ENGINE
+
+    assert doc["engine"] == LIVE_ENGINE == "marcel_tuned"
+    assert "Tuned Marcel" in doc["method"]
+    assert "marcel_params.json" in doc["method"]
+    live = next(a for a in doc["arms"] if a["is_live"])
+    assert "tuned" in live["label"].lower()
+
+
 def test_the_method_says_what_the_model_is(doc):
     assert "Marcel" in doc["method"]
     assert "plate appearances" in doc["method"]
+
+
+def test_the_committed_projection_was_built_by_the_live_engine():
+    """The file the site loads, not a synthetic one."""
+    from src.projections.ros import LIVE_ENGINE
+
+    if not LATEST.exists():
+        pytest.skip("public/data/projections/latest.json not present")
+    doc = json.loads(LATEST.read_text())
+    if doc.get("stale"):
+        pytest.skip("carried-over projection; its engine is whatever built it")
+    assert doc.get("engine") == LIVE_ENGINE
 
 
 def test_the_arms_are_labelled_with_the_live_one_marked(doc):

@@ -12,8 +12,13 @@ from src.eval.intraseason import (
     aggregate_pa, assert_split_clean, backtest_intraseason,
     partial_and_realized, split_at_cutoff,
 )
+from src.eval.baselines import (
+    MarcelParams, load_marcel_params, marcel_tuned, marcel_tuned_provider,
+)
 
 __all__ = ["backtest", "score", "calibration", "COMPONENTS",
            "parquet_provider", "frame_provider",
            "backtest_intraseason", "aggregate_pa", "partial_and_realized",
-           "split_at_cutoff", "assert_split_clean"]
+           "split_at_cutoff", "assert_split_clean",
+           "MarcelParams", "load_marcel_params", "marcel_tuned",
+           "marcel_tuned_provider"]

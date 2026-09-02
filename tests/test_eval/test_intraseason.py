@@ -262,7 +262,8 @@ class TestBacktestWithCutoff:
         results = backtest("k_rate", cutoff_date="2026-07-01", seasons=seasons,
                            pa_frame=pa, min_trials=50)
         assert set(results["model"]) == {
-            "marcel", "marcel_preseason", "previous_season",
+            "marcel", "marcel_preseason", "marcel_tuned",
+            "marcel_tuned_preseason", "previous_season",
             "league_average", "season_to_date"}
         # Two months of 40 PA are scored, not the whole season.
         assert results["trials"].max() == 80
