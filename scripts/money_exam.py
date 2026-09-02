@@ -139,17 +139,16 @@ def cents(x, digits: int = 2) -> str:
     return "—" if pd.isna(x) else f"{100 * x:+.{digits}f}¢"
 
 
-def fill_table(res: pd.DataFrame, half: str, staking: str, models: list[str],
-               margins) -> str:
-    """Rows are models, columns are margins: what fraction of orders filled."""
+def wide_table(res: pd.DataFrame, half: str, staking: str, models: list[str],
+               margins, column: str, fmt) -> str:
+    """Rows are models, columns are margins, cells are one metric."""
     g = res[(res["half"] == half) & (res["staking"] == staking)]
     header = ["Model"] + [f"m={m:.2f}" for m in margins]
     rows = []
     for m in maker_row_order(models, set(g["model"])):
         sub = g[g["model"] == m].set_index("margin")
         rows.append([maker_label(m)] + [
-            f"{sub.loc[x, 'fill_rate']:.3f}" if x in sub.index else "—"
-            for x in margins])
+            fmt(sub.loc[x, column]) if x in sub.index else "—" for x in margins])
     return md_table(header, rows)
 
 
@@ -251,13 +250,16 @@ def run_maker(args) -> None:
               f"{int(res[res['half'] == h]['n_games'].iloc[0])} games")
     print()
     for staking in ("flat", "kelly"):
+        rate = lambda x: "—" if pd.isna(x) else f"{x:.3f}"   # noqa: E731
         print(f"**{MAKER_STAKING_LABEL[staking]}**\n")
-        print("Fill rate by margin:\n")
-        print(fill_table(res, "second", staking, args.models, margins))
+        print("Fill rate by margin, second half:\n")
+        print(wide_table(res, "second", staking, args.models, margins,
+                         "fill_rate", rate))
+        print("\nFirst half — ¢ per posted contract, where the margin is chosen:\n")
+        print(wide_table(res, "first", staking, args.models, margins,
+                         "pnl_per_posted", cents))
         print("\nSecond half — the scored one:\n")
         print(maker_table(res, "second", staking, args.models, margins))
-        print("\nFirst half — where the margin is chosen:\n")
-        print(maker_table(res, "first", staking, args.models, margins))
         print("\nMargin chosen on the first half, scored on the second:\n")
         print(chosen_table(res, staking, args.models))
         print()
