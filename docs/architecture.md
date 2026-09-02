@@ -10,53 +10,66 @@ Last updated: Sept 1, 2026.
 
 ## 0. The north star
 
-**Beat the market.** Not FanGraphs, not Marcel — the betting market's
-closing line, which is the best publicly available probability for a baseball
-event and prices in everything the public systems know plus sharp money. If
-our probabilities beat the de-vigged closing line out of sample, that is edge
-that pays; if they don't, no amount of Bayesian elegance matters.
+**Truth first; the market is the bar; money is the exam.**
 
-Everything else in this document is instrumentation toward that. The longer
-arc is the same skeleton pointed at financial markets: **the market is the
-baseline, walk-forward is the only valid test, calibration and sizing are
-where the money is made or lost**, and the factory exists to run that loop
-without fooling ourselves. Sports markets are the training ground because
-they are less efficient than financial ones and settle every night.
+- **Primary objective: accuracy against reality**, measured with proper
+  scoring rules (log loss, Brier, calibrated intervals) on outcomes that
+  actually happened. Marcel, Depth Charts, and the market price are all
+  *baselines* for that one score. Beating Marcel is a unit test; beating the
+  market is the exam — but it is the same test, with a harder benchmark.
+- **The market is the strongest available baseline** wherever one exists.
+  For per-game outcomes, totals, props, and futures, our probability is
+  compared to the market's implied probability on the same event, out of
+  sample. Public projection systems already live inside that price.
+- **Money is a second scoreboard, not a second truth.** It adds three things
+  accuracy alone cannot see: a **hurdle** (fees/vig), **selectivity** (we
+  need to be right where we *disagree* with the market, not everywhere), and
+  **sizing** (fractional Kelly on a calibrated edge; a miscalibrated model
+  with good point estimates still loses). Money metrics — closing-line value
+  as the leading indicator, simulated ROI with confidence intervals as the
+  lagging one — decide *what to bet*. They never decide *what is true*.
+- **Why not optimize against the market directly:** Goodhart. A model fit
+  to the market's mistakes learns things like "fade day-game favorites" that
+  vanish when the market adapts. Player rates don't adapt. Truth-based
+  scoring keeps the model about baseball; the gate rule (§3) stays
+  truth-based for that reason.
 
-The scoreboard that matters (station **M** below):
+**Two model classes, one harness.**
 
-| Market | Our model | Metric | Money metric |
+| Class | Inputs | Scored on | Used for |
 |---|---|---|---|
-| Moneyline (game winner) | Station E | Log loss / Brier vs de-vigged closing line | Simulated ROI + closing-line value (CLV) on bets where \|ours − market\| > threshold |
-| Totals (runs) | Station C + E | Same | Same |
-| **Player props** (K, HR, hits, TB) | **Station A directly** | Log loss vs prop line | Same |
-| Futures (division, pennant, WS) | Station G | Log loss at season checkpoints | Same, long-dated |
+| **Independent** | Our data only — no market prices as features | Truth | The site, the accuracy page, career and contract valuation (no market exists for 5-year WAR) |
+| **Market-anchored** | Market price as a feature + our private information (pitcher quality, lineups, rates) | Truth *and* money | Betting. This is how professionals actually do it, and it cannot claim independent skill |
+
+**Venues (station M).** Two kinds, and they play different roles:
+
+| Venue | Examples | How they price | What caps you | Role for us |
+|---|---|---|---|---|
+| **Sportsbooks** | Pinnacle, DraftKings, FanDuel | Book sets the line, takes vig (2–4.5 pts moneyline, more on props) | **They limit or ban winning accounts** | The sharpest *reference price* (Pinnacle close). Archive it as the accuracy benchmark; do not plan to scale money there. |
+| **Prediction markets / exchanges** | Kalshi (CFTC-regulated, US), Polymarket | Order book; you trade against other participants, pay a small maker/taker fee | **Liquidity and position limits, not account bans** — you can only win what counterparties will lose | The **money venue**. No ban risk, you can be a *maker* (earn the spread instead of paying it), and the order-book mechanics are the same as finance: fills, slippage, adverse selection, inventory. |
+
+Prediction-market sports prices are typically less sharp than Pinnacle,
+especially props, futures, and mid-liquidity contracts, so edge is more
+plausible there — and book-vs-exchange price gaps are a low-model-risk
+first trade. Both venues expose **public market-data APIs with no key**
+(Kalshi trade-api v2: markets, order book, trades, settled history;
+Polymarket Gamma/CLOB/data APIs). Archive both daily; score against both.
 
 **Player props are the shortest path to money.** A K% model that beats the
-strikeout-prop market monetizes station A on its own, without the whole
-rollup working. It is also the cleanest possible test of whether the
-Bayesian components have edge, because the prop line already embeds Steamer,
-ZiPS, and the sharps.
+strikeout-prop price monetizes station A on its own, without the whole
+rollup working, and it is the cleanest test of whether the Bayesian
+components have edge, because the prop price already embeds Steamer, ZiPS,
+and the sharps.
 
-Ground rules that carry over to finance unchanged:
-1. **The market is the baseline** for every station that has one. Beating
-   Marcel is a unit test; beating the closing line is the exam.
-2. **Archive market lines daily starting now.** Closing lines cannot be
-   reconstructed later; without the archive there is no backtest. Same
-   principle as the odds snapshots (roadmap 3.1).
-3. **Score in money terms, not just probability terms.** A model can have
-   better log loss and lose money (edge concentrated where vig is highest)
-   or worse log loss and make money (edge concentrated on mispriced tails).
-   Report both; CLV is the leading indicator, ROI the lagging one.
-4. **Walk-forward only; no peeking.** Every prediction uses only data
-   available before the line closed. The harness's leakage guard is the
-   most important line of code in the repo.
-5. **Sizing is part of the model.** Fractional Kelly on the calibrated
-   edge; a miscalibrated model with correct point estimates still loses.
-   Calibration (edge pocket #3) is therefore not a nicety.
-6. **Deep learning earns its place the same way** — where the data is
-   high-dimensional and sequential (pitch-level tracking, swing paths,
-   order flow later), scored against the same baselines in the same harness.
+**Ground rules that carry to financial markets unchanged:** the market is
+the baseline; walk-forward only — every prediction uses only information
+available before the price you compare it to; archive prices daily starting
+now because they cannot be reconstructed; score in money terms *and*
+probability terms; sizing and execution (fills, not mids) are part of the
+model; deep learning earns its place in the same harness against the same
+baselines. Sports exchanges are the training ground because they are less
+efficient than financial ones, settle nightly, and have the same order-book
+structure.
 
 ## 1. The rollup
 
@@ -97,7 +110,7 @@ and it must stay that way until [A]–[C] beat their baselines.
 | **F. Season sim** | Monte Carlo, MLB tiebreakers, bracket | — (plumbing) | Within 1.6 pts of FanGraphs; coin-flip control within 1.9 | **Wired, validated** | `src/sim/season.py`, `standings.py`, `bracket.py` |
 | **G. Odds** | P(playoffs/div/bye/pennant/WS), win bands | — | Live, 20k sims | **Wired, live** | `src/sim/odds.py` |
 | **H. Site + archive** | Landing page, dated JSON, nightly job | — | Live; first snapshot 2026-09-01 | **Wired**; nightly first run pending | `scripts/run_playoff_odds.py`, `nightly-odds.yml` |
-| **M. Market** | Daily archive of moneyline / totals / props closing lines; de-vig; score E/A/G against them; simulated ROI + CLV | The closing line itself | — | **Not built** — highest-priority new station | `src/market/` (to create); The Odds API (key needed), SportsbookReview history |
+| **M. Market** | Daily archive of prices from **exchanges** (Kalshi, Polymarket: bid/ask, trades, settlement — public APIs, no key) and **sportsbooks** (closing lines via The Odds API / SportsbookReview); de-vig; score E/A/G against both; CLV + fill-aware simulated ROI | The market price itself | — | **Not built** — highest-priority new station | `src/market/` (to create) |
 
 Scoreboards: [accuracy-2026.md](accuracy-2026.md) (stations A, E, G),
 [backtest-baselines.md](backtest-baselines.md) (station A baselines
@@ -140,11 +153,12 @@ ties Marcel).
 ## 5. Sequencing from here
 
 Keyless work (runs in any cloud session now):
-0. **Station M, archive first** — nightly job pulls today's moneyline,
-   totals, and available props and writes a dated snapshot. One free Odds
-   API key (`ODDS_API_KEY`, 500 req/month) covers a daily pull. Backfill
-   2026 closing lines from SportsbookReview history so E can be scored
-   against the market immediately, not next year.
+0. **Station M, archive first** — nightly job snapshots Kalshi and
+   Polymarket MLB markets (bid/ask, last, volume, open interest; **no key
+   needed**) plus sportsbook lines (Odds API free key, SportsbookReview
+   history), writes dated snapshots. Backfill 2026 from Kalshi's settled
+   markets + trade history and SportsbookReview so E can be scored against
+   both venues immediately, not next year.
 1. **Wire the rollup with baselines** — B (playing time from Stats API
    rosters), C (Marcel rest-of-season rates × PA → RS/RA), then flip D to
    `from_run_environment`. Score against the coin-flip and current D on
