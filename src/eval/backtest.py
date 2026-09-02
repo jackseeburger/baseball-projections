@@ -55,6 +55,7 @@ def backtest(
     seasons: pd.DataFrame,
     providers: dict[str, Provider] | None = None,
     min_trials: int = 100,
+    common_players: bool = True,
 ) -> pd.DataFrame:
     """Run one train/predict split for one component.
 
@@ -67,6 +68,10 @@ def backtest(
             Add your model with e.g. {"bayes": parquet_provider(path), **BASELINES}.
         min_trials: drop realized seasons below this many trials — tiny
             samples measure noise, not skill.
+        common_players: score every model on the same batters (the
+            intersection of their coverage). Without this a model that
+            covers rookies is scored on a harder population than one that
+            doesn't, and the comparison is meaningless.
 
     Returns:
         Long frame: [component, model, batter, predicted, realized_successes,
@@ -94,9 +99,21 @@ def backtest(
         columns={spec.successes: "realized_successes", spec.trials: "trials"}
     )
 
-    frames = []
+    preds = {}
     for name, provider in providers.items():
         pred = provider(train, spec, predict_year)[["batter", "predicted"]]
+        pred = pred.dropna(subset=["predicted"])
+        if pred["batter"].duplicated().any():
+            raise ValueError(f"provider {name!r} returned duplicate batters")
+        preds[name] = pred
+    if common_players:
+        keep = set(realized["batter"])
+        for pred in preds.values():
+            keep &= set(pred["batter"])
+        realized = realized[realized["batter"].isin(keep)]
+
+    frames = []
+    for name, pred in preds.items():
         joined = realized.merge(pred, on="batter", how="inner")
         joined["model"] = name
         joined["component"] = component
@@ -153,8 +170,29 @@ def parquet_provider(
     path = Path(path)
 
     def provider(train: pd.DataFrame, spec: ComponentSpec, predict_year: int) -> pd.DataFrame:
-        df = pd.read_parquet(path)
-        return df.rename(
+        return frame_provider(pd.read_parquet(path), batter_col, pred_col)(
+            train, spec, predict_year)
+
+    return provider
+
+
+def frame_provider(
+    df: pd.DataFrame,
+    batter_col: str = "batter",
+    pred_col: str = "predicted",
+    year_col: str = "projection_year",
+) -> Provider:
+    """Wrap an in-memory projections frame as a provider.
+
+    If `year_col` is present (multi-year projection files), only rows for
+    the backtest's predict year are used.
+    """
+
+    def provider(train: pd.DataFrame, spec: ComponentSpec, predict_year: int) -> pd.DataFrame:
+        out = df
+        if year_col in out.columns:
+            out = out[out[year_col] == predict_year]
+        return out.rename(
             columns={batter_col: "batter", pred_col: "predicted"}
         )[["batter", "predicted"]]
 

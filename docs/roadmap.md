@@ -3,6 +3,14 @@
 **Written:** Sept 1, 2026
 **Hard deadline for v1:** Sept 28, 2026 (Wild Card round opens Sept 29)
 
+> **Status (Sept 1, end of day):** Phases 0.1, 0.2, 0.4, 2 (all of it), and
+> 3.1/3.2 landed on day one; the site's playoff-odds page is live with the
+> first snapshot. 0.3 was run for real and the existing Bayesian components
+> **tie Marcel and trail Depth Charts** — see
+> [accuracy-2026.md](accuracy-2026.md). The system-level view, the gate
+> rule, and the market-beating north star now live in
+> [architecture.md](architecture.md); this file stays the dated v1 plan.
+
 ## Calendar anchors
 
 | Date | Event |
