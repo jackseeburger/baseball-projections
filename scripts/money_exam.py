@@ -6,19 +6,29 @@ model disagrees with the price by more than a threshold. Brier says whether a
 probability is good; this says what it was worth after the spread and the fee
 (docs/architecture.md §0: *money is the exam*).
 
+`--maker` runs the other exam: instead of crossing the book, rest a limit
+order at the model's price minus a margin from T−24h to first pitch and see
+whether the market came to it. That one needs the hourly candle archive, and
+it charges Kalshi's maker fee rather than the taker's.
+
 Inputs:
     --preds   scripts/backtest_game_odds.py --out  (one row per game, one
               probability column per model)
     --closes  scripts/backfill_market_closes.py    (one row per venue+game:
               p_home_close, bid, ask, home_won)
+    --candles scripts/backfill_kalshi_candles.py   (maker mode: one row per
+              market-hour of the 24 before first pitch)
 
 Usage:
     python scripts/money_exam.py                      # both venues, defaults
     python scripts/money_exam.py --markdown           # the docs tables
     python scripts/money_exam.py --detail-threshold 0.02 --half-spread 0.02
+    python scripts/money_exam.py --maker --markdown   # the maker tables
+    python scripts/money_exam.py --maker --maker-anchor post   # no hindsight at all
 
-The fill assumption — one unit at the closing quote, top of book, no impact —
-is optimistic and is stated wherever the numbers are (src/market/pnl.py).
+The taker fill assumption — one unit at the closing quote, top of book, no
+impact — is optimistic and is stated wherever the numbers are; so is the maker
+one, which assumes queue priority at our price (src/market/pnl.py).
 """
 from __future__ import annotations
 
@@ -38,9 +48,18 @@ DEFAULT_MODELS = [
     "pythag_60_sp_lu_bp", "pythag_60_sp_lu", "pythag_60_sp", "pythag_60",
     "home_constant", "random_edge", "market",
 ]
+DEFAULT_MAKER_MODELS = [
+    "pythag_60_sp_lu_bp", "pythag_60_sp_lu", "pythag_60_sp", "pythag_60",
+    "home_constant",
+]
 LABELS = {"market": "market (control)", "random_edge": "random_edge (control)",
           "home_constant": "home_constant (control)"}
 STAKING_LABEL = {"flat": "flat 1u", "kelly": "quarter-Kelly (cap 5%)"}
+MAKER_STAKING_LABEL = {"flat": "flat, one contract per game",
+                       "kelly": "quarter-Kelly (cap 5%)"}
+HALF_LABEL = {"first": "first half — where the margin is chosen",
+              "second": "second half — where it is scored",
+              "all": "the whole window"}
 
 
 def pct(x, digits: int = 1) -> str:
@@ -97,6 +116,201 @@ def detail_table(res: pd.DataFrame, venue: str, staking: str, models: list[str],
     return md_table(header, rows)
 
 
+# ───────────────────────────── maker mode ─────────────────────────────
+
+def maker_label(model: str) -> str:
+    """`pythag_60__shuffled` → `pythag_60 (shuffled control)`."""
+    if model.endswith("__shuffled"):
+        return f"{model[:-len('__shuffled')]} (shuffled control)"
+    return LABELS.get(model, model)
+
+
+def maker_row_order(models: list[str], present: set[str]) -> list[str]:
+    """Each model followed by its own control, so the two read side by side."""
+    out = []
+    for m in models:
+        for name in (m, f"{m}__shuffled"):
+            if name in present:
+                out.append(name)
+    return out
+
+
+def cents(x, digits: int = 2) -> str:
+    return "—" if pd.isna(x) else f"{100 * x:+.{digits}f}¢"
+
+
+def wide_table(res: pd.DataFrame, half: str, staking: str, models: list[str],
+               margins, column: str, fmt) -> str:
+    """Rows are models, columns are margins, cells are one metric."""
+    g = res[(res["half"] == half) & (res["staking"] == staking)]
+    header = ["Model"] + [f"m={m:.2f}" for m in margins]
+    rows = []
+    for m in maker_row_order(models, set(g["model"])):
+        sub = g[g["model"] == m].set_index("margin")
+        rows.append([maker_label(m)] + [
+            fmt(sub.loc[x, column]) if x in sub.index else "—" for x in margins])
+    return md_table(header, rows)
+
+
+def maker_table(res: pd.DataFrame, half: str, staking: str, models: list[str],
+                margins) -> str:
+    """One row per (model, margin): what a posted contract was worth."""
+    g = res[(res["half"] == half) & (res["staking"] == staking)]
+    header = ["Model", "m", "posted", "fill", "crossed", "¢/posted", "¢/filled",
+              "¢/game", "ROI", "ROI 95% CI"]
+    rows = []
+    for model in maker_row_order(models, set(g["model"])):
+        sub = g[g["model"] == model].set_index("margin")
+        for x in margins:
+            if x not in sub.index:
+                continue
+            r = sub.loc[x]
+            rows.append([
+                maker_label(model), f"{x:.2f}", f"{int(r['n_posted'])}",
+                "—" if pd.isna(r["fill_rate"]) else f"{r['fill_rate']:.3f}",
+                "—" if pd.isna(r["marketable_rate"]) else f"{r['marketable_rate']:.3f}",
+                cents(r["pnl_per_posted"]), cents(r["pnl_per_filled"]),
+                cents(r["pnl_per_game"]),
+                pct(r["roi"]) if r["n_filled"] else "—",
+                f"({pct(r['roi_lo'])}, {pct(r['roi_hi'])})" if r["n_filled"] else "—",
+            ])
+    return md_table(header, rows)
+
+
+def chosen_table(res: pd.DataFrame, staking: str, models: list[str]) -> str:
+    """The margin picked on the first half, scored on the second."""
+    header = ["Model", "chosen m", "¢/posted (train)", "posted", "fill",
+              "¢/posted (test)", "¢/filled (test)", "ROI (test)", "ROI 95% CI",
+              "hit"]
+    rows = []
+    present = set(res["model"])
+    for model in maker_row_order(models, present):
+        m = pnl.choose_margin(res, model, staking, half="first")
+        if pd.isna(m):
+            continue
+        tr = res[(res["model"] == model) & (res["staking"] == staking)
+                 & (res["half"] == "first") & (res["margin"] == m)]
+        te = res[(res["model"] == model) & (res["staking"] == staking)
+                 & (res["half"] == "second") & (res["margin"] == m)]
+        if tr.empty or te.empty:
+            continue
+        t, r = tr.iloc[0], te.iloc[0]
+        rows.append([
+            maker_label(model), f"{m:.2f}", cents(t["pnl_per_posted"]),
+            f"{int(r['n_posted'])}",
+            "—" if pd.isna(r["fill_rate"]) else f"{r['fill_rate']:.3f}",
+            cents(r["pnl_per_posted"]), cents(r["pnl_per_filled"]),
+            pct(r["roi"]) if r["n_filled"] else "—",
+            f"({pct(r['roi_lo'])}, {pct(r['roi_hi'])})" if r["n_filled"] else "—",
+            "—" if pd.isna(r["hit_rate"]) else f"{r['hit_rate']:.3f}",
+        ])
+    return md_table(header, rows)
+
+
+def taker_compare_table(preds: pd.DataFrame, closes: pd.DataFrame, res: pd.DataFrame,
+                        models: list[str], threshold: float, venue,
+                        draws: int, seed: int) -> str:
+    """The same games, crossed instead of quoted — the whole point of the exercise.
+
+    The maker table is scored on the second half of the window; the taker
+    table in this doc is scored on all of it. This runs the taker rule on
+    *exactly* the second half so the two columns are the same games, and puts
+    the maker's chosen-margin ROI beside it.
+    """
+    df = pnl.add_controls(pnl.prepare_maker(preds, closes, venue.name))
+    _, second = pnl.split_halves(df)
+    header = ["Model", "taker n", "taker ROI", "taker 95% CI", "maker m",
+              "maker n filled", "maker ROI", "maker 95% CI"]
+    rows = []
+    for model in models:
+        if model not in second.columns:
+            continue
+        t = pnl.evaluate(second, model, venue, threshold, "flat", draws=draws,
+                         seed=seed)
+        m = pnl.choose_margin(res, model, "flat", half="first")
+        mk = res[(res["model"] == model) & (res["staking"] == "flat")
+                 & (res["half"] == "second") & (res["margin"] == m)]
+        rows.append([
+            LABELS.get(model, model), f"{int(t['n_bets'])}", pct(t["roi"]),
+            f"({pct(t['roi_lo'])}, {pct(t['roi_hi'])})" if t["n_bets"] else "—",
+            "—" if pd.isna(m) else f"{m:.2f}",
+            "—" if mk.empty else f"{int(mk['n_filled'].iloc[0])}",
+            "—" if mk.empty else pct(mk["roi"].iloc[0]),
+            "—" if mk.empty else
+            f"({pct(mk['roi_lo'].iloc[0])}, {pct(mk['roi_hi'].iloc[0])})",
+        ])
+    return md_table(header, rows)
+
+
+def run_maker(args) -> None:
+    """The maker exam: quote, wait, get filled or cancel at first pitch."""
+    preds = pd.read_parquet(args.preds)
+    closes = pd.read_parquet(args.closes)
+    candles = pd.read_parquet(args.candles)
+    margins = [float(m) for m in args.margins.split(",")]
+    venue = replace(pnl.VENUES["kalshi"], maker_rate=args.kalshi_maker_fee_rate)
+
+    res = pnl.run_maker_exam(
+        preds, closes, candles, args.models, margins, venue,
+        stakings=("flat", "kelly"), fraction=args.kelly_fraction, cap=args.kelly_cap,
+        hours=args.maker_hours, anchor=args.maker_anchor,
+        maker_round_cents=args.maker_round_cents, draws=args.bootstrap,
+        seed=args.seed)
+
+    if args.csv_out is not None:
+        args.csv_out.parent.mkdir(parents=True, exist_ok=True)
+        res.to_csv(args.csv_out, index=False)
+
+    n_games = int(res[res["half"] == "all"]["n_games"].iloc[0])
+    n_markets = candles["market_id"].nunique()
+    windows = {h: (res[res["half"] == h]["first_date"].iloc[0],
+                   res[res["half"] == h]["last_date"].iloc[0])
+               for h in ("first", "second") if (res["half"] == h).any()}
+
+    if not args.markdown:
+        cols = ["half", "model", "margin", "staking", "n_games", "n_posted",
+                "n_filled", "fill_rate", "marketable_rate", "pnl_per_posted",
+                "pnl_per_filled", "pnl_per_game", "roi", "roi_lo", "roi_hi",
+                "hit_rate", "total_return", "total_fees"]
+        print(res[cols].round(5).to_string(index=False))
+        if args.csv_out is not None:
+            print(f"\nwrote {args.csv_out}")
+        return
+
+    print(f"\n### Kalshi maker — {n_games} games, {n_markets} markets' candles, "
+          f"maker fee rate {venue.maker_rate:g}, order live T−{args.maker_hours}h "
+          f"→ first pitch\n")
+    for h, (a, b) in windows.items():
+        print(f"* **{h} half** ({HALF_LABEL[h]}): {a} → {b}, "
+              f"{int(res[res['half'] == h]['n_games'].iloc[0])} games")
+    print()
+    for staking in ("flat", "kelly"):
+        rate = lambda x: "—" if pd.isna(x) else f"{x:.3f}"   # noqa: E731
+        print(f"**{MAKER_STAKING_LABEL[staking]}**\n")
+        print("Fill rate by margin, second half:\n")
+        print(wide_table(res, "second", staking, args.models, margins,
+                         "fill_rate", rate))
+        print("\nFirst half — ¢ per posted contract, where the margin is chosen:\n")
+        print(wide_table(res, "first", staking, args.models, margins,
+                         "pnl_per_posted", cents))
+        print("\nSecond half — the scored one:\n")
+        print(maker_table(res, "second", staking, args.models, margins))
+        print("\nMargin chosen on the first half, scored on the second:\n")
+        print(chosen_table(res, staking, args.models))
+        print()
+    print(f"**Crossing vs quoting on the same second half** "
+          f"(taker at edge ≥ {100 * args.detail_threshold:.0f} pts, flat; maker "
+          f"at its chosen margin, flat)\n")
+    print(taker_compare_table(preds, closes, res, args.models,
+                              args.detail_threshold,
+                              replace(pnl.VENUES["kalshi"],
+                                      taker_rate=args.kalshi_fee_rate),
+                              args.bootstrap, args.seed))
+    print()
+    if args.csv_out is not None:
+        print(f"\nwrote {args.csv_out}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -122,7 +336,37 @@ def main() -> None:
     ap.add_argument("--markdown", action="store_true",
                     help="print the docs tables instead of the wide frame")
     ap.add_argument("--csv-out", type=Path, default=None)
+    ap.add_argument("--maker", action="store_true",
+                    help="run the maker exam (rest a limit order) instead of "
+                         "the taker exam (cross the book)")
+    ap.add_argument("--candles", type=Path,
+                    default=ROOT / "data/market/kalshi_candles_2026.parquet",
+                    help="maker: scripts/backfill_kalshi_candles.py parquet")
+    ap.add_argument("--margins", default="0,0.01,0.02,0.03,0.05",
+                    help="maker: how far inside fair value to quote")
+    ap.add_argument("--kalshi-maker-fee-rate", type=float,
+                    default=pnl.KALSHI_MAKER_RATE,
+                    help="maker: 0.0175·P·(1−P) per contract, a quarter of the "
+                         "taker rate (second-hand; see src/market/pnl.py)")
+    ap.add_argument("--maker-round-cents", action="store_true",
+                    help="maker: round the maker fee up to the whole cent, the "
+                         "less charitable reading of the rounding rule")
+    ap.add_argument("--maker-hours", type=int, default=pnl.MAKER_HOURS,
+                    help="maker: how long before first pitch the order rests")
+    ap.add_argument("--maker-anchor", choices=("close", "post"), default="close",
+                    help="maker: what the model is compared against to pick a "
+                         "side — the pre-pitch close (comparable to the taker "
+                         "exam) or the price on the screen when the order goes "
+                         "in (no hindsight at all)")
     args = ap.parse_args()
+
+    if args.maker:
+        if args.models == DEFAULT_MODELS:
+            # `market` never disagrees with itself and `random_edge` has its own
+            # per-model replacement here, so the maker grid uses its own default.
+            args.models = DEFAULT_MAKER_MODELS
+        run_maker(args)
+        return
 
     preds = pd.read_parquet(args.preds)
     closes = pd.read_parquet(args.closes)

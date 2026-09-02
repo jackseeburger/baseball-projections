@@ -8,13 +8,21 @@ you pay the ask and the fee rather than the mid; **selectivity**, because you
 are only paid where you *disagree* with the market; and **sizing**, because a
 fractional-Kelly stake on a miscalibrated edge still loses.
 
+There are two exams here. The **taker** exam crosses the closing quote and is
+the bulk of this document. The **maker** exam ([below](#maker-side--quoting-instead-of-crossing))
+rests a limit order through the 24 hours before first pitch and asks whether
+the price came to it — the trade that stops paying the two costs the taker
+exam says are eating the edge.
+
 Produced by:
 
 ```
 python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
     --market data/parquet/market_closes_2026.parquet \
     --out data/parquet/game_preds_2026.parquet
-python scripts/money_exam.py --markdown
+python scripts/money_exam.py --markdown                    # the taker tables
+python scripts/backfill_kalshi_candles.py --season 2026    # the price path
+python scripts/money_exam.py --maker --markdown            # the maker tables
 ```
 
 **Headline: no model here is worth betting.** Every one of them loses money at
@@ -24,6 +32,12 @@ is a surprise — no model is at the market on Brier (0.24454 vs 0.24156) — an
 recording it is the point. The instrument exists so that the day a model does
 reach the market, the answer to "is it worth trading?" is a command, not an
 argument.
+
+**And execution does not rescue it.** Quoting instead of crossing recovers
+7.8 of the 8.4 points of ROI the taker exam attributes to the spread and the
+fee — and lands the stack at −3.1%, which is exactly where the taker exam's
+*frictionless* row already put it. Costs were never the reason this book
+loses.
 
 ## Method
 
@@ -74,9 +88,10 @@ price P in dollars. It is maximal at a coin flip — 1.75¢, which rounds to 2¢
 — and vanishes in the tails. Every one of our 405 Kalshi bets at the 2-pt
 threshold sat near enough to even money to pay the full **2¢ per contract**,
 which on a mean cost of 47¢ is **4.4% of stake** before anything else happens.
-Maker fees are set to zero here: resting a limit order is the trade we would
-actually want, but a maker fill is not guaranteed, so the exam charges the
-taker.
+Resting a limit order is the trade we would actually want, but a maker fill is
+not guaranteed, so this exam charges the taker; the fill question is what the
+[maker side](#maker-side--quoting-instead-of-crossing) answers, with its own
+(quarter-size) fee.
 
 *Source.* Kalshi's fee-schedule page (`kalshi.com/docs/fees`) was unreachable
 from this environment (HTTP 429 through the agent proxy), and the API docs no
@@ -295,11 +310,353 @@ not one more feature.
 Two cheaper routes exist and are worth naming. **Be a maker rather than a
 taker** — resting a limit order inside the spread rather than crossing it is
 worth 8.4 points of ROI here (the fee plus the spread), which is larger than
-any edge we have found, though it trades adverse selection for it and cannot
-be simulated from close data alone. And **find a less efficient contract**:
+any edge we have found, though it trades adverse selection for it. That one
+can now be simulated: the hourly candle archive makes the pre-game price
+*path* available, and the [maker section](#maker-side--quoting-instead-of-crossing)
+below is the answer. And **find a less efficient contract**:
 props and mid-liquidity markets, where the price does not already contain
 Steamer, ZiPS and the sharps, which is the roadmap's stated shortest path to
 money.
+
+## Maker side — quoting instead of crossing
+
+The decomposition above says 4.4 points of the stack's −11.6% is the taker fee
+and 4.0 is the spread. Together that is 8.4 points of ROI paid for the
+privilege of trading *now*, which is more than any edge station E has ever
+shown. A maker pays neither: he posts a limit order, waits, and trades only if
+someone comes to him. This section asks whether that trade survives.
+
+It could not be asked from the closes archive, because a resting order is
+filled by the price **path**, not by its last point. It can be asked from
+hourly candles, so those are now archived too:
+`scripts/backfill_kalshi_candles.py` writes
+`data/market/kalshi_candles_2026.parquet` — one row per (market, hour) for the
+24 hours before first pitch of every settled 2026 Kalshi game market: traded
+open/high/low/close, the bid and ask at the end of the hour, and the hour's
+volume. **876 markets, 20,989 hourly candles, 0.27 MB, no failures** (82
+rate-limit responses along the way, all retried through). 97.9% of the
+archived hours traded, so *whether* an hour traded is rarely what decides a
+fill; the price level is.
+
+### Method
+
+**The rule.** For one game and one model, with margin `m`:
+
+* the model is above the close → post a **YES** bid at `P_model(home) − m`;
+  below it → post a **NO** bid at `(1 − P_model(home)) − m`. Equality quotes
+  nothing. The bid is floored to Kalshi's whole-cent grid, which is the
+  conservative direction — a lower bid is harder to fill, never easier.
+* the order is live from **T−24h to first pitch**, **one contract per game**,
+  and is **cancelled unfilled at first pitch**. No in-game exposure.
+* it fills in the **first hour whose traded low reached the bid on non-zero
+  volume**; on the NO side, the first hour whose `1 − high` reached it, which
+  is the same statement, since buying NO at `q` is selling YES at `1 − q`. The
+  fill is at our own limit — price improvement is never assumed.
+
+**The leakage guard.** The limit price is a function of the model's
+probability and the margin alone; no quantity from the candle archive enters
+it. That is unit-tested (`test_limit_price_is_a_function_of_the_model_alone`),
+as is the fill rule itself: fill at the low, no fill when the low is above the
+bid, no fill on zero volume, the NO-side mirror, cancel at first pitch, and
+no fill before the order is posted. What *does* look at the market is the
+choice of **side**, which compares the model to the close — the same reference
+the taker exam uses, and the reason the two are comparable. The close is a
+price from ~15 minutes before first pitch, i.e. after the order went in, so
+`--maker-anchor post` reruns everything with the side chosen off the price on
+the screen when the order is posted instead. That variant has no hindsight in
+it anywhere and is in the sensitivity table.
+
+**The margin is chosen out of sample.** `m ∈ {0, 0.01, 0.02, 0.03, 0.05}` is a
+free parameter, and a free parameter chosen on the data it is scored on is not
+a result. It is chosen on the **first half** of the game window by date, by
+P&L per posted contract, and scored on the **second**. Both halves are below.
+
+**The control** is the model's own signed disagreements with the close, dealt
+to the wrong games. A maker's return depends on how big the edges are, so a
+null with a *different* edge distribution would be a different strategy rather
+than a control; permuting each model's own edges keeps the distribution
+exactly and destroys only the thing under test — whether the disagreement is
+attached to the right game.
+
+**The fee.** Kalshi's maker fee is the taker formula at a quarter of the rate,
+`0.0175 · C · P · (1 − P)` — **0.44¢ per contract at a coin flip**, against
+the taker's 2¢. Same provenance problem as the taker constant: `kalshi.com`'s
+fee-schedule PDF returns HTTP 429 from this environment, so the number is
+second-hand, from two independent readings of the July 2026 schedule that
+agree both on "maker = 25% of taker" and on the 0.44¢ maximum
+([marketmath.io](https://marketmath.io/blog/kalshi-fees-guide-2026),
+[pm.wiki](https://pm.wiki/learn/kalshi-fees-explained)). It is
+`--kalshi-maker-fee-rate`, not a constant. The fee is *not* rounded up to the
+cent by default, because the surviving first-party page
+([docs.kalshi.com/getting_started/fee_rounding](https://docs.kalshi.com/getting_started/fee_rounding))
+says the charged fee is `ceil_6dp(model_fee)` accumulated per order, and
+rounding 0.44¢ up to a whole cent would nearly triple it; `--maker-round-cents`
+prices the less charitable reading and the sensitivity table shows what it
+costs.
+
+**Three denominators, because a maker has three honest ones.** *Per posted
+contract* charges the strategy for the games it wanted and did not get, and is
+the number that matters. *Per filled contract* says how good the fills
+themselves were. *Per game* puts every model on the same footing. ROI (profit
+over capital at risk) is reported too, because it is what the taker table is
+in and therefore the only column through which the two exams can be compared.
+
+**The `crossed` column is the honest problem with a small margin.** A bid at
+or above the prevailing ask is not a maker order at all — the exchange fills
+it immediately against the resting offer and charges the *taker* fee. At
+`m = 0` the bid is the model's own price, which is above the market whenever
+the model disagrees at all, so most of those "limit orders" would have
+crossed. The column counts them, and a row with a high `crossed` rate is the
+taker exam wearing a maker's fee schedule.
+
+### Kalshi maker — 756 games, 876 markets' candles, maker fee rate 0.0175
+
+The same 756 games the taker table above is scored on, split by date:
+**first half 2026-07-04 → 08-04 (379 games)** chooses the margin, **second
+half 2026-08-05 → 09-02 (377 games)** scores it.
+
+**Fill rate by margin, second half** (flat, one contract per game):
+
+| Model | m=0.00 | m=0.01 | m=0.02 | m=0.03 | m=0.05 |
+|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | 1.000 | 0.960 | 0.828 | 0.695 | 0.377 |
+| pythag_60_sp_lu_bp (shuffled control) | 1.000 | 0.976 | 0.899 | 0.740 | 0.430 |
+| pythag_60_sp_lu | 1.000 | 0.958 | 0.844 | 0.692 | 0.414 |
+| pythag_60_sp_lu (shuffled control) | 1.000 | 0.952 | 0.857 | 0.716 | 0.467 |
+| pythag_60_sp | 1.000 | 0.955 | 0.865 | 0.714 | 0.427 |
+| pythag_60_sp (shuffled control) | 1.000 | 0.960 | 0.897 | 0.782 | 0.538 |
+| pythag_60 | 1.000 | 0.966 | 0.912 | 0.814 | 0.562 |
+| pythag_60 (shuffled control) | 1.000 | 0.973 | 0.891 | 0.833 | 0.589 |
+| home_constant (control) | 1.000 | 0.987 | 0.936 | 0.862 | 0.735 |
+| home_constant (shuffled control) | 1.000 | 0.979 | 0.920 | 0.873 | 0.690 |
+
+**First half — ¢ per posted contract, where the margin is chosen:**
+
+| Model | m=0.00 | m=0.01 | m=0.02 | m=0.03 | m=0.05 |
+|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | -6.44¢ | -4.82¢ | -3.91¢ | -2.31¢ | +0.07¢ |
+| pythag_60_sp_lu_bp (shuffled control) | -2.89¢ | -0.71¢ | +0.35¢ | +1.05¢ | +2.42¢ |
+| pythag_60_sp_lu | -5.22¢ | -3.97¢ | -2.48¢ | -1.83¢ | +0.50¢ |
+| pythag_60_sp_lu (shuffled control) | -2.83¢ | -1.21¢ | -1.11¢ | +0.07¢ | -0.98¢ |
+| pythag_60_sp | -4.22¢ | -3.15¢ | -1.48¢ | -1.27¢ | +1.10¢ |
+| pythag_60_sp (shuffled control) | -7.10¢ | -6.21¢ | -4.42¢ | -3.97¢ | -4.44¢ |
+| pythag_60 | -2.45¢ | -1.96¢ | -0.92¢ | +0.75¢ | +1.35¢ |
+| pythag_60 (shuffled control) | -0.69¢ | +0.70¢ | +1.49¢ | +0.56¢ | +0.81¢ |
+| home_constant (control) | -6.51¢ | -5.46¢ | -4.37¢ | -3.62¢ | -2.44¢ |
+| home_constant (shuffled control) | -5.09¢ | -4.73¢ | -4.36¢ | -2.54¢ | -2.56¢ |
+
+Every real model's training half prefers **m = 0.05**, the widest margin on
+the grid. That is a boundary solution and it should be read as one: what the
+first half is asking for is not a particular margin, it is *less trading*.
+
+**Second half — the scored one** (flat):
+
+| Model | m | posted | fill | crossed | ¢/posted | ¢/filled | ¢/game | ROI | ROI 95% CI |
+|---|---|---|---|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | 0.00 | 377 | 1.000 | 0.745 | -7.79¢ | -7.79¢ | -7.79¢ | -15.7% | (-26.0%, -5.6%) |
+| pythag_60_sp_lu_bp | 0.01 | 377 | 0.960 | 0.602 | -6.63¢ | -6.91¢ | -6.63¢ | -14.2% | (-24.9%, -3.6%) |
+| pythag_60_sp_lu_bp | 0.02 | 377 | 0.828 | 0.477 | -5.15¢ | -6.23¢ | -5.15¢ | -12.9% | (-24.8%, -1.4%) |
+| pythag_60_sp_lu_bp | 0.03 | 377 | 0.695 | 0.305 | -2.96¢ | -4.26¢ | -2.96¢ | -9.0% | (-22.2%, +3.5%) |
+| pythag_60_sp_lu_bp | 0.05 | 377 | 0.377 | 0.135 | -0.54¢ | -1.45¢ | -0.54¢ | -3.1% | (-21.7%, +15.2%) |
+| pythag_60_sp_lu_bp (shuffled control) | 0.00 | 377 | 1.000 | 0.812 | -7.47¢ | -7.47¢ | -7.47¢ | -14.0% | (-23.3%, -5.3%) |
+| pythag_60_sp_lu_bp (shuffled control) | 0.01 | 377 | 0.976 | 0.706 | -6.60¢ | -6.76¢ | -6.60¢ | -12.9% | (-22.4%, -3.7%) |
+| pythag_60_sp_lu_bp (shuffled control) | 0.02 | 377 | 0.899 | 0.576 | -4.17¢ | -4.63¢ | -4.17¢ | -8.9% | (-18.8%, +0.4%) |
+| pythag_60_sp_lu_bp (shuffled control) | 0.03 | 377 | 0.740 | 0.438 | -2.62¢ | -3.54¢ | -2.62¢ | -6.8% | (-17.9%, +3.7%) |
+| pythag_60_sp_lu_bp (shuffled control) | 0.05 | 377 | 0.430 | 0.249 | -1.16¢ | -2.70¢ | -1.16¢ | -5.2% | (-19.8%, +9.2%) |
+| pythag_60_sp_lu | 0.00 | 377 | 1.000 | 0.721 | -7.22¢ | -7.22¢ | -7.22¢ | -14.7% | (-25.0%, -4.8%) |
+| pythag_60_sp_lu | 0.01 | 377 | 0.958 | 0.618 | -6.09¢ | -6.36¢ | -6.09¢ | -13.2% | (-23.9%, -2.4%) |
+| pythag_60_sp_lu | 0.02 | 377 | 0.844 | 0.504 | -3.88¢ | -4.60¢ | -3.88¢ | -9.7% | (-21.1%, +1.8%) |
+| pythag_60_sp_lu | 0.03 | 377 | 0.692 | 0.361 | -3.26¢ | -4.70¢ | -3.26¢ | -10.1% | (-23.3%, +2.6%) |
+| pythag_60_sp_lu | 0.05 | 377 | 0.414 | 0.162 | -0.99¢ | -2.39¢ | -0.99¢ | -5.3% | (-22.7%, +11.5%) |
+| pythag_60_sp_lu (shuffled control) | 0.00 | 377 | 1.000 | 0.759 | -1.08¢ | -1.08¢ | -1.08¢ | -2.1% | (-11.4%, +7.7%) |
+| pythag_60_sp_lu (shuffled control) | 0.01 | 377 | 0.952 | 0.655 | +0.14¢ | +0.15¢ | +0.14¢ | +0.3% | (-9.0%, +10.1%) |
+| pythag_60_sp_lu (shuffled control) | 0.02 | 377 | 0.857 | 0.544 | +1.03¢ | +1.20¢ | +1.03¢ | +2.3% | (-7.7%, +12.8%) |
+| pythag_60_sp_lu (shuffled control) | 0.03 | 377 | 0.716 | 0.446 | +1.17¢ | +1.63¢ | +1.17¢ | +3.2% | (-8.0%, +14.6%) |
+| pythag_60_sp_lu (shuffled control) | 0.05 | 377 | 0.467 | 0.271 | +1.11¢ | +2.38¢ | +1.11¢ | +4.7% | (-9.8%, +18.2%) |
+| pythag_60_sp | 0.00 | 377 | 1.000 | 0.753 | -4.86¢ | -4.86¢ | -4.86¢ | -9.9% | (-20.1%, +0.0%) |
+| pythag_60_sp | 0.01 | 377 | 0.955 | 0.621 | -4.15¢ | -4.35¢ | -4.15¢ | -9.0% | (-19.7%, +1.5%) |
+| pythag_60_sp | 0.02 | 377 | 0.865 | 0.496 | -3.52¢ | -4.07¢ | -3.52¢ | -8.5% | (-20.3%, +2.9%) |
+| pythag_60_sp | 0.03 | 377 | 0.714 | 0.347 | -2.03¢ | -2.85¢ | -2.03¢ | -6.1% | (-18.9%, +6.5%) |
+| pythag_60_sp | 0.05 | 377 | 0.427 | 0.170 | -1.39¢ | -3.25¢ | -1.39¢ | -7.2% | (-24.4%, +9.7%) |
+| pythag_60_sp (shuffled control) | 0.00 | 377 | 1.000 | 0.844 | -3.71¢ | -3.71¢ | -3.71¢ | -6.8% | (-15.8%, +2.4%) |
+| pythag_60_sp (shuffled control) | 0.01 | 377 | 0.960 | 0.735 | -2.13¢ | -2.22¢ | -2.13¢ | -4.2% | (-13.6%, +5.2%) |
+| pythag_60_sp (shuffled control) | 0.02 | 377 | 0.897 | 0.629 | -1.76¢ | -1.97¢ | -1.76¢ | -3.7% | (-13.5%, +6.3%) |
+| pythag_60_sp (shuffled control) | 0.03 | 377 | 0.782 | 0.515 | -1.47¢ | -1.88¢ | -1.47¢ | -3.6% | (-14.4%, +7.1%) |
+| pythag_60_sp (shuffled control) | 0.05 | 377 | 0.538 | 0.316 | +1.29¢ | +2.40¢ | +1.29¢ | +4.6% | (-8.6%, +17.8%) |
+| pythag_60 | 0.00 | 377 | 1.000 | 0.838 | -6.35¢ | -6.35¢ | -6.35¢ | -13.0% | (-23.0%, -2.8%) |
+| pythag_60 | 0.01 | 377 | 0.966 | 0.727 | -5.70¢ | -5.90¢ | -5.70¢ | -12.3% | (-22.9%, -1.8%) |
+| pythag_60 | 0.02 | 377 | 0.912 | 0.629 | -5.44¢ | -5.96¢ | -5.44¢ | -12.7% | (-23.7%, -1.5%) |
+| pythag_60 | 0.03 | 377 | 0.814 | 0.491 | -4.02¢ | -4.94¢ | -4.02¢ | -10.7% | (-22.6%, +0.7%) |
+| pythag_60 | 0.05 | 377 | 0.562 | 0.276 | -3.66¢ | -6.50¢ | -3.66¢ | -14.5% | (-28.7%, +0.4%) |
+| pythag_60 (shuffled control) | 0.00 | 377 | 1.000 | 0.828 | -2.58¢ | -2.58¢ | -2.58¢ | -4.8% | (-13.8%, +4.8%) |
+| pythag_60 (shuffled control) | 0.01 | 377 | 0.973 | 0.745 | -1.95¢ | -2.01¢ | -1.95¢ | -3.8% | (-13.2%, +6.0%) |
+| pythag_60 (shuffled control) | 0.02 | 377 | 0.891 | 0.682 | -1.09¢ | -1.22¢ | -1.09¢ | -2.3% | (-12.2%, +7.7%) |
+| pythag_60 (shuffled control) | 0.03 | 377 | 0.833 | 0.597 | -0.58¢ | -0.70¢ | -0.58¢ | -1.3% | (-11.7%, +9.3%) |
+| pythag_60 (shuffled control) | 0.05 | 377 | 0.589 | 0.371 | +0.53¢ | +0.90¢ | +0.53¢ | +1.7% | (-10.8%, +14.8%) |
+| home_constant (control) | 0.00 | 377 | 1.000 | 0.897 | -7.11¢ | -7.11¢ | -7.11¢ | -14.4% | (-24.1%, -4.6%) |
+| home_constant (control) | 0.01 | 377 | 0.987 | 0.820 | -6.04¢ | -6.12¢ | -6.04¢ | -12.6% | (-22.9%, -2.2%) |
+| home_constant (control) | 0.02 | 377 | 0.936 | 0.745 | -6.37¢ | -6.81¢ | -6.37¢ | -14.3% | (-25.1%, -3.5%) |
+| home_constant (control) | 0.03 | 377 | 0.862 | 0.660 | -5.97¢ | -6.92¢ | -5.97¢ | -14.9% | (-26.3%, -3.5%) |
+| home_constant (control) | 0.05 | 377 | 0.735 | 0.512 | -3.39¢ | -4.61¢ | -3.39¢ | -10.3% | (-23.4%, +2.8%) |
+| home_constant (shuffled control) | 0.00 | 377 | 1.000 | 0.859 | -5.74¢ | -5.74¢ | -5.74¢ | -10.3% | (-18.9%, -1.1%) |
+| home_constant (shuffled control) | 0.01 | 377 | 0.979 | 0.830 | -4.87¢ | -4.98¢ | -4.87¢ | -9.1% | (-17.9%, +0.4%) |
+| home_constant (shuffled control) | 0.02 | 377 | 0.920 | 0.751 | -3.32¢ | -3.61¢ | -3.32¢ | -6.6% | (-16.0%, +3.3%) |
+| home_constant (shuffled control) | 0.03 | 377 | 0.873 | 0.647 | -2.37¢ | -2.72¢ | -2.37¢ | -5.0% | (-14.7%, +5.0%) |
+| home_constant (shuffled control) | 0.05 | 377 | 0.690 | 0.509 | -0.47¢ | -0.68¢ | -0.47¢ | -1.3% | (-12.6%, +10.0%) |
+
+**Margin chosen on the first half, scored on the second** (flat):
+
+| Model | chosen m | ¢/posted (train) | posted | fill | ¢/posted (test) | ¢/filled (test) | ROI (test) | ROI 95% CI | hit |
+|---|---|---|---|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | 0.05 | +0.07¢ | 377 | 0.377 | -0.54¢ | -1.45¢ | -3.1% | (-21.7%, +15.2%) | 0.451 |
+| pythag_60_sp_lu_bp (shuffled control) | 0.05 | +2.42¢ | 377 | 0.430 | -1.16¢ | -2.70¢ | -5.2% | (-19.8%, +9.2%) | 0.500 |
+| pythag_60_sp_lu | 0.05 | +0.50¢ | 377 | 0.414 | -0.99¢ | -2.39¢ | -5.3% | (-22.7%, +11.5%) | 0.436 |
+| pythag_60_sp_lu (shuffled control) | 0.03 | +0.07¢ | 377 | 0.716 | +1.17¢ | +1.63¢ | +3.2% | (-8.0%, +14.6%) | 0.530 |
+| pythag_60_sp | 0.05 | +1.10¢ | 377 | 0.427 | -1.39¢ | -3.25¢ | -7.2% | (-24.4%, +9.7%) | 0.422 |
+| pythag_60_sp (shuffled control) | 0.03 | -3.97¢ | 377 | 0.782 | -1.47¢ | -1.88¢ | -3.6% | (-14.4%, +7.1%) | 0.512 |
+| pythag_60 | 0.05 | +1.35¢ | 377 | 0.562 | -3.66¢ | -6.50¢ | -14.5% | (-28.7%, +0.4%) | 0.387 |
+| pythag_60 (shuffled control) | 0.02 | +1.49¢ | 377 | 0.891 | -1.09¢ | -1.22¢ | -2.3% | (-12.2%, +7.7%) | 0.524 |
+| home_constant (control) | 0.05 | -2.44¢ | 377 | 0.735 | -3.39¢ | -4.61¢ | -10.3% | (-23.4%, +2.8%) | 0.404 |
+| home_constant (shuffled control) | 0.03 | -2.54¢ | 377 | 0.873 | -2.37¢ | -2.72¢ | -5.0% | (-14.7%, +5.0%) | 0.517 |
+
+**Quarter-Kelly**, same rule, same chosen margins (the full grid is one flag
+away — `--maker --markdown` prints both staking rules):
+
+| Model | chosen m | ¢/posted (train) | posted | fill | ¢/posted (test) | ¢/filled (test) | ROI (test) | ROI 95% CI | hit |
+|---|---|---|---|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | 0.05 | -0.01¢ | 377 | 0.377 | -0.73¢ | -1.96¢ | -4.3% | (-22.7%, +14.1%) | 0.451 |
+| pythag_60_sp_lu_bp (shuffled control) | 0.05 | +2.48¢ | 377 | 0.430 | -1.20¢ | -2.83¢ | -5.4% | (-19.8%, +9.3%) | 0.500 |
+| pythag_60_sp_lu | 0.05 | +0.45¢ | 377 | 0.414 | -0.91¢ | -2.23¢ | -4.9% | (-22.4%, +11.8%) | 0.436 |
+| pythag_60_sp_lu (shuffled control) | 0.03 | +0.28¢ | 377 | 0.716 | +1.43¢ | +2.01¢ | +3.9% | (-7.4%, +15.5%) | 0.530 |
+| pythag_60_sp | 0.05 | +1.18¢ | 377 | 0.427 | -1.55¢ | -3.68¢ | -8.2% | (-25.6%, +8.6%) | 0.422 |
+| pythag_60_sp (shuffled control) | 0.03 | -4.12¢ | 377 | 0.782 | -1.49¢ | -1.92¢ | -3.6% | (-14.4%, +7.2%) | 0.512 |
+| pythag_60 | 0.05 | +1.49¢ | 377 | 0.562 | -3.63¢ | -6.51¢ | -14.6% | (-28.8%, +0.1%) | 0.387 |
+| pythag_60 (shuffled control) | 0.02 | +1.44¢ | 377 | 0.891 | -1.60¢ | -1.79¢ | -3.3% | (-13.5%, +7.0%) | 0.524 |
+| home_constant (control) | 0.05 | -2.35¢ | 377 | 0.735 | -3.54¢ | -4.83¢ | -10.9% | (-24.1%, +2.5%) | 0.404 |
+| home_constant (shuffled control) | 0.03 | -2.55¢ | 377 | 0.873 | -2.62¢ | -3.01¢ | -5.6% | (-15.2%, +4.3%) | 0.517 |
+
+**Crossing vs quoting on the same 377 games** — the comparison the whole
+section exists for:
+
+| Model | taker n | taker ROI | taker 95% CI | maker m | maker n filled | maker ROI | maker 95% CI |
+|---|---|---|---|---|---|---|---|
+| pythag_60_sp_lu_bp | 195 | -10.9% | (-26.0%, +4.7%) | 0.05 | 142 | -3.1% | (-21.7%, +15.2%) |
+| pythag_60_sp_lu | 202 | -14.0% | (-28.8%, +1.1%) | 0.05 | 156 | -5.3% | (-22.7%, +11.5%) |
+| pythag_60_sp | 210 | -11.5% | (-27.2%, +3.7%) | 0.05 | 161 | -7.2% | (-24.4%, +9.7%) |
+| pythag_60 | 252 | -17.3% | (-31.4%, -3.5%) | 0.05 | 212 | -14.5% | (-28.7%, +0.4%) |
+| home_constant (control) | 296 | -10.3% | (-23.8%, +4.1%) | 0.05 | 277 | -10.3% | (-23.4%, +2.8%) |
+
+**Sensitivity** (stack, second half, flat, at its chosen margin):
+
+| Variant | m | fill | ¢/posted | ROI | ROI 95% CI |
+|---|---|---|---|---|---|
+| headline (maker fee 0.0175, side off the close) | 0.05 | 0.377 | -0.54¢ | -3.1% | (-21.7%, +15.2%) |
+| maker fee waived | 0.05 | 0.377 | -0.38¢ | -2.2% | (-20.8%, +16.1%) |
+| maker fee rounded up to the cent | 0.05 | 0.377 | -0.76¢ | -4.4% | (-22.9%, +13.9%) |
+| side chosen at posting, not off the close | 0.05 | 0.377 | -1.04¢ | -5.9% | (-23.8%, +11.4%) |
+| order rests 12h, not 24h | 0.05 | 0.340 | -0.27¢ | -1.7% | (-20.4%, +16.9%) |
+| order rests 6h, not 24h | 0.05 | 0.300 | -0.20¢ | -1.4% | (-21.9%, +19.1%) |
+
+### What the maker side says
+
+**Posting instead of crossing recovers almost exactly the cost the taker
+decomposition blamed — and nothing else.** On the same 377 games the stack
+loses **−10.9%** as a taker and **−3.1%** as a maker at its chosen margin:
+**7.8 points of ROI recovered**, against the 8.4 points the taker exam
+attributed to the spread (4.0) plus the fee (4.4). And −3.1% is where the
+taker exam's *frictionless* row already said this book lands: −3.2%, trading
+every game at the close with no spread and no fee. The two instruments,
+built from different data — one from a single closing quote, one from the
+whole pre-game price path — agree on the decomposition to a tenth of a point.
+Execution was worth every point the taker exam said it was worth, and there
+is still nothing underneath it.
+
+**No model beats its own control.** At the chosen margin the stack returns
+−3.1% and its shuffled control −5.2%; `pythag_60_sp_lu` returns −5.3% and its
+control **+3.2%**; `pythag_60_sp` −7.2% against −3.6%; `pythag_60` −14.5%
+against −2.3%. Three of the four controls beat the model they control for, and
+the fourth loses to its model by two points on 142 fills. The
+same edges dealt to the wrong games do about as well as the edges dealt to the
+right ones, which is what "no edge" looks like when you can afford to measure
+it.
+
+**Every real model loses at every margin.** There is no cell in the
+second-half table where a station-E model's P&L per posted contract is
+positive — not one, at any margin, under either staking rule. The best cell in
+the whole grid is the stack at m = 0.05: **−0.54¢ per posted contract**, a
+37.7% fill rate, and a CI from −21.7% to +15.2% on 142 fills. The direction of
+the margin sweep is monotone and unambiguous: the wider the quote, the smaller
+the loss, because the wider the quote the less of a losing book gets filled.
+
+**What fraction of the edge was the spread?** All of it, and then some. The
+question presumes an edge that costs were eating; the maker exam removes the
+costs and the edge is still negative. What the spread and the fee were eating
+was not edge, it was the difference between losing 11 points and losing 3.
+
+**The fills are the wrong half of the book.** At m = 0.05 the stack hits
+**45.1%** of its filled contracts. That is the adverse-selection signature
+without the machinery to name it: a maker is filled by whoever wanted to trade
+against him, and on this book that counterparty was right more often than we
+were. The 12h and 6h rows in the sensitivity table are the same point from the
+other end — resting the order for less time fills fewer orders and loses less
+money (−1.7% and −1.4%), which is not a strategy, it is a slower way of
+declining to trade.
+
+**The fee is no longer the binding constraint, and that is the one clean
+win.** Waiving the maker fee entirely moves the stack from −3.1% to −2.2%;
+charging the least charitable rounding (up to a whole cent) moves it to
+−4.4%. The taker fee was worth 4.4 points; the maker fee is worth 0.9. If a
+model ever does reach the market, this is the venue mechanic that will pay for
+it — but a fee schedule cannot manufacture the edge it discounts.
+
+**The no-hindsight variant is worse, not better.** Choosing the side off the
+price on the screen when the order is posted rather than off the close costs
+2.8 points (−3.1% → −5.9%). The close is a better price than the model, so
+using it to pick a side was quietly helping; without it the exam is cleaner
+and the answer is the same, only more so.
+
+### Caveats — why a maker P&L is an upper bound in a way the taker's is not
+
+- **Adverse selection is only half-visible here and it is the whole risk of
+  the trade.** A resting order is filled when someone wants to sell to it, and
+  that someone is disproportionately someone who knows something we do not — a
+  scratched starter, a lineup change, weather, a bullpen down three arms. The
+  45.1% hit rate on fills is that effect showing up in the P&L; nothing in an
+  hourly candle can separate it from the model simply being wrong.
+- **Queue priority is assumed.** The rule fills whenever the hour's traded low
+  reached our price on any volume. In reality an order at a one-cent book
+  joins a queue behind everyone already resting there, and a price that only
+  *touched* our level on small size would have left us behind it. This is the
+  same optimism the taker exam has about depth, pointed the other way.
+- **The granularity is one hour.** Within an hour we cannot know whether the
+  low came before or after the order was posted, only that the price was there
+  at some point during it.
+- **No inventory, no requoting, no position limits.** One contract per game,
+  never repriced as the market moves, no hedging, and no correlation between
+  games on the same night. A real maker requotes constantly; that is a
+  different and probably better strategy, and this archive cannot simulate it
+  honestly.
+- **The archive is 24 hours deep and the exchange is not.** Kalshi's game
+  markets open two to three days out, so an order left resting longer would
+  fill more often and at worse prices — the 12h and 6h rows show the gradient.
+  Twenty-four hours is the window in which the starters are known, which is
+  the window in which our model has anything to say.
+- **The hourly buckets are aligned to T−24h, the closes archive's to the
+  market's open.** The two therefore need not pick the same "last hour before
+  first pitch". They agree on the price, quote and timestamp of the close on
+  **875 of 876** markets; the one exception is a game whose price had already
+  gone to 99¢ before its ticker's nominal first pitch.
+
+Reproduce:
+
+```
+python scripts/backfill_kalshi_candles.py --season 2026
+python scripts/money_exam.py --maker --markdown
+python scripts/money_exam.py --maker --kalshi-maker-fee-rate 0     # fee waived
+python scripts/money_exam.py --maker --maker-round-cents           # cent rounding
+python scripts/money_exam.py --maker --maker-anchor post           # no hindsight
+python scripts/money_exam.py --maker --maker-hours 6               # a shorter rest
+```
 
 ## Why this instrument and not Brier
 
