@@ -1,0 +1,46 @@
+name: Market snapshot
+
+# Station M (docs/architecture.md): archive Kalshi + Polymarket MLB prices.
+# Three slots a day: morning, ~1h before the first pitch, and after the
+# late games close. Every run writes an immutable timestamped file, so
+# duplicates are harmless and misses only cost resolution.
+on:
+  schedule:
+    - cron: "0 10 * * *"     # 10:00 UTC — morning
+    - cron: "30 16 * * *"    # 16:30 UTC — before the 1pm ET slate
+    - cron: "0 23 * * *"     # 23:00 UTC — before the 7pm ET slate
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: data-commits
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-ci.txt
+      - name: Snapshot markets
+        run: python scripts/snapshot_market.py
+      - name: Commit snapshot
+        run: |
+          git config user.name "market-snapshot-bot"
+          git config user.email "market-snapshot-bot@users.noreply.github.com"
+          git add data/market/ public/data/market/
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "data: market snapshot $(date -u +%FT%H%MZ)"
+            git pull --rebase origin main
+            git push
+          fi

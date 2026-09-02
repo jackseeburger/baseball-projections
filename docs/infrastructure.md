@@ -62,7 +62,7 @@ Bayesian Baseball Projection System built for a solo practitioner.
 **What:** S3-compatible object store — zero egress fees.
 
 **Bucket:** `baseball-data`
-**Endpoint:** `https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com`
+**Endpoint:** `https://<account-id>.r2.cloudflarestorage.com (env `R2_ENDPOINT_URL`)`
 
 **Current data:**
 - `statcast/` — 11 year-partitioned Parquet files (2015-2025), 1.31 GB total

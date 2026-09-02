@@ -13,9 +13,9 @@ import boto3
 from botocore.config import Config
 
 # R2 config
-R2_ENDPOINT = 'https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com'
-R2_ACCESS_KEY = '18170dc8b2b4805d3c057f69bb5b8ffb'
-R2_SECRET_KEY = '3b7f08cb995538ce5ce81572036d416a5535b8b582e53f2ac2ad80b9fd9a687a'
+R2_ENDPOINT = os.environ['R2_ENDPOINT_URL']
+R2_ACCESS_KEY = os.environ['R2_ACCESS_KEY_ID']
+R2_SECRET_KEY = os.environ['R2_SECRET_ACCESS_KEY']
 BUCKET = 'baseball-data'
 DB_PATH = 'data/statcast_local.db'
 CHUNK_SIZE = 50_000

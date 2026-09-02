@@ -99,10 +99,26 @@ for Layer 1), never in the repo:
 | `WANDB_API_KEY` | ❌ add | reading run status, logging |
 | `ODDS_API_KEY` | ❌ add | station M market-line archive (The Odds API, free tier) |
 
-Everything in stations D–H runs **without any of these** (MLB Stats API and
-Chadwick are public), which is why the simulator, site, and nightly job shipped
-on day one. The nightly sim runs on GitHub Actions, not Modal, for that reason;
-Modal is reserved for Bayesian refits.
+Everything in stations D–H and the exchange half of station M runs **without
+any of these** (MLB Stats API, Chadwick, Kalshi and Polymarket market data are
+all public), which is why the simulator, site, nightly job, and market archive
+shipped before any key existed. Both scheduled jobs run on GitHub Actions, not
+Modal, for that reason; Modal is reserved for Bayesian refits.
+
+Two GitHub Actions jobs commit data to `main` today, serialized by a shared
+`concurrency` group:
+
+| Workflow | Schedule (UTC) | Writes |
+|---|---|---|
+| `nightly-odds.yml` | 09:15, backup 11:45 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
+| `market-snapshot.yml` | 10:00, 16:30, 23:00 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
+
+Git is the interim archive because it needs no credentials; once the `R2_*`
+keys exist the snapshots move to R2 and the repo keeps only `latest.json`.
+
+**Never commit credentials.** Early scripts hard-coded R2 keys as env-var
+fallbacks; those were removed and the key must be treated as leaked and
+rotated. Scripts now fail loudly if the `R2_*` variables are missing.
 
 Network policy must allow: `modal.com`, `api.wandb.ai`, the R2 endpoint,
 `statsapi.mlb.com`, `baseballsavant.mlb.com`, `github.com`, PyPI.

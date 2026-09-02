@@ -134,6 +134,7 @@ def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
             rows.append({
                 "game_pk": g["gamePk"],
                 "date": date["date"],
+                "game_datetime": g.get("gameDate"),
                 "status": g["status"]["abstractGameState"],
                 "game_type": g.get("gameType"),
                 "home_id": g["teams"]["home"]["team"]["id"],
