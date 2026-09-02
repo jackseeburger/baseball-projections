@@ -4,7 +4,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from src.sim.bracket import play_postseason
+from src.sim.bracket import Rotations, play_postseason
 from src.sim.season import SeasonState, simulate_remaining, tally
 from src.sim.standings import TiebreakContext, seed_league
 from src.sim.teams import AL, NL
@@ -16,11 +16,15 @@ def run_playoff_odds(
     state: SeasonState, strength: pd.Series, hfa: float,
     n_sims: int = 20_000, seed: int = 0,
     p_home_overrides: dict[int, float] | None = None,
+    rotations: Rotations | None = None,
 ) -> pd.DataFrame:
     """`p_home_overrides` (game_pk → P(home)) replaces the log5 probability for
-    the remaining games it names; see `season.simulate_remaining`. The
-    postseason bracket still runs on team strength — nobody has announced a
-    Game 1 starter in September."""
+    the remaining games it names; see `season.simulate_remaining`.
+
+    `rotations` (row index → ordered [(pitcher_id, RA/9 delta)]) prices each
+    game of every postseason series with the starter scheduled to pitch it
+    (`bracket.Rotations`). Teams it omits are priced on team strength, and
+    with `rotations=None` the bracket is the pre-rotation model exactly."""
     rng = np.random.default_rng(seed)
     home_wins = simulate_remaining(state, strength, hfa, n_sims, rng,
                                    p_home_overrides=p_home_overrides)
@@ -44,7 +48,7 @@ def run_playoff_odds(
                 counts["playoffs"][t] += 1
         post = play_postseason(
             {lg: sd.seeds for lg, sd in seeds.items()},
-            records.wins[s], strength_arr, hfa, rng,
+            records.wins[s], strength_arr, hfa, rng, rotations,
         )
         for t in post.pennant.values():
             counts["pennant"][t] += 1
