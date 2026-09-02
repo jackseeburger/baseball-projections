@@ -18,12 +18,19 @@ Metrics: Brier score and log loss (lower is better). Baselines:
     pythag_60_sp_lu_bp
                     — ...and the 3.5 relief innings re-weighted toward the
                       bullpen that is actually available (src/sim/bullpen)
+    pythag_60_sp_lu_bpa
+                    — the same, with the binary "worked three days running"
+                      exclusion replaced by a pitch-count availability weight
+                      per reliever (src/sim/reliever_usage)
     pythag_C        — station C: the team's runs scored / allowed rebuilt
                       bottom-up from the hitters who are actually playing and
                       the rotation + pen that are actually pitching, blended
                       with the top-down regressed rates (src/sim/run_environment)
     pythag_C_sp     — pythag_C with the same starting-pitcher delta pythag_60_sp
                       applies, so the two are directly comparable
+    pythag_C_sp_bpa — pythag_C_sp with the pitch-count availability delta on the
+                      3.5 relief innings, the one term at a time on the best
+                      model there is
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -49,6 +56,7 @@ from src.data.mlb_stats_api import (
 )
 from src.sim import bullpen as bp_model
 from src.sim import lineups as lu_model
+from src.sim import reliever_usage as ru_model
 from src.sim import run_environment as rn_model
 from src.sim import starters as sp_model
 from src.sim.season import from_schedule
@@ -58,8 +66,10 @@ from src.sim.teams import fetch_teams
 SP_MODEL = "pythag_60_sp"
 LU_MODEL = "pythag_60_sp_lu"
 BP_MODEL = "pythag_60_sp_lu_bp"
+BPA_MODEL = "pythag_60_sp_lu_bpa"
 C_MODEL = "pythag_C"
 C_SP_MODEL = "pythag_C_sp"
+C_SP_BPA_MODEL = "pythag_C_sp_bpa"
 SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
@@ -71,6 +81,12 @@ LU_BASELINE = "team"
 # Bullpen availability: what counts as a pen and what counts as used up. Both
 # chosen walk-forward on 2025 only (docs/market-benchmark-2026.md).
 BP_BASELINE = bp_model.BASELINE
+# The pitch-count availability weight that replaces that binary rule: two pitch
+# thresholds and what the available pen is measured against, all three chosen
+# walk-forward on 2025 only (docs/market-benchmark-2026.md).
+BPA_HARD_1D = ru_model.HARD_1D_PITCHES
+BPA_HARD_2D = ru_model.HARD_2D_PITCHES
+BPA_BASELINE = ru_model.BASELINE
 # Station C: how much of the bottom-up run environment to use, what trailing
 # window defines a club's hitters and their plate-appearance shares, and how
 # many days of starts define a rotation. All three chosen walk-forward on 2025
@@ -156,8 +172,13 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                                                bp_day, bp_ctx)
                 row[BP_MODEL] = p_bp if p_bp is not None else row[LU_MODEL]
                 row.update(flags)
+                p_bpa, flags = lineup_game_prob(g, sp_day, lu_day, hfa_obs, lu_ctx,
+                                                bp_day, bp_ctx, pen_kind="available")
+                row[BPA_MODEL] = p_bpa if p_bpa is not None else row[LU_MODEL]
+                row.update(flags)
             if c_day is not None:
-                row.update(run_env_game_probs(g, c_day, sp_day, hfa_obs))
+                row.update(run_env_game_probs(g, c_day, sp_day, hfa_obs,
+                                              bp_day, bp_ctx))
             rows.append(row)
         if lu_day is not None:
             update_lineup_history(day, lu_ctx, lu_history)
@@ -268,8 +289,39 @@ def lineup_day_context(tot: pd.DataFrame, date: str, day: pd.DataFrame,
             "lg_rs9": float(tot["rs"].sum() / max(tot["g"].sum(), 1))}
 
 
+def pen_delta_ra9(ra9: float, team_id, pid, bp_day: dict, bp_ctx: dict,
+                  kind: str) -> tuple[float, float]:
+    """Apply the 3.5-inning bullpen delta to one side's runs-allowed rate.
+
+    `kind` picks which reading of "the pen that is available" is used:
+
+      * `"whole"` — `src/sim/bullpen`: the whole pen with the men who worked
+        three calendar days running dropped outright.
+      * `"available"` — `src/sim/reliever_usage`: every man in the pen weighted
+        by his trailing workload *times* a pitch-count availability weight, so
+        a heavy outing last night costs a fraction of an arm rather than all or
+        nothing.
+
+    Both are the same delta form and the same 3.5/9 share, so the pair isolates
+    the reading and nothing else. Returns (adjusted rate, how far the pen used
+    sits from the club's whole pen — the diagnostic that says how much the
+    availability reading actually moved).
+    """
+    lg_ra9 = bp_day["lg_ra9"]
+    avail, full = bp_day["pen"].get(int(team_id), (lg_ra9, lg_ra9))
+    if kind == "available":
+        now = bp_day["available"](int(team_id), int(pid))
+        base = bp_day["lg_bpa_ra9"] if bp_ctx["bpa_baseline"] == "league" else full
+    else:
+        now = avail
+        base = bp_day["lg_pen_ra9"] if bp_ctx["baseline"] == "league" else full
+    out = bp_model.blend_bullpen_team(now, ra9, base, relief_ip=bp_ctx["relief_ip"])
+    return float(out), abs(float(now) - float(full))
+
+
 def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict,
-                     bp_day: dict | None = None, bp_ctx: dict | None = None):
+                     bp_day: dict | None = None, bp_ctx: dict | None = None,
+                     pen_kind: str = "whole"):
     """P(home) with both sides' starter, posted lineup and (optionally) pen.
 
     The three terms stack additively on the club's own regressed run rates —
@@ -284,7 +336,9 @@ def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict,
     raa = lu_day["raa"].get(pk)
     sp_ids = sp_day["probables"].get(pk)
     fallback = raa is None or sp_ids is None
-    flags = ({"bp_fallback": fallback, "bp_short": 0} if bp_day is not None else
+    tag = "bp" if pen_kind == "whole" else "bpa"
+    flags = ({f"{tag}_fallback": fallback, f"{tag}_short": 0, f"{tag}_shift": 0.0}
+             if bp_day is not None else
              {"lu_fallback": fallback,
               "lu_no_history": lu_day["no_history"].get(pk, 0) if raa else 0})
     if fallback:
@@ -298,12 +352,9 @@ def lineup_game_prob(g, sp_day: dict, lu_day: dict, hfa: float, lu_ctx: dict,
                                           team.loc[team_id, "ra_pg"], lg_ra9,
                                           starter_ip=sp_day["starter_ip"])
         if bp_day is not None:
-            avail, full = bp_day["pen"].get(int(team_id), (lg_ra9, lg_ra9))
-            pen_base = (bp_day["lg_pen_ra9"] if bp_ctx["baseline"] == "league"
-                        else full)
-            ra9 = bp_model.blend_bullpen_team(avail, ra9, pen_base,
-                                              relief_ip=bp_ctx["relief_ip"])
-            flags["bp_short"] += int(round(abs(avail - full) > 1e-9))
+            ra9, shift = pen_delta_ra9(ra9, team_id, pid, bp_day, bp_ctx, pen_kind)
+            flags[f"{tag}_short"] += int(shift > 1e-9)
+            flags[f"{tag}_shift"] += shift
         base = 0.0 if league_baseline else lu_day["baseline"].get(int(team_id), 0.0)
         rs9 = lu_model.blend_lineup_team(raa[side], team.loc[team_id, "rs_pg"],
                                          base, weight=lu_ctx["weight"])
@@ -379,18 +430,52 @@ def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
     pens = bp_model.pen_window(relief, date, days=bp_ctx["roster_days"])
     out = bp_model.unavailable(relief, date, days=bp_ctx["rest_days"],
                                min_days=bp_ctx["rest_min_days"])
-    pen = {}
+    # The pitch-count reading of the same question. `usage` is *every*
+    # appearance, starts included — an opener's arm is as tired as a
+    # reliever's — while pen membership and the workload weights stay with the
+    # relief appearances above.
+    weights = ru_model.availability(bp_ctx["usage"], date,
+                                    hard_1d=bp_ctx["hard_1d"],
+                                    hard_2d=bp_ctx["hard_2d"])
+    pen, frames = {}, {}
     for team_id, grp in pens.groupby("team"):
+        frames[int(team_id)] = grp
         pen[int(team_id)] = (bp_model.pen_ra9(grp, ra9, lg_ra9, exclude=out),
                              bp_model.pen_ra9(grp, ra9, lg_ra9))
+
+    def available(team_id: int, starter_id: int) -> float:
+        """The club's availability-weighted pen rate, minus tonight's starter.
+
+        Per game rather than per day because the exclusion is the announced
+        starter, who is on the roster but is not in the pen behind himself —
+        he only ever appears in `frames` at all if he relieved inside the
+        window, which is the swingman case.
+        """
+        grp = frames.get(int(team_id))
+        if grp is None:
+            return lg_ra9
+        return ru_model.available_pen_ra9(grp, ra9, lg_ra9, weights,
+                                          exclude=(int(starter_id),))
+
     return {"pen": pen, "lg_pen_ra9": bp_model.league_pen_ra9(pens, ra9, lg_ra9),
+            "available": available,
+            # The pieces `available` closes over, so a caller sweeping the two
+            # pitch thresholds can rebuild it without paying for the rates
+            # again (scripts/sweep_reliever_usage.py).
+            "frames": frames, "pens": pens, "weights": weights,
+            "lg_bpa_ra9": ru_model.league_available_pen_ra9(pens, ra9, lg_ra9,
+                                                            weights),
             # Station C prices the rotation off the same table.
-            "ra9": ra9, "n_out": len(out)}
+            "ra9": ra9, "lg_ra9": lg_ra9, "n_out": len(out),
+            "n_limited": sum(1 for w in weights.values() if w < 1.0)}
 
 
 def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
                      rest_days: int, rest_min_days: int, relief_ip: float,
-                     league: dict, prior_counts: pd.DataFrame) -> dict:
+                     league: dict, prior_counts: pd.DataFrame,
+                     bpa_baseline: str = BPA_BASELINE,
+                     hard_1d: float = BPA_HARD_1D,
+                     hard_2d: float = BPA_HARD_2D) -> dict:
     """Fetch every pitcher's appearances once for the whole backtest.
 
     `sp_ctx` already holds the prior-season pitching totals and league rates —
@@ -405,11 +490,16 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
     game_logs["date"] = logs["date"].to_numpy()
     return {"game_logs": game_logs, "prior_counts": prior_counts,
             "relief": bp_model.relief_appearances(logs),
+            # Every appearance with its pitch count, starts included: the
+            # workload half of the availability weight (src/sim/reliever_usage).
+            "usage": ru_model.appearance_pitches(logs),
             # The other half of the same appearances: station C's rotation.
             "starts": rn_model.start_appearances(logs), "league": league,
             "season": season, "ballast": ballast, "baseline": baseline,
             "roster_days": roster_days, "rest_days": rest_days,
-            "rest_min_days": rest_min_days, "relief_ip": relief_ip}
+            "rest_min_days": rest_min_days, "relief_ip": relief_ip,
+            "bpa_baseline": bpa_baseline, "hard_1d": hard_1d,
+            "hard_2d": hard_2d}
 
 
 # ─── station C: the bottom-up team run environment ───
@@ -467,8 +557,10 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     }
 
 
-def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
-    """P(home) for `pythag_C` and `pythag_C_sp`, plus fallback diagnostics.
+def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
+                       bp_day: dict | None = None,
+                       bp_ctx: dict | None = None) -> dict:
+    """P(home) for `pythag_C`, `pythag_C_sp` and `pythag_C_sp_bpa`, plus diagnostics.
 
     `pythag_C` is the blended run environment straight into Pythagenpat + log5
     + HFA — no starter, so it is the station D comparison. `pythag_C_sp` adds
@@ -487,7 +579,8 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
     """
     team, lg_ra9 = c_day["team"], c_day["lg_ra9"]
     sp_ids = sp_day["probables"].get(int(g.game_pk))
-    talent, talent_sp = {}, {}
+    talent, talent_sp, talent_bpa = {}, {}, {}
+    shift = 0.0
     for side, team_id, i in (("home", g.home_id, 0), ("away", g.away_id, 1)):
         rs9 = max(float(team.loc[team_id, "rs_pg"]), MIN_R9)
         ra9 = max(float(team.loc[team_id, "ra_pg"]), MIN_R9)
@@ -497,13 +590,24 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
                 sp_day["sp_ra9"].get(int(sp_ids[i]), lg_ra9), ra9, lg_ra9,
                 starter_ip=c_day["starter_ip"])
             talent_sp[side] = pythagenpat(rs9, max(float(ra9_sp), MIN_R9), 1.0)
+            if bp_day is not None:
+                ra9_bpa, d = pen_delta_ra9(float(ra9_sp), team_id, sp_ids[i],
+                                           bp_day, bp_ctx, "available")
+                shift += d
+                talent_bpa[side] = pythagenpat(rs9, max(ra9_bpa, MIN_R9), 1.0)
     p_c = float(home_win_prob(talent["home"], talent["away"], hfa))
     p_c_sp = (p_c if sp_ids is None else
               float(home_win_prob(talent_sp["home"], talent_sp["away"], hfa)))
     missing = sum(int(t) in c_day["rs_missing"] or int(t) in c_day["ra_missing"]
                   for t in (g.home_id, g.away_id))
-    return {C_MODEL: p_c, C_SP_MODEL: p_c_sp,
-            "c_sp_fallback": sp_ids is None, "c_partial": missing}
+    out = {C_MODEL: p_c, C_SP_MODEL: p_c_sp,
+           "c_sp_fallback": sp_ids is None, "c_partial": missing}
+    if bp_day is not None:
+        out[C_SP_BPA_MODEL] = (p_c_sp if sp_ids is None else
+                               float(home_win_prob(talent_bpa["home"],
+                                                   talent_bpa["away"], hfa)))
+        out["c_bpa_shift"] = shift
+    return out
 
 
 def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
@@ -672,6 +776,17 @@ def main() -> None:
                         default=bp_model.REST_MIN_DAYS,
                         help="days worked inside that window that make a "
                              "reliever unavailable (2 = back-to-back)")
+    parser.add_argument("--bpa-baseline", choices=("league", "team"),
+                        default=BPA_BASELINE,
+                        help="measure the availability-weighted pen against the "
+                             "league's relievers on the same weights, or "
+                             "against the club's own whole pen (availability "
+                             "news only)")
+    parser.add_argument("--bpa-hard-1d", type=float, default=BPA_HARD_1D,
+                        help="pitches thrown yesterday that rule a reliever out")
+    parser.add_argument("--bpa-hard-2d", type=float, default=BPA_HARD_2D,
+                        help="pitches thrown over the last two days that rule a "
+                             "reliever out; also the divisor of the taper below it")
     parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
                         help="innings the bullpen is assumed to cover")
     parser.add_argument("--no-run-env", action="store_true",
@@ -740,7 +855,9 @@ def main() -> None:
             sp_model.BALLAST_BF if args.sp_ballast is None else args.sp_ballast,
             args.bp_baseline, args.bp_roster_days, args.bp_rest_days,
             args.bp_rest_min_days, args.relief_ip,
-            sp_ctx["league"], sp_ctx["prior_counts"])
+            sp_ctx["league"], sp_ctx["prior_counts"],
+            bpa_baseline=args.bpa_baseline, hard_1d=args.bpa_hard_1d,
+            hard_2d=args.bpa_hard_2d)
 
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:
@@ -758,9 +875,11 @@ def main() -> None:
     if lu_ctx is not None:
         models.append(LU_MODEL)
     if bp_ctx is not None:
-        models.append(BP_MODEL)
+        models += [BP_MODEL, BPA_MODEL]
     if c_ctx is not None:
         models += [C_MODEL, C_SP_MODEL]
+        if bp_ctx is not None:
+            models.append(C_SP_BPA_MODEL)
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -780,6 +899,11 @@ def main() -> None:
               f"baseline={args.bp_baseline}, pen={args.bp_roster_days}d, "
               f"rest={args.bp_rest_min_days}/{args.bp_rest_days}d, "
               f"relief_ip={args.relief_ip}.")
+        print(f"{BPA_MODEL}: {int(preds['bpa_short'].sum())} of {2 * len(preds)} "
+              f"club-games took the mound with a pen short of full availability, "
+              f"mean shift {preds['bpa_shift'].sum() / (2 * len(preds)):.3f} runs "
+              f"per nine; baseline={args.bpa_baseline}, "
+              f"hard={args.bpa_hard_1d:.0f}/{args.bpa_hard_2d:.0f} pitches.")
     if c_ctx is not None:
         print(f"{C_SP_MODEL}: {int(preds['c_sp_fallback'].sum())} of {len(preds)} games "
               f"fell back to {C_MODEL} for a missing starter; "
@@ -805,7 +929,10 @@ def main() -> None:
                   f"{SP_MODEL} for a missing lineup.")
         if bp_ctx is not None:
             print(f"  of these, {int(preds['bp_short'].sum())} of "
-                  f"{2 * len(preds)} club-games were a reliever short.")
+                  f"{2 * len(preds)} club-games were a reliever short, and "
+                  f"{int(preds['bpa_short'].sum())} were short of full "
+                  f"availability on the pitch-count reading (mean shift "
+                  f"{preds['bpa_shift'].sum() / (2 * len(preds)):.3f} runs/9).")
         if c_ctx is not None:
             print(f"  of these, {int(preds['c_sp_fallback'].sum())} fell back to "
                   f"{C_MODEL} for a missing starter and {int(preds['c_partial'].sum())} "
@@ -818,11 +945,16 @@ def main() -> None:
     if lu_ctx is not None:
         pairs += [(LU_MODEL, SP_MODEL), (LU_MODEL, "pythag_60")]
     if bp_ctx is not None:
-        pairs += [(BP_MODEL, LU_MODEL), (BP_MODEL, SP_MODEL)]
+        pairs += [(BP_MODEL, LU_MODEL), (BP_MODEL, SP_MODEL),
+                  (BPA_MODEL, BP_MODEL), (BPA_MODEL, LU_MODEL)]
     if c_ctx is not None:
         # The gate: C with the starter on top against the same model without
         # the bottom-up rebuild, and C alone against the production model.
         pairs += [(C_SP_MODEL, SP_MODEL), (C_MODEL, "pythag_60")]
+        if bp_ctx is not None:
+            # The reliever-availability gate: the one new term against the best
+            # model there is.
+            pairs.append((C_SP_BPA_MODEL, C_SP_MODEL))
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 
@@ -830,7 +962,8 @@ def main() -> None:
     for model in ["pythag_60"] + ([SP_MODEL] if sp_ctx is not None else []) + \
                  ([LU_MODEL] if lu_ctx is not None else []) + \
                  ([BP_MODEL] if bp_ctx is not None else []) + \
-                 ([C_SP_MODEL] if c_ctx is not None else []):
+                 ([C_SP_MODEL] if c_ctx is not None else []) + \
+                 ([C_SP_BPA_MODEL] if c_ctx is not None and bp_ctx is not None else []):
         buckets = pd.cut(preds[model], [0, .4, .45, .5, .55, .6, .65, 1.0])
         cal = preds.groupby(buckets, observed=True).agg(n=("home_win", "size"),
                                                         predicted=(model, "mean"),

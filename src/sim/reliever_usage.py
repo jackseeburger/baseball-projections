@@ -65,6 +65,12 @@ USAGE_DAYS = 3
 # Recency discount on the taper: yesterday counts fully, the day before half,
 # two days before a quarter. Halving, not a fit.
 USAGE_DECAY = 0.5
+# What the available pen is measured against: "league" is every club's pen
+# scored with the same availability weights (so the term carries pen quality as
+# well as availability), "team" is the club's own whole pen ignoring
+# availability (availability news only). Chosen walk-forward on 2025; see
+# docs/market-benchmark-2026.md.
+BASELINE = "league"
 # Fallback when a game log carries no pitch count: the league's pitches per
 # batter faced. Overridden by `pitches_per_bf()` on real data; this is only the
 # value used when there is nothing to measure it from.
