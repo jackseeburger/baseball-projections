@@ -437,7 +437,8 @@ def test_kelly_stakes_nothing_at_a_zero_margin():
     df = maker_games([0.60], [0.50], [True])
     idx = {"M1": candles([hour(3, low=0.40, high=0.95)])}
     bets = pnl.maker_bet_frame(df, "m", idx, margin=0.0, staking="kelly")
-    assert bets.loc[0, "quoted"] == 0.0 and bets.loc[0, "profit"] == 0.0
+    assert len(bets) == 0                 # a zero-size order is not an order
+    assert pnl.maker_summarize(bets, n_games=1, draws=50)["n_posted"] == 0
 
 
 # ───────────────────────────── the exam ─────────────────────────────
@@ -493,3 +494,30 @@ def test_choose_margin_picks_the_training_halfs_best():
         "pnl_per_posted": [-0.01, 0.03, 0.05, -0.02],
     })
     assert pnl.choose_margin(res, "m") == pytest.approx(0.02)
+
+
+def test_an_order_above_the_ask_is_flagged_as_marketable():
+    """A bid at or above the resting offer is a taker order, not a maker one.
+
+    At a margin of zero the rule quotes the model's own price, which is above
+    the market whenever the model disagrees at all — the exam has to say so.
+    """
+    df = maker_games([0.60], [0.50], [True])
+    quote = {"yes_bid_close": 0.50, "yes_ask_close": 0.51}
+    idx = {"M1": candles([{**hour(6, low=0.49, high=0.52), **quote}])}
+    aggressive = pnl.maker_bet_frame(df, "m", idx, margin=0.0)     # bid 0.60 > ask 0.51
+    passive = pnl.maker_bet_frame(df, "m", idx, margin=0.15)       # bid 0.45 < ask
+    assert bool(aggressive.loc[0, "marketable"])
+    assert not bool(passive.loc[0, "marketable"])
+    assert pnl.maker_summarize(aggressive, 1, draws=50)["marketable_rate"] == 1.0
+
+
+def test_marketable_mirrors_on_the_no_side():
+    df = maker_games([0.40], [0.50], [True])
+    quote = {"yes_bid_close": 0.50, "yes_ask_close": 0.51}
+    idx = {"M1": candles([{**hour(6, low=0.49, high=0.52), **quote}])}
+    # NO at 0.60 is YES offered at 0.40, which the resting 0.50 bid lifts at once.
+    aggressive = pnl.maker_bet_frame(df, "m", idx, margin=0.0)
+    assert list(aggressive["side"]) == ["no"] and bool(aggressive.loc[0, "marketable"])
+    passive = pnl.maker_bet_frame(df, "m", idx, margin=0.15)
+    assert not bool(passive.loc[0, "marketable"])

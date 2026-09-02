@@ -527,14 +527,18 @@ def first_fill(candles, side: str, limit: float, first_pitch_ts: int | None = No
             "price_high": float(high[i]), "volume": float(vol[i])}
 
 
+CANDLE_FIELDS = ["end_period_ts", "price_low", "price_high", "price_close",
+                 "volume", "yes_bid_close", "yes_ask_close"]
+
+
 def candle_index(candles: pd.DataFrame) -> dict:
-    """market_id → the arrays `first_fill` needs, built once per exam."""
+    """market_id → the arrays the maker exam needs, built once per exam."""
     out = {}
     if candles is None or len(candles) == 0:
         return out
+    cols = [c for c in CANDLE_FIELDS if c in candles.columns]
     for market_id, g in candles.sort_values("end_period_ts").groupby("market_id"):
-        out[str(market_id)] = g[["end_period_ts", "price_low", "price_high",
-                                 "volume"]].reset_index(drop=True)
+        out[str(market_id)] = g[cols].reset_index(drop=True)
     return out
 
 
@@ -570,8 +574,8 @@ def maker_bet_frame(df: pd.DataFrame, model: str, candles: dict, margin: float,
     posted = side != NO_BET
     if not posted.any():
         return pd.DataFrame(columns=["date", "game_pk", "side", "limit", "filled",
-                                     "fill_ts", "contracts", "stake", "profit",
-                                     "fee", "won", "edge"])
+                                     "fill_ts", "marketable", "quoted", "contracts",
+                                     "stake", "profit", "fee", "won", "edge"])
     p = df[model].to_numpy(dtype=float)[posted]
     side, limit = side[posted], limit[posted].astype(float)
     market_ids, first_pitch = market_ids[posted], first_pitch[posted]
@@ -582,6 +586,9 @@ def maker_bet_frame(df: pd.DataFrame, model: str, candles: dict, margin: float,
              for m, s, q, fp in zip(market_ids, side, limit, first_pitch)]
     filled = np.array([f is not None for f in fills], dtype=bool)
     fill_ts = np.array([f["end_period_ts"] if f else 0 for f in fills], dtype="int64")
+    marketable = np.array([
+        _marketable(candles.get(m), int(fp) - hours * 3600, int(fp), s, q)
+        for m, fp, s, q in zip(market_ids, first_pitch, side, limit)], dtype=bool)
 
     p_win = np.where(side == "yes", p, 1.0 - p)
     if staking == "flat":
@@ -596,30 +603,56 @@ def maker_bet_frame(df: pd.DataFrame, model: str, candles: dict, margin: float,
     fee = contracts * maker_fee_per_contract(limit, venue.maker_rate, maker_round_cents)
     stake = contracts * limit
     profit = contracts * won.astype(float) - stake - fee
-    return pd.DataFrame({
+    out = pd.DataFrame({
         "date": df["date"].to_numpy()[posted],
         "game_pk": df["game_pk"].to_numpy()[posted],
         "side": side, "limit": limit, "filled": filled, "fill_ts": fill_ts,
+        "marketable": marketable,
         "quoted": quoted, "contracts": contracts, "stake": stake,
         "profit": profit, "fee": fee,
         "won": np.where(filled, won, False),
         "edge": np.where(side == "yes", p - close, close - p),
     })
+    # A zero-size order is not an order. Kelly declines to size a quote whose
+    # limit is its own fair value, and those games are no-quotes, not no-fills.
+    return out[out["quoted"] > 0].reset_index(drop=True)
+
+
+def _first_live(cd, start_ts: int, first_pitch_ts: int, column: str):
+    """`column` in the first archived hour the order is live in, or None."""
+    if cd is None or len(cd) == 0 or column not in cd:
+        return None
+    ts = cd["end_period_ts"].to_numpy(dtype="int64")
+    keep = (ts > start_ts) & (ts <= first_pitch_ts)
+    if not keep.any():
+        return None
+    v = cd[column].to_numpy(dtype=float)[keep]
+    good = np.isfinite(v)
+    return float(v[good][0]) if good.any() else None
 
 
 def _post_price(cd, start_ts: int, first_pitch_ts: int, fallback: float) -> float:
     """The traded price of the first hour the order is live in (the `post` anchor)."""
-    if cd is None or len(cd) == 0:
-        return float(fallback)
-    ts = cd["end_period_ts"].to_numpy(dtype="int64")
-    keep = (ts > start_ts) & (ts <= first_pitch_ts)
-    if not keep.any():
-        return float(fallback)
-    price = cd["price_close"].to_numpy(dtype=float) if "price_close" in cd \
-        else cd["price_high"].to_numpy(dtype=float)
-    price = price[keep]
-    good = np.isfinite(price)
-    return float(price[good][0]) if good.any() else float(fallback)
+    v = _first_live(cd, start_ts, first_pitch_ts, "price_close")
+    return float(fallback) if v is None else v
+
+
+def _marketable(cd, start_ts: int, first_pitch_ts: int, side: str,
+                limit: float) -> bool:
+    """Would this "limit order" have crossed the book the moment it was posted?
+
+    A bid at or above the prevailing ask is not a maker order at all: the
+    exchange fills it immediately against the resting offer and charges the
+    *taker* fee. The rule as specified can produce one — at a margin of zero
+    the bid is the model's own price, which is above the market whenever the
+    model disagrees at all — so the exam counts them and reports the rate
+    rather than quietly booking them as maker fills.
+    """
+    if side == "yes":
+        ask = _first_live(cd, start_ts, first_pitch_ts, "yes_ask_close")
+        return ask is not None and limit >= ask - EPS
+    bid = _first_live(cd, start_ts, first_pitch_ts, "yes_bid_close")
+    return bid is not None and (1.0 - limit) <= bid + EPS
 
 
 def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRAWS,
@@ -634,6 +667,7 @@ def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRA
     risk) is reported too, because it is the number the taker table is in.
     """
     empty = {"n_posted": 0, "n_filled": 0, "fill_rate": float("nan"),
+             "marketable_rate": float("nan"),
              "contracts_posted": 0.0, "contracts_filled": 0.0,
              "hit_rate": float("nan"), "total_staked": 0.0, "total_return": 0.0,
              "roi": 0.0, "roi_lo": 0.0, "roi_hi": 0.0,
@@ -656,6 +690,8 @@ def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRA
         "n_posted": int(len(bets)),
         "n_filled": int(len(filled)),
         "fill_rate": float(bets["filled"].mean()),
+        "marketable_rate": float(bets["marketable"].mean())
+        if "marketable" in bets else float("nan"),
         "contracts_posted": float(quoted.sum()),
         "contracts_filled": float(filled["contracts"].sum()),
         "hit_rate": float(filled["won"].mean()) if len(filled) else float("nan"),
