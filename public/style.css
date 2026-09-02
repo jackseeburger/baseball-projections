@@ -117,7 +117,8 @@ body {
   margin-left: var(--sidebar-w);
   flex: 1;
   padding: 32px 40px;
-  max-width: 1200px;
+  max-width: 1600px;
+  min-width: 0;
 }
 
 .page { display: none; }
@@ -183,6 +184,7 @@ h1 {
 
 /* ─── Grids ───────────────────────────────────────────────────── */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.grid-2 > *, .grid-3 > * { min-width: 0; }   /* let grid children shrink instead of overflowing */
 .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
 
 /* ─── Tables ──────────────────────────────────────────────────── */
@@ -417,3 +419,10 @@ select:focus { border-color: var(--accent); }
 .bracket .bye { color: var(--green); }
 .method-note { color: var(--text-dim); font-size: 13px; line-height: 1.6; margin: 0; }
 .stale-warning { color: var(--red); font-weight: 600; }
+
+/* Odds tables scroll inside their card; leagues stack below ~1400px so
+   neither table is ever clipped by the hidden body overflow. */
+#playoffs-table-al, #playoffs-table-nl { overflow-x: auto; }
+@media (max-width: 1700px) {
+  #page-playoffs .grid-2 { grid-template-columns: 1fr; }
+}
