@@ -257,7 +257,19 @@ costs, not a finding about prices.
 
 The 876-game Kalshi-only set (the venue priced 120 games Polymarket's archive
 does not reach) gives the same answer as the 756-game common set, so the
-headline is not an artifact of the intersection.
+headline is not an artifact of the intersection. Every row above is a flag on
+the same command — the wider Kalshi set needs the un-joined predictions, which
+is `backtest_game_odds.py` without `--market`:
+
+```
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+    --out data/parquet/game_preds_2026_all.parquet
+python scripts/money_exam.py --preds data/parquet/game_preds_2026_all.parquet \
+    --venues kalshi                              # 876 games
+python scripts/money_exam.py --venues kalshi --kalshi-fee-rate 0      # maker fill
+python scripts/money_exam.py --venues polymarket --half-spread 0.02
+python scripts/money_exam.py --venues polymarket --polymarket-fee-rate 0.05
+```
 
 ## What would have to be true for ROI to turn positive
 
