@@ -4,6 +4,13 @@ Interface (roadmap 0.2):
 
     backtest(component, train_through_year, predict_year) -> DataFrame
 
+and, for rest-of-season projections, the same call with a date cutoff:
+
+    backtest(component, cutoff_date="2026-07-01", pa_frame=..., seasons=...)
+
+which trains on everything through July 1 and scores the rest of the season
+(`src/eval/intraseason.py`).
+
 The harness slices a season-level frame at the training cutoff, hands ONLY
 past seasons to each prediction provider, joins realized outcomes from the
 predict year, and scores component-wise log loss, MAE, RMSE, and calibration
@@ -49,22 +56,27 @@ Provider = Callable[[pd.DataFrame, ComponentSpec, int], pd.DataFrame]
 
 def backtest(
     component: str,
-    train_through_year: int,
+    train_through_year: int | None = None,
     predict_year: int | None = None,
     *,
     seasons: pd.DataFrame,
     providers: dict[str, Provider] | None = None,
     min_trials: int = 100,
     common_players: bool = True,
+    cutoff_date: str | None = None,
+    pa_frame: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Run one train/predict split for one component.
 
     Args:
         component: key in COMPONENTS.
         train_through_year: last season providers are allowed to see.
-        predict_year: season to score against (default: the next one).
+            Not used (and not required) when `cutoff_date` is given.
+        predict_year: season to score against (default: the next one, or the
+            cutoff's own year in intra-season mode).
         seasons: season-level frame (see module docstring).
-        providers: model name → provider. Defaults to the three baselines.
+        providers: model name → provider. Defaults to the three baselines
+            (plus `season_to_date` in intra-season mode).
             Add your model with e.g. {"bayes": parquet_provider(path), **BASELINES}.
         min_trials: drop realized seasons below this many trials — tiny
             samples measure noise, not skill.
@@ -72,16 +84,35 @@ def backtest(
             intersection of their coverage). Without this a model that
             covers rookies is scored on a harder population than one that
             doesn't, and the comparison is meaningless.
+        cutoff_date: ISO date. Switches the harness to intra-season mode:
+            training is the prior seasons plus the current season *through*
+            the cutoff, and the realized side is the rest of that season.
+            Requires `pa_frame` (PA-level outcomes for the predict year) —
+            season totals have no dates to cut on. See
+            `src/eval/intraseason.py`.
+        pa_frame: PA-level outcomes, only used with `cutoff_date`.
 
     Returns:
         Long frame: [component, model, batter, predicted, realized_successes,
         realized_rate, trials]. Feed to score() / calibration().
     """
+    if cutoff_date is not None:
+        from src.eval.intraseason import backtest_intraseason
+
+        return backtest_intraseason(
+            component, cutoff_date, predict_year, seasons=seasons,
+            pa_frame=pa_frame, providers=providers, min_trials=min_trials,
+            common_players=common_players,
+        )
+    if pa_frame is not None:
+        raise ValueError("pa_frame is only meaningful with cutoff_date")
+    if train_through_year is None:
+        raise ValueError("train_through_year is required without a cutoff_date")
+
     spec = COMPONENTS[component]
     predict_year = predict_year or train_through_year + 1
     if predict_year <= train_through_year:
         raise ValueError("predict_year must be after train_through_year")
-    providers = providers or dict(BASELINES)
 
     # The leakage guard: providers never see the predict year.
     train = seasons[seasons["season"] <= train_through_year].copy()
@@ -89,9 +120,34 @@ def backtest(
         raise ValueError(f"no training seasons at or before {train_through_year}")
 
     realized = seasons[seasons["season"] == predict_year].copy()
+    return _run_split(
+        component, spec, train, realized, predict_year,
+        providers=providers, min_trials=min_trials,
+        common_players=common_players,
+    )
+
+
+def _run_split(
+    component: str,
+    spec: ComponentSpec,
+    train: pd.DataFrame,
+    realized: pd.DataFrame,
+    predict_year: int,
+    *,
+    providers: dict[str, Provider] | None,
+    min_trials: int,
+    common_players: bool,
+) -> pd.DataFrame:
+    """Score providers trained on `train` against `realized`.
+
+    The shared tail of every split — season-level or intra-season. `train`
+    and `realized` are already sliced; nothing here re-checks the cutoff,
+    that is the caller's leakage guard.
+    """
+    providers = providers or dict(BASELINES)
     realized = realized[realized[spec.trials] >= min_trials]
     if realized.empty:
-        raise ValueError(f"no realized seasons with >= {min_trials} "
+        raise ValueError(f"no realized rows with >= {min_trials} "
                          f"{spec.trials} in {predict_year}")
     realized = realized.assign(
         realized_rate=realized[spec.successes] / realized[spec.trials]
