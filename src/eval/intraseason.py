@@ -191,14 +191,16 @@ def build_training_frame(
     prior = seasons[seasons["season"] < predict_year].copy()
     prior["partial"] = False
     if "age" in prior.columns and "age" not in partial.columns:
-        # Carry the predict-year age through when the season table has it,
-        # else age forward from the most recent prior season.
-        ages = seasons[seasons["season"] == predict_year].set_index("batter")["age"] \
-            if "age" in seasons.columns and (seasons["season"] == predict_year).any() \
-            else None
+        # Marcel's age adjustment reads `age` off the most recent training
+        # slice, which is now the partial season. Take the predict year's age
+        # from the season table when it has one; otherwise age the player
+        # forward from his last prior season. Missing ages stay NaN — the
+        # adjustment already falls back to 1.0 for those.
+        current = seasons[seasons["season"] == predict_year]
         partial = partial.copy()
-        if ages is not None:
-            partial["age"] = partial["batter"].map(ages)
+        if "age" in seasons.columns and not current.empty:
+            partial["age"] = partial["batter"].map(
+                current.set_index("batter")["age"])
         else:
             last_prior = (prior.sort_values("season").groupby("batter")
                           .agg(age=("age", "last"), season=("season", "last")))
