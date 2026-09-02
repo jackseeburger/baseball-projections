@@ -7,6 +7,8 @@ Feeds:
   * probable starters     → station E starting-pitcher term
   * season / game-log pitching stats → the pitcher rates that term is built on
   * rosters with IL status, hitter game logs → station B playing time
+  * transactions (IL placements, activations, options, recalls) → the dated
+    spells station B's return-time distribution is estimated from
 
 Player ids are MLBAM ids, identical to Statcast `batter`, so everything joins
 to the Bayesian components and the Chadwick birthdates with no crosswalk.
@@ -487,6 +489,75 @@ def fetch_hitter_game_logs(player_ids, season: int,
         df = df[df["game_type"].isna() | (df["game_type"] == "R")].reset_index(drop=True)
     logger.info(f"{season} hitting logs: {len(df)} player-games "
                 f"for {df['batter'].nunique() if len(df) else 0} hitters")
+    return df
+
+
+# ─── Station B: transactions (injured-list and option spells) ───
+
+TRANSACTION_COLUMNS = [
+    "transaction_id", "player_id", "date", "effective_date", "resolution_date",
+    "type_code", "type_desc", "description", "from_team_id", "to_team_id",
+    "season",
+]
+
+
+def fetch_transactions(season: int, refresh: bool = False) -> pd.DataFrame:
+    """Every roster transaction in a season, dated.
+
+    Columns: TRANSACTION_COLUMNS. One row per transaction, sorted by date.
+
+    `GET /transactions?startDate=&endDate=&sportId=1` is the only feed that
+    carries the *dates* of an injured-list stint. The 40-man roster endpoint
+    says a hitter is `D60` today; it cannot say when he went on the list or
+    which list he went on, and both are what a return-time distribution has to
+    be conditioned on (`src/projections/il_returns.py`).
+
+    The event type is in `type_code` (`OPT` optioned, `CU` recalled, `SE`
+    selected, `TR` trade, ...) except for the injured list, which the API files
+    under the single code `SC` ("status change") and distinguishes only in the
+    English `description`: "placed CF X on the 10-day injured list",
+    "activated CF X from the 10-day injured list", "transferred RHP Y from the
+    15-day injured list to the 60-day injured list". `il_returns.parse_events`
+    owns that parsing.
+
+    Requests are chunked by month and cached under data/cache/statsapi/. A
+    finished season never changes; the current month of a running season does,
+    so pass `refresh=True` (or `--refresh` on the build script) to re-pull —
+    the same convention as the game logs.
+    """
+    rows = []
+    for period in pd.period_range(start=f"{season}-01-01", end=f"{season}-12-31",
+                                  freq="M"):
+        lo, hi = period.start_time.date(), period.end_time.date()
+        data = _get_cached(
+            f"transactions_{lo}_{hi}", "transactions", refresh=refresh,
+            sportId=1, startDate=str(lo), endDate=str(hi),
+        )
+        for t in data.get("transactions", []):
+            person = t.get("person") or {}
+            if not person.get("id"):
+                continue
+            rows.append({
+                "transaction_id": t.get("id"),
+                "player_id": person["id"],
+                "date": t.get("date"),
+                "effective_date": t.get("effectiveDate"),
+                "resolution_date": t.get("resolutionDate"),
+                "type_code": t.get("typeCode"),
+                "type_desc": t.get("typeDesc"),
+                "description": t.get("description"),
+                "from_team_id": (t.get("fromTeam") or {}).get("id"),
+                "to_team_id": (t.get("toTeam") or {}).get("id"),
+                "season": season,
+            })
+    df = pd.DataFrame(rows, columns=TRANSACTION_COLUMNS)
+    if len(df):
+        df = (df.drop_duplicates(subset="transaction_id")
+              .sort_values(["date", "transaction_id"]).reset_index(drop=True))
+        for col in ("from_team_id", "to_team_id"):
+            df[col] = df[col].astype("Int64")
+    logger.info(f"{season} transactions: {len(df)} rows for "
+                f"{df['player_id'].nunique() if len(df) else 0} players")
     return df
 
 
