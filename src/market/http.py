@@ -11,8 +11,9 @@ logger = logging.getLogger(__name__)
 USER_AGENT = "baseball-projections/0.1 (+https://github.com/jackseeburger/baseball-projections)"
 
 
-def get_json(url: str, params: dict | None = None, *, retries: int = 3,
+def get_json(url: str, params: dict | None = None, *, retries: int = 5,
              timeout: float = 30.0, session: requests.Session | None = None):
+    """GET → JSON with exponential backoff (1, 2, 4, 8, 16s) on 429/5xx/network."""
     sess = session or requests
     last_exc: Exception | None = None
     for attempt in range(retries):
@@ -20,6 +21,10 @@ def get_json(url: str, params: dict | None = None, *, retries: int = 3,
             r = sess.get(url, params=params, timeout=timeout,
                          headers={"User-Agent": USER_AGENT, "Accept": "application/json"})
             if r.status_code == 429 or r.status_code >= 500:
+                # Honor Retry-After when the venue tells us how long to wait.
+                ra = r.headers.get("Retry-After")
+                if ra and ra.isdigit():
+                    time.sleep(min(int(ra), 60))
                 raise requests.HTTPError(f"{r.status_code} from {url}", response=r)
             r.raise_for_status()
             return r.json()

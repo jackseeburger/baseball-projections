@@ -18,9 +18,9 @@ how long before first pitch the last observation was.
 """
 from __future__ import annotations
 
-import json
 import logging
-from datetime import date, datetime, timedelta, timezone
+import time
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
@@ -84,7 +84,8 @@ def last_before(points: list[dict], cutoff_ts: int, key: str) -> dict | None:
     return last
 
 
-def kalshi_closes(season: int, session=None, markets: list[dict] | None = None) -> list[dict]:
+def kalshi_closes(season: int, session=None, markets: list[dict] | None = None,
+                  pace_seconds: float = 0.25) -> list[dict]:
     """One row per game: the home team's YES market at the close."""
     markets = markets if markets is not None else kalshi_settled_games(season, session)
     rows, seen = [], set()
@@ -95,6 +96,7 @@ def kalshi_closes(season: int, session=None, markets: list[dict] | None = None) 
             continue
         seen.add(m["event_ticker"])
         fp = _ts(ev["game_start"])
+        time.sleep(pace_seconds)      # Kalshi rate-limits bursts of candlestick calls
         try:
             c = kalshi_close_for_market(m, fp, session)
         except Exception as exc:  # one bad market must not sink the season

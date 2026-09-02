@@ -97,7 +97,7 @@ for Layer 1), never in the repo:
 | `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ✅ verified | boto3/DuckDB against R2 — go through `src/data/r2.py`, which strips the bucket path Cloudflare appends to the endpoint it shows you |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ⚠️ set, unusable from cloud sessions | Modal's client is gRPC, which the session proxy does not pass. Refits are launched from **GitHub Actions** (add the same two names as Actions secrets) or a laptop, never from a Claude session |
 | `WANDB_API_KEY` | ✅ verified | reading run status, logging |
-| `ODDS_API_KEY` | ✅ verified (500 req/month) | station M sportsbook lines (The Odds API). Also needed as a GitHub Actions secret |
+| `ODDS_API_KEY` | ✅ wired | station M sportsbook lines (The Odds API, 500 req/month). Lives in GitHub Actions secrets; `market-snapshot.yml` pulls books on the two daytime slots only (4 requests each, ~240/month) |
 
 Everything in stations D–H and the exchange half of station M runs **without
 any of these** (MLB Stats API, Chadwick, Kalshi and Polymarket market data are

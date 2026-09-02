@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.market import kalshi, polymarket
+from src.market import kalshi, oddsapi, polymarket
 from src.market.games import assign_game_pk
 from src.market.schema import FIELDS, validate
 
@@ -49,6 +49,13 @@ def collect(ts: str | None = None, schedule: pd.DataFrame | None = None,
             n += len(recs)
         stats["polymarket_events"] = len(events)
         stats["polymarket_markets"] = n
+    if "oddsapi" in venues:
+        events, quota = oddsapi.fetch_odds(session=session)
+        recs = oddsapi.normalize(events, ts)
+        records.extend(recs)
+        stats["oddsapi_events"] = len(events)
+        stats["oddsapi_rows"] = len(recs)
+        stats["oddsapi_quota"] = quota
     for r in records:
         validate(r)
     if schedule is not None:
@@ -92,11 +99,23 @@ def summarize(records: list[dict], ts: str, stats: dict | None = None) -> dict:
         if price is None:
             continue
         p_home = price if is_home else round(1 - price, 4)
+        if r["venue"] == "oddsapi":
+            if not is_home or r["status"] == "live":
+                continue                       # one row per book, pregame only
+            g.setdefault("_books", {})[r["book"]] = p_home
+            continue
         key = f"{r['venue']}_p_home"
         # Prefer the home-side market's own quote; fall back to 1 - away.
         if is_home or key not in g:
             g[key] = p_home
             g[f"{r['venue']}_volume"] = r["volume"]
+    for g in games.values():
+        books = g.pop("_books", None)
+        if books:
+            g["books_n"] = len(books)
+            g["books_consensus_p_home"] = round(sum(books.values()) / len(books), 4)
+            if "pinnacle" in books:
+                g["pinnacle_p_home"] = books["pinnacle"]
 
     futures: dict = defaultdict(dict)
     for r in records:
