@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from src.projections import ros as ros_module
 from src.projections.ros import (
     COMPONENT_ORDER,
     LEAGUE_HBP_RATE,
@@ -276,16 +277,61 @@ def test_the_live_arm_is_marcel_with_the_partial_season_the_control_is_without()
 def test_marcel_rates_reuse_the_harness_providers():
     """Same training frame, same numbers as calling the baseline directly."""
     from src.eval.backtest import COMPONENTS
-    from src.eval.baselines import marcel
+    from src.eval.baselines import marcel_tuned
     from src.eval.intraseason import build_training_frame
 
     pa = make_pa_frame(pd.date_range("2026-04-01", periods=40), batters=(1,))
     seasons = make_seasons(batters=(1,))
     partial = partial_season(pa, AS_OF)
     ours = marcel_rates(seasons, partial).set_index("batter")
-    theirs = marcel(build_training_frame(seasons, partial, SEASON),
-                    COMPONENTS["k_rate"], SEASON).set_index("batter")
+    theirs = marcel_tuned(build_training_frame(seasons, partial, SEASON),
+                          COMPONENTS["k_rate"], SEASON).set_index("batter")
     assert ours.loc[1, "k_rate_marcel"] == pytest.approx(theirs.loc[1, "predicted"])
+
+
+def test_the_live_engine_is_the_tuned_marcel():
+    """The wiring guard.
+
+    The gate rule (architecture.md section 3) put `marcel_tuned` in production
+    on the strength of the holdout in docs/backtest-baselines.md. This asserts
+    the module actually calls it — and, because `marcel_tuned` at stock
+    constants *is* `marcel` bit for bit, that the frozen params file is the one
+    being read. A revert to stock Marcel, or a params file quietly replaced by
+    defaults, fails here rather than shipping silently.
+    """
+    from src.eval import baselines
+    from src.eval.baselines import STOCK_PARAMS, load_marcel_params
+
+    assert ros_module.LIVE_ENGINE == "marcel_tuned"
+    assert ros_module.LIVE_PROVIDERS == {
+        "marcel": baselines.marcel_tuned,
+        "marcel_preseason": baselines.marcel_tuned_preseason,
+    }
+    fitted = load_marcel_params(strict=True)
+    assert fitted != STOCK_PARAMS, "marcel_params.json is stock; nothing is tuned"
+    # Both arms move together: the preseason column is the control that
+    # isolates in-season information, so it has to be the same model.
+    assert set(ros_module.LIVE_PROVIDERS) == set(ros_module.MARCEL_ARMS)
+
+
+def test_the_live_arm_differs_from_stock_marcel_on_a_tuned_component():
+    """Not just wired — wired to something that actually changes the number.
+
+    K% is one of the two components the tuning moved (ballast 200 -> 100,
+    recency 5/4/3 -> 1/0.4/0.2), so the live column must not equal what stock
+    Marcel would have produced on the same training frame.
+    """
+    from src.eval.backtest import COMPONENTS
+    from src.eval.baselines import marcel
+    from src.eval.intraseason import build_training_frame
+
+    pa = make_pa_frame(pd.date_range("2026-04-01", periods=60), batters=(1, 2))
+    seasons = make_seasons()
+    partial = partial_season(pa, AS_OF)
+    ours = marcel_rates(seasons, partial).set_index("batter")
+    stock = marcel(build_training_frame(seasons, partial, SEASON),
+                   COMPONENTS["k_rate"], SEASON).set_index("batter")
+    assert ours.loc[1, "k_rate_marcel"] != pytest.approx(stock.loc[1, "predicted"])
 
 
 def test_the_bayes_column_comes_from_the_projection_files():

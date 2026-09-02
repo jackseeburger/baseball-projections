@@ -418,3 +418,12 @@ def marcel_tuned_preseason(
 ) -> pd.DataFrame:
     """`marcel_tuned` with the partial current season withheld (the control)."""
     return marcel_tuned(full_seasons(train), spec, predict_year, params=params)
+
+
+# The tuned pair joins the intra-season arms because that is the scoreboard
+# the live model is judged on: `src/projections/ros.py` serves `marcel_tuned`,
+# so the harness has to score it. Adding them moves no existing number —
+# both cover exactly the batters their stock counterparts cover, so the
+# common-player set every arm is scored on is unchanged.
+INTRASEASON_BASELINES["marcel_tuned"] = marcel_tuned
+INTRASEASON_BASELINES["marcel_tuned_preseason"] = marcel_tuned_preseason

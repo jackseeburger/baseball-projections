@@ -189,15 +189,31 @@ def test_ros_section_ranks_the_live_arm_ahead_of_our_preseason_model(doc):
     stopped saying that, the swap is no longer justified."""
     section = doc["sections"]["ros_backtest"]
     assert section["stale"] is False
-    assert section["live_arm"] == "marcel"
+    assert section["live_arm"] == "marcel_tuned"
     live = next(r for r in section["rows"] if r["is_production"])
     assert live["is_production"] is True
     by_cutoff = {}
     for row in section["rows"]:
         by_cutoff.setdefault(row["cutoff_date"], {})[row["model"]] = row["metrics"]
     for cutoff, arms in by_cutoff.items():
-        assert arms["marcel"]["k_rate"] < arms["bayes_preseason"]["k_rate"], cutoff
-        assert arms["marcel"]["k_rate"] < arms["marcel_preseason"]["k_rate"], cutoff
+        assert arms["marcel_tuned"]["k_rate"] < arms["bayes_preseason"]["k_rate"], cutoff
+        assert (arms["marcel_tuned"]["k_rate"]
+                < arms["marcel_tuned_preseason"]["k_rate"]), cutoff
+
+
+def test_ros_section_scores_the_arm_the_site_serves(doc):
+    """The table has to be about the model in production, not the one it
+    replaced. `src/projections/ros.py` serves `marcel_tuned`, so the live row
+    is that arm and stock Marcel is present beside it as the arm it beat."""
+    from src.projections import ros
+
+    section = doc["sections"]["ros_backtest"]
+    assert section["live_arm"] == ros.LIVE_ENGINE
+    models = {r["model"] for r in section["rows"]}
+    assert {"marcel_tuned", "marcel"} <= models
+    live_rows = [r for r in section["rows"] if r["is_production"]]
+    assert {r["model"] for r in live_rows} == {"marcel_tuned"}
+    assert all("tuned" in r["label"].lower() for r in live_rows)
 
 
 def test_ros_section_marks_the_winner_inside_its_own_cutoff(doc):
@@ -219,8 +235,10 @@ def test_ros_section_framing_is_counted_not_asserted(doc):
     """The claim on the page is recomputed from the table, so it flips on its
     own if the result ever does."""
     section = doc["sections"]["ros_backtest"]
-    assert "11 of 12" in section["framing"]
+    assert "10 of 12" in section["framing"]        # vs the preseason Bayesian
+    assert "6 of 12" in section["framing"]         # vs stock Marcel
     assert "component-cutoff cells" in section["framing"]
+    assert "tuned Marcel" in section["framing"]
 
 
 def test_ros_section_is_stale_when_the_pa_parquet_and_r2_are_both_missing(

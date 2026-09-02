@@ -7,11 +7,17 @@ Writes `public/data/projections/latest.json` (always rewritten) and
 the same archive discipline `build_accuracy_json.py` and `run_playoff_odds.py`
 use.
 
-The model is Marcel fed the partial current season — the arm that wins the
-intra-season harness (docs/backtest-baselines.md) — times station B's
+The model is **tuned Marcel** (`src/eval/baselines.marcel_tuned`, constants in
+`src/eval/marcel_params.json`) fed the partial current season — the arm that
+wins the intra-season harness (docs/backtest-baselines.md) — times station B's
 projected rest-of-season plate appearances. The preseason Bayesian components
-and preseason Marcel ride along as labelled comparison columns; they are what
-the site used to show as its only number.
+and the preseason tuned Marcel ride along as labelled comparison columns; the
+Bayesian one is what the site used to show as its only number.
+
+The arm *keys* in the document stay `marcel` / `marcel_preseason` — they name a
+column on the page, not a set of constants — so the document also carries
+`engine`, which says outright which Marcel filled them. Dated snapshots written
+before the switch carry `engine: null` and the old `method` string.
 
 Inputs, and what happens when one is missing:
 
@@ -52,6 +58,7 @@ from src.projections.ros import (
     ARMS,
     COMPONENT_ORDER,
     COMPONENT_PREFIX,
+    LIVE_ENGINE,
     TRIPLES_PER_DOUBLE,
     WOBA_WEIGHTS,
     build_ros_projections,
@@ -64,12 +71,17 @@ PROJECTIONS_DIR = ROOT / "data/projections"
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 
-METHOD = ("Marcel (5/4/3 weights, 200-PA ballast, age adjustment) trained on "
-          "2015-2025 season totals plus 2026 through the day before the as-of "
-          "date, multiplied by station B's projected rest-of-season plate "
-          "appearances (30-day PA share, IL zeroed, one-lineup-slot cap).")
-FRAMING = ("Live projection: Marcel with 2026 through {through}. Preseason "
-           "Bayesian shown for comparison — see Model Accuracy.")
+# Named in one place (src/projections/ros.py) so the document cannot claim an
+# engine the module does not use.
+ENGINE = LIVE_ENGINE
+METHOD = ("Tuned Marcel (per-component ballast, recency weights and age curve "
+          "fitted walk-forward on 2020-2024 and frozen in "
+          "src/eval/marcel_params.json) trained on 2015-2025 season totals "
+          "plus 2026 through the day before the as-of date, multiplied by "
+          "station B's projected rest-of-season plate appearances (30-day PA "
+          "share, IL zeroed, one-lineup-slot cap).")
+FRAMING = ("Live projection: tuned Marcel with 2026 through {through}. "
+           "Preseason Bayesian shown for comparison — see Model Accuracy.")
 
 logger = logging.getLogger("build_ros_projections")
 
@@ -178,18 +190,22 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
         "git_sha": git_sha if git_sha is not None else current_sha(),
         "title": "Rest-of-season projection",
         "n_hitters": int(len(projections)),
+        "engine": ENGINE,
         "method": METHOD,
         "framing": FRAMING.format(through=through),
         "source": "scripts/build_ros_projections.py",
         "arms": [
-            {"key": "marcel", "label": "Live (Marcel + 2026)", "is_live": True,
-             "note": "Marcel with the season through " + through + " folded in."},
+            {"key": "marcel", "label": "Live (tuned Marcel + 2026)", "is_live": True,
+             "note": "Tuned Marcel — fitted ballast, recency and age curve, "
+                     "src/eval/marcel_params.json — with the season through "
+                     + through + " folded in."},
             {"key": "bayes", "label": "Preseason Bayesian", "is_live": False,
              "note": "our hierarchical components, fit through 2025 — the number "
                      "the site used to show on its own."},
-            {"key": "marcel_preseason", "label": "Preseason Marcel", "is_live": False,
-             "note": "the same Marcel with 2026 withheld; the difference from the "
-                     "live column is what the current season is worth."},
+            {"key": "marcel_preseason", "label": "Preseason tuned Marcel",
+             "is_live": False,
+             "note": "the same tuned Marcel with 2026 withheld; the difference "
+                     "from the live column is what the current season is worth."},
         ],
         "components": [{"key": c, "prefix": COMPONENT_PREFIX[c]} for c in COMPONENT_ORDER],
         "woba": {"weights": WOBA_WEIGHTS, "triples_per_double": TRIPLES_PER_DOUBLE,
@@ -218,7 +234,8 @@ def empty_document(reason: str, as_of: str) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": as_of, "season": SEASON, "season_end": None, "through": None,
         "git_sha": current_sha(), "title": "Rest-of-season projection",
-        "n_hitters": 0, "method": METHOD, "framing": FRAMING.format(through="—"),
+        "n_hitters": 0, "engine": ENGINE, "method": METHOD,
+        "framing": FRAMING.format(through="—"),
         "source": "scripts/build_ros_projections.py", "arms": [], "components": [],
         "woba": {"weights": WOBA_WEIGHTS, "triples_per_double": TRIPLES_PER_DOUBLE},
         "stale": True,

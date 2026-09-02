@@ -13,12 +13,22 @@ model's numbers and the site serves them.
                                        as_of − 1 day)  ×  station B's
                                        projected rest-of-season PA
 
-Nothing here re-implements Marcel. `src/eval/baselines.marcel` is called with
-exactly the training frame the harness builds at a cutoff
+**Which Marcel.** `marcel_tuned` — the same estimator with its ballast,
+recency weights and age curve fitted walk-forward on 2020–2024 and frozen in
+`src/eval/marcel_params.json`. It cleared the gate out of sample on 2025, 2026
+and the three 2026 cutoffs (15/25 component × cell cells, pooled −1.10% ± 0.36
+of stock Marcel's MAE; the tuning section of
+[backtest-baselines.md](../../docs/backtest-baselines.md)), so the gate rule
+puts it in production. The gain is BABIP (−3.3%) and K% (−2.4%); BB% keeps
+Tango's constants, and HR/PA and ISO come out even.
+
+Nothing here re-implements Marcel. `src/eval/baselines.marcel_tuned` is called
+with exactly the training frame the harness builds at a cutoff
 (`intraseason.build_training_frame`), so the model that ships is bit-for-bit
-the arm that was scored. `marcel_preseason` — the same Marcel with the partial
-season withheld — and the preseason Bayesian file ride along as labelled
-comparison columns, which is what makes the improvement legible on the page.
+the arm that was scored. `marcel_tuned_preseason` — the same Marcel with the
+partial season withheld — and the preseason Bayesian file ride along as
+labelled comparison columns, which is what makes the improvement legible on
+the page.
 
 **The cutoff is exclusive.** A game played *on* `as_of` has not finished when
 the morning's projection is made, so `split_at_cutoff` keeps only
@@ -74,6 +84,17 @@ COMPONENT_ORDER = ("k_rate", "bb_rate", "hr_rate", "babip", "iso")
 # The live arm first: it is the projection, the other two are comparisons.
 ARMS = ("marcel", "marcel_preseason", "bayes")
 MARCEL_ARMS = {"marcel": "marcel", "marcel_preseason": "marcel_preseason"}
+
+# The engine, named once. Everything downstream reads it from here rather than
+# hard-coding a string: `scripts/build_ros_projections.py` stamps it into the
+# document as `engine`, and `scripts/build_accuracy_json.py` uses it to pick
+# the arm the accuracy page marks as live — so the scoreboard cannot end up
+# scoring a model the site does not serve.
+LIVE_ENGINE = "marcel_tuned"
+LIVE_PROVIDERS = {
+    "marcel": baselines.marcel_tuned,
+    "marcel_preseason": baselines.marcel_tuned_preseason,
+}
 
 # FanGraphs 2024 linear weights, same constants as scripts/assemble_and_compare.py.
 WOBA_WEIGHTS = {
@@ -154,13 +175,22 @@ def marcel_rates(
     predict_year: int = SEASON,
     components=COMPONENT_ORDER,
 ) -> pd.DataFrame:
-    """`marcel` and `marcel_preseason` for every component, one row per batter.
+    """The live Marcel arm and its preseason control, one row per batter.
 
     Columns: `batter` plus `{prefix}_rate_marcel` and
     `{prefix}_rate_marcel_preseason`. The training frame is the harness's own
     (`build_training_frame`): prior full seasons from the season table plus the
     partial current season, with ages carried forward for Marcel's age
     adjustment.
+
+    Both arms are `marcel_tuned` — the fitted-constants Marcel that cleared
+    the gate (see the module docstring). The column *keys* stay `marcel` and
+    `marcel_preseason`: they name a slot on the page ("the live arm", "the
+    same model with 2026 withheld"), not a set of constants, and the document
+    `build_ros_projections.py` writes says which engine filled them. Both arms
+    move together on purpose — the preseason column exists to isolate the
+    value of in-season information *with the model held fixed*, and pairing a
+    tuned live arm with a stock control would confound the two.
     """
     train = build_training_frame(seasons_table, partial, predict_year)
     if train.empty:
@@ -172,8 +202,7 @@ def marcel_rates(
     for component in components:
         spec = COMPONENTS[component]
         prefix = COMPONENT_PREFIX[component]
-        for arm, provider in (("marcel", baselines.marcel),
-                              ("marcel_preseason", baselines.marcel_preseason)):
+        for arm, provider in LIVE_PROVIDERS.items():
             column = f"{prefix}_rate_{arm}"
             if arm == "marcel_preseason" and not has_prior:
                 # No completed season to look back on — the control arm has

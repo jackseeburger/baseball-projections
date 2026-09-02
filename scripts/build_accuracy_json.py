@@ -38,6 +38,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.projections.ros import LIVE_ENGINE  # noqa: E402  (needs ROOT on sys.path)
+
 OUT_DIR = ROOT / "public/data/accuracy"
 ACCURACY_MD = ROOT / "docs/accuracy-2026.md"
 VALIDATION_MD = ROOT / "docs/playoff-odds-validation.md"
@@ -53,14 +55,23 @@ SECTIONS = ("components", "ros_backtest", "game_odds", "playoff_odds_control")
 # cutoff, so it measures nothing there) and the four arms that answer "is
 # folding in the current season worth more than our prior?".
 ROS_COMPONENTS = ("k_rate", "bb_rate", "hr_rate", "iso")
-ROS_ARMS = ("marcel", "marcel_preseason", "bayes_preseason", "season_to_date")
+# `marcel_tuned` leads because it is what the site serves
+# (src/projections/ros.py); stock `marcel` stays as the arm it had to beat.
+ROS_ARMS = ("marcel_tuned", "marcel", "marcel_tuned_preseason",
+            "bayes_preseason", "season_to_date")
 ROS_ARM_LABELS = {
-    "marcel": "Marcel + 2026 to date",
-    "marcel_preseason": "Marcel, 2026 withheld",
+    "marcel_tuned": "Tuned Marcel + 2026 to date",
+    "marcel": "Stock Marcel + 2026 to date",
+    "marcel_tuned_preseason": "Tuned Marcel, 2026 withheld",
+    "marcel_preseason": "Stock Marcel, 2026 withheld",
     "bayes_preseason": "Bayes preseason (ours)",
     "season_to_date": "2026 rate, regressed",
 }
-ROS_LIVE_ARM = "marcel"
+# Read from the module that serves the projection, so the page can never mark
+# an arm as live that src/projections/ros.py is not actually running.
+ROS_LIVE_ARM = LIVE_ENGINE
+# The control the "is in-season data worth anything?" line is measured against.
+ROS_CONTROL_ARM = "marcel_tuned_preseason"
 
 # Display names. Text only — every number comes from a generated table.
 MODEL_LABELS = {
@@ -69,6 +80,8 @@ MODEL_LABELS = {
     "zips": "ZiPS",
     "steamer": "Steamer",
     "marcel": "Marcel",
+    "marcel_tuned": "Marcel (tuned)",
+    "marcel_tuned_preseason": "Marcel (tuned), preseason",
     "league_average": "League average",
     "home_constant": "Home team always",
     "win_pct_log5": "Raw win% into log5",
@@ -78,7 +91,8 @@ MODEL_LABELS = {
     "polymarket_close": "Polymarket close",
 }
 OURS = {"bayes_preseason", "pythag_60_sp"}
-BASELINE_MODELS = {"marcel", "league_average", "home_constant", "win_pct_log5"}
+BASELINE_MODELS = {"marcel", "marcel_tuned", "league_average", "home_constant",
+                   "win_pct_log5"}
 COMPONENT_LABELS = {"k_rate": "K% MAE", "bb_rate": "BB% MAE", "hr_rate": "HR/PA MAE",
                     "iso": "ISO MAE", "babip": "BABIP MAE"}
 MONTHS = {"jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6, "jul": 7,
@@ -282,7 +296,8 @@ def section_ros(payload: dict) -> dict:
                 "cutoff_date": cutoff,
                 "is_production": arm == ROS_LIVE_ARM,
                 "is_ours": arm == "bayes_preseason",
-                "is_baseline": arm in ("marcel_preseason", "season_to_date"),
+                "is_baseline": arm in ("marcel", "marcel_preseason",
+                                       "marcel_tuned_preseason", "season_to_date"),
                 "is_market": False,
                 "metrics": metrics,
                 "best": [c for c in components if best.get(c) == arm],
@@ -303,15 +318,19 @@ def section_ros(payload: dict) -> dict:
         return won, total
 
     vs_bayes, n_bayes = beats("bayes_preseason")
-    vs_control, n_control = beats("marcel_preseason")
+    vs_control, n_control = beats(ROS_CONTROL_ARM)
+    vs_stock, n_stock = beats("marcel")
     framing = (
         "Lower is better, and only within a cutoff — a later cutoff scores a "
         "shorter, noisier rest of season, so every arm's MAE rises down the "
-        f"table. The live arm is Marcel with the season to date folded in: it "
-        f"beats our preseason Bayesian components on {vs_bayes} of {n_bayes} "
-        f"component-cutoff cells and the same Marcel without 2026 on "
-        f"{vs_control} of {n_control}. The gain is in-season information, not a "
-        "better prior — which is why the player pages now lead with this number.")
+        "table. The live arm is tuned Marcel — the same estimator with its "
+        "ballast, recency weights and age curve fitted walk-forward on "
+        "2020-2024 — with the season to date folded in. It beats our preseason "
+        f"Bayesian components on {vs_bayes} of {n_bayes} component-cutoff "
+        f"cells, the same model without 2026 on {vs_control} of {n_control}, "
+        f"and stock Marcel on {vs_stock} of {n_stock}. Most of the gain is "
+        "in-season information rather than a better prior — which is why the "
+        "player pages lead with this number.")
 
     last_pa = payload.get("last_pa_date")
     notes = [
@@ -323,6 +342,9 @@ def section_ros(payload: dict) -> dict:
         f"all arms.",
         "BABIP is left out: at a one-month horizon the 100-trial floor leaves "
         "four players, and league average ties Marcel on it anyway.",
+        "Tuned Marcel's constants are frozen in src/eval/marcel_params.json, "
+        "fitted on 2020-2024 only — every cutoff here is out of sample for "
+        "them.",
     ]
     if last_pa:
         notes.append(f"The current season runs through {last_pa} in this run, so "
