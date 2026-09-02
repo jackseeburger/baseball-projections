@@ -97,7 +97,7 @@ for Layer 1), never in the repo:
 | `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ✅ verified | boto3/DuckDB against R2 — go through `src/data/r2.py`, which strips the bucket path Cloudflare appends to the endpoint it shows you |
 | `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ⚠️ set, unusable from cloud sessions | Modal's client is gRPC, which the session proxy does not pass. Refits are launched from **GitHub Actions** (add the same two names as Actions secrets) or a laptop, never from a Claude session |
 | `WANDB_API_KEY` | ✅ verified | reading run status, logging |
-| `ODDS_API_KEY` | ✅ verified (500 req/month) | station M sportsbook lines (The Odds API). Also needed as a GitHub Actions secret |
+| `ODDS_API_KEY` | ✅ wired | station M sportsbook lines (The Odds API, 500 req/month). Lives in GitHub Actions secrets; `market-snapshot.yml` pulls books on the two daytime slots only (4 requests each, ~240/month) |
 
 Everything in stations D–H and the exchange half of station M runs **without
 any of these** (MLB Stats API, Chadwick, Kalshi and Polymarket market data are
@@ -112,6 +112,16 @@ Two GitHub Actions jobs commit data to `main` today, serialized by a shared
 |---|---|---|
 | `nightly-odds.yml` | 09:15, backup 11:45 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
 | `market-snapshot.yml` | 10:00, 16:30, 23:00 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
+| `statcast-ingest.yml` | 12:30 | `statcast/statcast_<year>.parquet` and `pa_outcomes/pa_outcomes_<year>.parquet` in R2, then the Modal volume |
+| `modal-refit.yml` | Mondays 07:00 | Modal training runs; diagnostics to W&B |
+
+**Keep the current season flowing.** The Statcast archive in R2 ran 2015–2025
+and was uploaded before the 2026 season began, so every refit trained on a
+season that had already ended — the models could not know anything about the
+year they were projecting. `statcast-ingest.yml` closes that: it pulls the
+season from Baseball Savant (public, no key), rebuilds PA outcomes, writes both
+to R2, and pushes the PA file to the Modal volume the training functions read.
+Run it before a refit, or the refit is stale by construction.
 
 Git is the interim archive because it needs no credentials; once the `R2_*`
 keys exist the snapshots move to R2 and the repo keeps only `latest.json`.

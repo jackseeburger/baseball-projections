@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -35,6 +36,9 @@ def check_team_table(season: int) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--venues", nargs="+", default=["kalshi", "polymarket"])
+    ap.add_argument("--books", action="store_true",
+                    help="also pull sportsbook lines from The Odds API (costs quota; "
+                         "needs ODDS_API_KEY)")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--out-dir", type=Path, default=snapshot.SNAPSHOT_DIR)
     ap.add_argument("--latest", type=Path, default=snapshot.LATEST_PATH)
@@ -48,8 +52,13 @@ def main() -> None:
                               (today + timedelta(days=35)).isoformat())
     schedule = schedule[schedule["game_type"].isin(["R", "F", "D", "L", "W"])]
 
+    venues = list(args.venues)
+    if args.books:
+        if not os.environ.get("ODDS_API_KEY"):
+            raise SystemExit("--books given but ODDS_API_KEY is not set")
+        venues.append("oddsapi")
     ts = snapshot.now_iso()
-    records, stats = snapshot.collect(ts, schedule=schedule, venues=tuple(args.venues))
+    records, stats = snapshot.collect(ts, schedule=schedule, venues=tuple(venues))
     print(json.dumps(stats, indent=1))
     if args.dry_run:
         return

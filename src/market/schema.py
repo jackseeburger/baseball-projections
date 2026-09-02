@@ -6,7 +6,8 @@ from __future__ import annotations
 
 FIELDS = [
     "ts",             # snapshot time, ISO-8601 UTC (same for every row)
-    "venue",          # "kalshi" | "polymarket"
+    "venue",          # "kalshi" | "polymarket" | "oddsapi"
+    "book",           # bookmaker key for venue "oddsapi", else None
     "market_id",      # venue's market identifier (Kalshi ticker / Polymarket id)
     "event_id",       # venue's event grouping (Kalshi event_ticker / Polymarket slug)
     "market_type",    # see MARKET_TYPES
@@ -31,6 +32,7 @@ FIELDS = [
     "status",         # venue status string
     "result",         # settlement ("yes"/"no"/outcome label) once resolved
     "close_time",     # venue's market close / expiry, ISO
+    "odds_decimal",   # quoted decimal odds (sportsbooks only)
 ]
 
 MARKET_TYPES = {
@@ -69,7 +71,7 @@ def validate(record: dict) -> None:
     extra = set(record) - set(FIELDS)
     if missing or extra:
         raise ValueError(f"schema mismatch: missing={sorted(missing)} extra={sorted(extra)}")
-    if record["venue"] not in ("kalshi", "polymarket"):
+    if record["venue"] not in ("kalshi", "polymarket", "oddsapi"):
         raise ValueError(f"bad venue {record['venue']!r}")
     if record["market_type"] not in MARKET_TYPES:
         raise ValueError(f"bad market_type {record['market_type']!r}")

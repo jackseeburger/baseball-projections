@@ -1,0 +1,340 @@
+[
+ {
+  "id": "174a988fce36a476af3e712057a97ebe",
+  "sport_key": "baseball_mlb",
+  "sport_title": "MLB",
+  "commence_time": "2026-09-02T17:05:55Z",
+  "home_team": "Washington Nationals",
+  "away_team": "Atlanta Braves",
+  "bookmakers": [
+   {
+    "key": "fanduel",
+    "title": "FanDuel",
+    "last_update": "2026-09-02T19:57:17Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 1.08
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 7.3
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 2.2,
+        "point": -3.5
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 1.62,
+        "point": 3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.89,
+        "point": 6.5
+       },
+       {
+        "name": "Under",
+        "price": 1.85,
+        "point": 6.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "last_update": "2026-09-02T19:57:15Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 1.09
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 6.75
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 2.21,
+        "point": -3.5
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 1.63,
+        "point": 3.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.89,
+        "point": 6.5
+       },
+       {
+        "name": "Under",
+        "price": 1.86,
+        "point": 6.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-02T19:57:15Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 1.53
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 2.55
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Atlanta Braves",
+        "price": 1.78,
+        "point": -1.0
+       },
+       {
+        "name": "Washington Nationals",
+        "price": 2.02,
+        "point": 1.0
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.9,
+        "point": 4.0
+       },
+       {
+        "name": "Under",
+        "price": 1.88,
+        "point": 4.0
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "id": "a5c57f0a71bfbec1df5c314f86bb79cd",
+  "sport_key": "baseball_mlb",
+  "sport_title": "MLB",
+  "commence_time": "2026-09-02T18:36:00Z",
+  "home_team": "Texas Rangers",
+  "away_team": "Athletics",
+  "bookmakers": [
+   {
+    "key": "fanduel",
+    "title": "FanDuel",
+    "last_update": "2026-09-02T19:57:17Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 1.26
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 3.8
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 1.94,
+        "point": -2.5
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 1.8,
+        "point": 2.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:17Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.77,
+        "point": 11.5
+       },
+       {
+        "name": "Under",
+        "price": 1.98,
+        "point": 11.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "draftkings",
+    "title": "DraftKings",
+    "last_update": "2026-09-02T19:57:15Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 1.25
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 3.78
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 1.94,
+        "point": -2.5
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 1.82,
+        "point": 2.5
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.85,
+        "point": 11.5
+       },
+       {
+        "name": "Under",
+        "price": 1.9,
+        "point": 11.5
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "key": "pinnacle",
+    "title": "Pinnacle",
+    "last_update": "2026-09-02T19:57:15Z",
+    "markets": [
+     {
+      "key": "h2h",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 1.69
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 2.19
+       }
+      ]
+     },
+     {
+      "key": "spreads",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Athletics",
+        "price": 2.0,
+        "point": -1.0
+       },
+       {
+        "name": "Texas Rangers",
+        "price": 1.79,
+        "point": 1.0
+       }
+      ]
+     },
+     {
+      "key": "totals",
+      "last_update": "2026-09-02T19:57:15Z",
+      "outcomes": [
+       {
+        "name": "Over",
+        "price": 1.88,
+        "point": 10.0
+       },
+       {
+        "name": "Under",
+        "price": 1.91,
+        "point": 10.0
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ }
+]

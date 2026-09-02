@@ -4,6 +4,9 @@ name: Market snapshot
 # Three slots a day: morning, ~1h before the first pitch, and after the
 # late games close. Every run writes an immutable timestamped file, so
 # duplicates are harmless and misses only cost resolution.
+#
+# Sportsbook lines (The Odds API) are pulled on the two daytime slots only:
+# each pull costs 4 of a 500/month quota, so two a day is ~240/month.
 on:
   schedule:
     - cron: "0 10 * * *"     # 10:00 UTC — morning
@@ -31,7 +34,16 @@ jobs:
           cache: pip
       - run: pip install -r requirements-ci.txt
       - name: Snapshot markets
-        run: python scripts/snapshot_market.py
+        env:
+          ODDS_API_KEY: ${{ secrets.ODDS_API_KEY }}
+          # books only on the 10:00 / 16:30 slots and manual runs
+          BOOKS: ${{ github.event.schedule != '0 23 * * *' && '--books' || '' }}
+        run: |
+          if [ -n "$BOOKS" ] && [ -z "$ODDS_API_KEY" ]; then
+            echo "::warning::ODDS_API_KEY not set; skipping sportsbook lines"
+            BOOKS=""
+          fi
+          python scripts/snapshot_market.py $BOOKS
       - name: Commit snapshot
         run: |
           git config user.name "market-snapshot-bot"
