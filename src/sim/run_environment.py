@@ -75,11 +75,15 @@ from src.projections.playing_time import MAX_PA_SHARE, cap_shares, window_pa_by_
 from src.sim.starters import GAME_IP, MIN_RA9, STARTER_IP
 
 # The trailing window that defines "who plays for this club, and how much".
-# Station B's primary window (`playing_time.PRIMARY_WINDOW_DAYS`), for the same
-# reason it was chosen there: long enough to be a rate, short enough that a
-# deadline trade or an IL stint shows up within a couple of turns of the
-# lineup. Swept on 2025 only ({15, 30, 60}); see docs/market-benchmark-2026.md.
-SHARE_WINDOW_DAYS = 30
+# `None` is the season to date. Swept on 2025 only, against station B's own
+# 30-day primary window and 15 and 60 days ({15, 30, 60, season} x {30, 45,
+# season} days of starts, 12 cells spanning 0.00027 Brier); the season-to-date
+# share won it, by 0.00007 over 30 days. Longer wins here and shorter wins for
+# station B because the two answer different questions: B forecasts one
+# hitter's next month, C wants the club's *average* batter, and averaging over
+# more plate appearances is worth more than reacting a week sooner. See
+# docs/market-benchmark-2026.md.
+SHARE_WINDOW_DAYS = None
 
 # A rotation is five men. Sixth starters, openers and bulk relievers exist, but
 # their innings are the pen's in this decomposition — `bullpen.pen_window`
@@ -89,13 +93,18 @@ ROTATION_TOP_N = 5
 # How many trailing days of starts define the rotation. `None` is the whole
 # season to date. A window rather than the season for the same reason the pen
 # uses one: a starter traded away in July is not in this rotation in August,
-# and the season-to-date start count would keep him there until October.
-ROTATION_WINDOW_DAYS = 45
+# and the season-to-date start count would keep him there until October. Thirty
+# days is about six turns, so a five-man rotation is identified from ~30 starts.
+# Swept on 2025 only ({30, 45, season}); 30 won at every share window.
+ROTATION_WINDOW_DAYS = 30
 
 # How much of the bottom-up estimate to use. Chosen walk-forward on 2025 only
-# — see docs/market-benchmark-2026.md for the curve. `0.0` is the production
-# model exactly.
-BLEND_WEIGHT = 0.25
+# — see docs/market-benchmark-2026.md for the curve, which is an inverted U
+# with an interior minimum: 0 / .25 / .5 / .75 / 1 score +0.00000 / -0.00047 /
+# -0.00067 / -0.00059 / -0.00022 paired Brier against `pythag_60_sp`. Half and
+# half, i.e. neither half of the estimate is worth much more than the other.
+# `0.0` is the production model exactly.
+BLEND_WEIGHT = 0.5
 
 SHARE_COLS = ["team_id", "batter", "pa", "share"]
 ROTATION_COLS = ["team", "pitcher", "starts"]

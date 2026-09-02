@@ -76,7 +76,7 @@ BP_BASELINE = bp_model.BASELINE
 # only (docs/market-benchmark-2026.md); `--c-weight 0` reproduces pythag_60 and
 # pythag_60_sp exactly.
 C_WEIGHT = rn_model.BLEND_WEIGHT
-C_SHARE_WINDOW = rn_model.SHARE_WINDOW_DAYS
+C_SHARE_WINDOW = rn_model.SHARE_WINDOW_DAYS or 0   # 0 = the season to date
 C_ROTATION_DAYS = rn_model.ROTATION_WINDOW_DAYS
 
 
@@ -493,7 +493,7 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
 
 
 def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
-                    share_window: int, rotation_days: int | None,
+                    share_window: int | None, rotation_days: int | None,
                     rotation_top_n: int, pa_per_game: float) -> dict:
     """Fetch the club-attributed hitting logs station C needs, once.
 
@@ -611,7 +611,8 @@ def main() -> None:
                              "(0 = the production top-down rates exactly)")
     parser.add_argument("--c-share-window", type=int, default=C_SHARE_WINDOW,
                         help="trailing days of plate appearances that define a "
-                             "club's hitters and their PA shares")
+                             "club's hitters and their PA shares "
+                             "(0 = the season to date)")
     parser.add_argument("--c-rotation-days", type=int, default=C_ROTATION_DAYS,
                         help="trailing days of starts that define a rotation "
                              "(0 = the season to date)")
@@ -668,7 +669,8 @@ def main() -> None:
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:
         c_ctx = build_c_context(
-            args.season, lu_ctx, bp_ctx, args.c_weight, args.c_share_window,
+            args.season, lu_ctx, bp_ctx, args.c_weight,
+            args.c_share_window if args.c_share_window > 0 else None,
             args.c_rotation_days if args.c_rotation_days > 0 else None,
             args.c_rotation_top_n, lu_ctx["pa_per_game"])
 
@@ -707,7 +709,8 @@ def main() -> None:
               f"fell back to {C_MODEL} for a missing starter; "
               f"{int(preds['c_partial'].sum())} of {2 * len(preds)} club-games had no "
               f"bottom-up estimate for one half and kept the top-down rate. "
-              f"weight={args.c_weight}, shares={args.c_share_window}d, "
+              f"weight={args.c_weight}, "
+              f"shares={str(args.c_share_window) + 'd' if args.c_share_window > 0 else 'season'}, "
               f"rotation=top{args.c_rotation_top_n}/"
               f"{args.c_rotation_days if args.c_rotation_days > 0 else 'season'}.")
 
