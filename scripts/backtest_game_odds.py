@@ -474,6 +474,15 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float) -> dict:
     exactly the delta `pythag_60_sp` adds, on top of C's runs allowed, so the
     pair isolates what the bottom-up rebuild is worth with the pitcher held
     fixed. When no probable is posted it falls back to `pythag_C`.
+
+    Note that the starter is added as the same *delta from league average* it
+    is everywhere else, on top of a runs-allowed rate that already contains
+    half a rotation term over the same 5.5 innings. That is a mild
+    double-count — and it is exactly the one `pythag_60_sp` already makes
+    against a team RA/9 that contains the club's whole rotation, which is what
+    keeps the two directly comparable. Replacing C's rotation slot with
+    tonight's starter instead of adding to it is a cleaner construction and is
+    untested (docs/market-benchmark-2026.md).
     """
     team, lg_ra9 = c_day["team"], c_day["lg_ra9"]
     sp_ids = sp_day["probables"].get(int(g.game_pk))

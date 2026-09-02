@@ -416,6 +416,14 @@ whole rather than blended.
   0.0033: most of the gap was never in either of them. Station C — the run
   environment rebuilt from the roster — took another 0.0003, leaving 0.0027
   (se 0.0014, t = 1.97).
+- **A starter who replaces his rotation slot instead of adding to it.**
+  `pythag_C_sp` adds the announced starter as the same delta from league
+  average every other model adds him as, on top of a runs-allowed rate that
+  already carries half a rotation term over the same 5.5 innings — a mild
+  double-count, and precisely the one `pythag_60_sp` already makes against a
+  team RA/9 containing the club's whole rotation. Keeping it identical is what
+  makes the gate comparison exact. Swapping tonight's starter *into* C's
+  rotation slot is the cleaner construction and has not been scored.
 - **Which half of station C is doing the work.** The blend applies one weight
   to runs scored and runs allowed together, so the hitters-and-playing-time
   half and the rotation-and-pen half were never separated. A two-weight sweep
