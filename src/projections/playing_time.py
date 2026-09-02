@@ -14,7 +14,9 @@ The model, in one line:
 `team_pa_per_game` is the team's season-to-date plate appearances per game
 (a very stable ~37-39); `games_remaining` comes from the schedule; the only
 modelled quantity is `pa_share`, the hitter's slice of his team's PA, taken
-from the trailing 30 days.
+from a horizon-weighted blend of his trailing-30-day and season-to-date
+shares — the recent window is the better predictor over a few weeks and the
+worse one over a few months, so the weight decays with the horizon.
 
 Everything here is a pure function over DataFrames — roster frame, game-log
 frame, games-remaining frame in, projection frame out — so it unit-tests
@@ -31,9 +33,14 @@ to be the only option):
 
     uniform       equal share across the active-roster hitters
     season_share  season-to-date PA share, no window and no IL handling
-    last_30       the model: trailing-30-day share, IL zeroed, bench default
+    last_30       trailing-30-day share, IL zeroed, bench default, capped
+    blend         the model: w(h) x last_30 + (1 - w(h)) x season, capped
 
-`scripts/build_playing_time.py --score` scores all three walk-forward at two
+`last_30` was the model until the blend replaced it, and it stays in the
+table as the third baseline: it is what the blend has to beat at the short
+horizon, as `season_share` is what it has to beat at the long one.
+
+`scripts/build_playing_time.py --score` scores all four walk-forward at two
 cutoffs against realized PA; see docs/playing-time.md.
 """
 from __future__ import annotations
@@ -80,7 +87,55 @@ DEFAULT_BENCH_SHARE = 0.03
 MAX_PA_SHARE = 1.0 / 8.0
 MAX_SHARE_ITERATIONS = 12
 
-METHODS = ("uniform", "season_share", "last_30")
+# --- the horizon blend ---
+#
+# The trailing-30-day share is the sharper answer to "who is playing right
+# now" and the noisier answer to "who will be playing in six weeks"; the
+# season-to-date share is the reverse. Which one is better is therefore a
+# function of the horizon, not a fact about the method, so the model blends
+# them with a weight that decays as the horizon grows:
+#
+#     share(h) = w(h) x share_30 + (1 - w(h)) x share_season
+#     w(h)     = 1 / (1 + exp((h - midpoint) / scale))
+#
+# `h` is the club's games remaining in the horizon being projected. A logistic
+# is the smallest form that is monotone, bounded to [0, 1] and has a knee.
+#
+# Its two parameters are given as the weight at two anchor horizons rather
+# than as a midpoint and a scale, because the midpoint and scale the fit
+# actually lands on are far outside the range of horizons anybody projects
+# (see below) and are meaningless read on their own, whereas "82% weight on
+# the recent window one month out, 76% three months out" is the finding.
+# Midpoint and scale are derived from the anchors and exported for the few
+# places that want the raw logistic.
+#
+# Both numbers were chosen walk-forward on **2025** cutoffs only and frozen
+# before the 2026 table was scored (`--sweep --season 2025`). The honest
+# summary of that fit: 2025 wants a weight near 0.8 at *every* horizon from
+# two weeks to three and a half months, and the selection surface is nearly
+# flat, so the horizon slope the logistic carries is real but small. See
+# docs/playing-time.md section 3.
+BLEND_ANCHOR_GAMES = (30.0, 90.0)
+BLEND_WEIGHT_SHORT = 0.83   # w at 30 games remaining
+BLEND_WEIGHT_LONG = 0.75    # w at 90 games remaining
+
+
+def logistic_from_anchors(w_short: float, w_long: float,
+                           anchors=BLEND_ANCHOR_GAMES) -> tuple[float, float]:
+    """(midpoint, scale) of the logistic through two (horizon, weight) points."""
+    h_short, h_long = anchors
+    if not 0.0 < w_long < w_short < 1.0:
+        raise ValueError("need 0 < w_long < w_short < 1 for a decreasing logistic")
+    l_short = float(np.log(w_short / (1.0 - w_short)))
+    l_long = float(np.log(w_long / (1.0 - w_long)))
+    scale = (h_long - h_short) / (l_short - l_long)
+    return h_short + scale * l_short, scale
+
+
+BLEND_MIDPOINT_GAMES, BLEND_SCALE_GAMES = logistic_from_anchors(
+    BLEND_WEIGHT_SHORT, BLEND_WEIGHT_LONG)
+
+METHODS = ("uniform", "season_share", "last_30", "blend")
 
 PROJECTION_COLUMNS = [
     "batter", "team_id", "cutoff_date", "games_remaining",
@@ -192,6 +247,19 @@ def _mapped(batters: pd.Series, table: pd.DataFrame) -> pd.Series:
     return batters.map(lookup).fillna(0.0).astype(float)
 
 
+def _bench_default(base: pd.Series, team_id: pd.Series) -> pd.Series:
+    """League bench default, on the time base of whatever window `base` is.
+
+    A share of what the team's *known* hitters produced in that window (the
+    league mean if this club has none at all, e.g. opening day), so the
+    default scales with the window rather than being a raw PA count.
+    """
+    team_window = base.groupby(team_id.to_numpy()).transform("sum")
+    n_teams = max(int(team_id.nunique()), 1)
+    league_mean = float(base.sum()) / n_teams
+    return DEFAULT_BENCH_SHARE * team_window.where(team_window > 0, league_mean)
+
+
 def _weights_last_30(roster: pd.DataFrame, game_logs: pd.DataFrame,
                      cutoff) -> pd.Series:
     """The model's raw (un-normalized) weight per roster row.
@@ -215,15 +283,51 @@ def _weights_last_30(roster: pd.DataFrame, game_logs: pd.DataFrame,
 
     weight = p30.where(p30 > 0, p60)
     weight = weight.where(weight > 0, psn)
-
-    # League bench default for anyone still at zero: a share of what the
-    # team's *known* hitters produced in the window (league mean if this team
-    # has none at all, e.g. opening day).
-    team_window = p30.groupby(roster["team_id"].to_numpy()).transform("sum")
-    n_teams = max(int(roster["team_id"].nunique()), 1)
-    league_mean = float(p30.sum()) / n_teams
-    fill = DEFAULT_BENCH_SHARE * team_window.where(team_window > 0, league_mean)
+    fill = _bench_default(p30, roster["team_id"])
     return weight.where(weight > 0, fill).astype(float)
+
+
+def _weights_season(roster: pd.DataFrame, game_logs: pd.DataFrame,
+                    cutoff) -> pd.Series:
+    """Season-to-date PA per roster row, with the same bench default.
+
+    The long-horizon half of the blend. It is *not* the `season_share`
+    baseline: that one is deliberately dumb (no roster filter, no default, no
+    cap) so it can isolate what the window and the IL zeroing are worth. This
+    is the same quantity carried through the model's own plumbing, so the only
+    thing that differs between the two halves of the blend is the window.
+    """
+    psn = _mapped(roster["batter"], window_pa(game_logs, cutoff, None))
+    fill = _bench_default(psn, roster["team_id"])
+    return psn.where(psn > 0, fill).astype(float)
+
+
+def horizon_weight(games_remaining,
+                   midpoint: float = BLEND_MIDPOINT_GAMES,
+                   scale: float = BLEND_SCALE_GAMES):
+    """Weight on the trailing-30-day share at a horizon of `games_remaining`.
+
+    A logistic, monotonically *decreasing* in the horizon: short horizons
+    trust the recent window, long ones lean further on the season, and
+    `midpoint` is the horizon where the two would be trusted equally. At the
+    fitted parameters that midpoint is ~280 games — far past any horizon a
+    projection is ever asked for — so over the range that matters, a fortnight
+    to a full season, this is a shallow slide from about 0.84 down to about
+    0.74 rather than a switch between two windows. Returns the input's shape.
+    """
+    if scale <= 0:
+        raise ValueError("scale must be positive")
+    h = np.asarray(games_remaining, dtype=float)
+    w = 1.0 / (1.0 + np.exp(np.clip((h - midpoint) / scale, -60.0, 60.0)))
+    return w if w.ndim else float(w)
+
+
+def _normalize(weight, team_id: pd.Series) -> pd.Series:
+    """Non-negative weights -> shares summing to 1 within each club (or to 0)."""
+    w = pd.Series(np.asarray(weight, dtype=float), index=team_id.index).clip(lower=0.0)
+    totals = w.groupby(team_id).transform("sum")
+    return pd.Series(np.where(totals > 0, w / totals.where(totals > 0, 1.0), 0.0),
+                     index=w.index)
 
 
 def cap_shares(shares: pd.Series, team_id: pd.Series,
@@ -265,6 +369,7 @@ def project_playing_time(
     team_logs: pd.DataFrame | None = None,
     method: str = "last_30",
     pa_per_game: pd.DataFrame | None = None,
+    blend_weight: float | None = None,
 ) -> pd.DataFrame:
     """Project rest-of-season plate appearances for every hitter on `roster`.
 
@@ -283,7 +388,14 @@ def project_playing_time(
         PA/game. Pass `pa_per_game` (team_id, pa_per_game) instead if you
         already have it.
     method
-        "last_30" (the model), "season_share" or "uniform" (the baselines).
+        "blend" (the model), "last_30" (the model's short-horizon half),
+        "season_share" or "uniform" (the baselines).
+    blend_weight
+        Override for `w(h)` under `method="blend"`: a constant in [0, 1] used
+        for every club instead of the horizon logistic. `1.0` reproduces
+        `last_30` exactly and `0.0` gives the season share carried through the
+        same plumbing. For tests and for sweeping the parameter; leave it
+        `None` in production so the weight follows the horizon.
 
     Returns one row per input roster row with `pa_share` (sums to 1 within a
     team, or to 0 for a team with nobody eligible) and `projected_pa_ros`.
@@ -296,29 +408,47 @@ def project_playing_time(
     out = roster.loc[:, ["batter", "team_id"]].copy().reset_index(drop=True)
     roster = roster.reset_index(drop=True)
     out["cutoff_date"] = cutoff.date().isoformat()
+    remaining = games_remaining.set_index("team_id")["games_remaining"]
+    # The horizon is needed before the shares, because the blend weight is a
+    # function of it.
+    out["games_remaining"] = out["team_id"].map(remaining).astype(float).fillna(0.0)
     status = (roster["status_code"] if "status_code" in roster.columns
               else pd.Series(ACTIVE_STATUS, index=roster.index))
     active = status.map(is_active)
+    team_id = out["team_id"]
 
     if method == "uniform":
-        weight = active.astype(float)
+        share = _normalize(active.astype(float), team_id)
     elif method == "season_share":
         # Deliberately dumb: season-to-date share with no roster filter at
         # all, so a hitter who tore his ACL in May still gets projected PA.
         # That is the point of the baseline — it isolates what the 30-day
         # window and the IL zeroing are worth.
-        weight = _mapped(out["batter"], window_pa(game_logs, cutoff, None))
-    else:
-        weight = _weights_last_30(roster, game_logs, cutoff).where(active, 0.0)
-
-    weight = pd.Series(np.asarray(weight, dtype=float), index=out.index).clip(lower=0.0)
-    totals = weight.groupby(out["team_id"]).transform("sum")
-    share = pd.Series(np.where(totals > 0, weight / totals.where(totals > 0, 1.0), 0.0),
-                      index=out.index)
-    if method == "last_30":
+        share = _normalize(_mapped(out["batter"], window_pa(game_logs, cutoff, None)),
+                           team_id)
+    elif method == "last_30":
         # The baselines stay deliberately dumb; the lineup-slot ceiling is
         # part of the model.
-        share = cap_shares(share, out["team_id"])
+        share = _normalize(_weights_last_30(roster, game_logs, cutoff).where(active, 0.0),
+                           team_id)
+        share = cap_shares(share, team_id)
+    else:
+        # The blend. Both halves are normalized to club shares *first*, so the
+        # weight is a weight on shares rather than on two incommensurate PA
+        # counts (a 30-day count and a season count).
+        share_30 = _normalize(_weights_last_30(roster, game_logs, cutoff).where(active, 0.0),
+                              team_id)
+        share_season = _normalize(_weights_season(roster, game_logs, cutoff).where(active, 0.0),
+                                  team_id)
+        if blend_weight is None:
+            w = pd.Series(horizon_weight(out["games_remaining"]), index=out.index)
+        else:
+            w = pd.Series(float(blend_weight), index=out.index)
+        # Both halves already sum to 1 per club and `w` is constant within a
+        # club, so the blend does too; the renormalization only matters for a
+        # club where one half is empty.
+        share = _normalize(w * share_30 + (1.0 - w) * share_season, team_id)
+        share = cap_shares(share, team_id)
     out["pa_share"] = share
 
     if pa_per_game is None:
@@ -327,9 +457,7 @@ def project_playing_time(
         pa_per_game = team_pa_per_game(team_logs, cutoff)
     ppg = (pa_per_game.set_index("team_id")["pa_per_game"]
            if len(pa_per_game) else pd.Series(dtype=float))
-    remaining = games_remaining.set_index("team_id")["games_remaining"]
 
-    out["games_remaining"] = out["team_id"].map(remaining).astype(float).fillna(0.0)
     team_pa_ros = out["games_remaining"] * out["team_id"].map(ppg).astype(float).fillna(0.0)
     out["projected_pa_ros"] = out["pa_share"] * team_pa_ros
     return out.loc[:, PROJECTION_COLUMNS]
@@ -355,6 +483,58 @@ def realized_pa(game_logs: pd.DataFrame, start, end) -> pd.DataFrame:
             .rename(columns={"pa": "realized_pa"}))
 
 
+def _aligned(projection: pd.DataFrame, realized: pd.DataFrame,
+             universe=None) -> pd.DataFrame:
+    """batter, team_id, projected_pa_ros, realized_pa on a common hitter set.
+
+    `universe` (an iterable of batter ids) when given, otherwise the union of
+    the projected and the realized hitters — a projected hitter who never
+    played counts as realized 0, a September call-up nobody projected counts
+    as projected 0.
+    """
+    proj = (projection.groupby("batter", as_index=False)
+            .agg(projected_pa_ros=("projected_pa_ros", "sum"),
+                 team_id=("team_id", "first")))
+    real = realized.groupby("batter", as_index=False)["realized_pa"].sum()
+    df = proj.merge(real, on="batter", how="outer")
+    if universe is not None:
+        keep = pd.Index(pd.unique(pd.Series(list(universe))), name="batter")
+        df = df.set_index("batter").reindex(keep).reset_index()
+    df["projected_pa_ros"] = df["projected_pa_ros"].fillna(0.0)
+    df["realized_pa"] = df["realized_pa"].fillna(0.0)
+    return df
+
+
+def absolute_errors(projection: pd.DataFrame, realized: pd.DataFrame,
+                    universe=None) -> pd.Series:
+    """|projected - realized| per hitter, indexed by `batter`.
+
+    The per-hitter term whose mean is the MAE in `score_projection`. Two
+    methods scored on the same universe give two of these on the same index,
+    so their difference is *paired* — see `paired_difference`.
+    """
+    df = _aligned(projection, realized, universe=universe)
+    err = (df["projected_pa_ros"] - df["realized_pa"]).abs()
+    return pd.Series(err.to_numpy(float), index=pd.Index(df["batter"], name="batter"))
+
+
+def paired_difference(errors_a: pd.Series, errors_b: pd.Series) -> dict:
+    """Mean and standard error of `errors_a - errors_b`, hitter by hitter.
+
+    The right uncertainty for "did method A beat method B": the two methods
+    saw the same hitters and the same season, so almost all of the variance in
+    either MAE is common and cancels. `mean` negative means A is the better
+    method; `t` is `mean / se`.
+    """
+    a, b = errors_a.align(errors_b, join="inner")
+    d = (a - b).to_numpy(float)
+    n = len(d)
+    se = float(d.std(ddof=1) / np.sqrt(n)) if n > 1 else float("nan")
+    mean = float(d.mean()) if n else float("nan")
+    return {"n": n, "mean": mean, "se": se,
+            "t": mean / se if se else float("nan")}
+
+
 def score_projection(projection: pd.DataFrame, realized: pd.DataFrame,
                      universe=None) -> dict:
     """MAE / RMSE of projected vs realized rest-of-season PA.
@@ -374,17 +554,7 @@ def score_projection(projection: pd.DataFrame, realized: pd.DataFrame,
     question "did you pick the right lineup?" separated from "did you get the
     counts right?".
     """
-    proj = (projection.groupby("batter", as_index=False)
-            .agg(projected_pa_ros=("projected_pa_ros", "sum"),
-                 team_id=("team_id", "first")))
-    real = realized.groupby("batter", as_index=False)["realized_pa"].sum()
-    df = proj.merge(real, on="batter", how="outer")
-    if universe is not None:
-        keep = pd.Index(pd.unique(pd.Series(list(universe))), name="batter")
-        df = df.set_index("batter").reindex(keep).reset_index()
-    df["projected_pa_ros"] = df["projected_pa_ros"].fillna(0.0)
-    df["realized_pa"] = df["realized_pa"].fillna(0.0)
-
+    df = _aligned(projection, realized, universe=universe)
     err = df["projected_pa_ros"].to_numpy(float) - df["realized_pa"].to_numpy(float)
     w = df["realized_pa"].to_numpy(float)
     w_sum = float(w.sum())
@@ -426,6 +596,35 @@ def walk_forward_scores(
     `score_projection`, on a hitter universe shared by all methods at a cutoff.
     """
     rows = []
+    for cutoff, projections, real, universe in walk_forward_projections(
+            roster_by_cutoff, game_logs, team_logs, games_remaining_by_cutoff,
+            score_end, methods=methods):
+        for m, proj in projections.items():
+            rows.append({"cutoff": str(cutoff), "method": m,
+                         **score_projection(proj, real, universe=universe)})
+    return pd.DataFrame(rows)
+
+
+def walk_forward_projections(
+    roster_by_cutoff: dict,
+    game_logs: pd.DataFrame,
+    team_logs: pd.DataFrame,
+    games_remaining_by_cutoff: dict,
+    score_end,
+    methods=METHODS,
+    blend_weights=None,
+):
+    """The projections behind `walk_forward_scores`, one cutoff at a time.
+
+    Yields `(cutoff, {name: projection}, realized, universe)`. The universe is
+    shared by every method at a cutoff so nobody gets credit for declining to
+    project someone.
+
+    `blend_weights` is an optional iterable of constant `w` values; each adds
+    a `blend@w` entry to the projections dict. That is how the parameter sweep
+    traces MAE against the blend weight at a fixed horizon without re-reading
+    the game logs for every candidate.
+    """
     for cutoff in sorted(roster_by_cutoff):
         roster = roster_by_cutoff[cutoff]
         remaining = games_remaining_by_cutoff[cutoff]
@@ -436,13 +635,13 @@ def walk_forward_scores(
                                     pa_per_game=ppg, method=m)
             for m in methods
         }
-        # One universe for all methods so the comparison is on a common set.
+        for w in (blend_weights or ()):
+            projections[f"blend@{w:g}"] = project_playing_time(
+                roster, game_logs, remaining, cutoff, pa_per_game=ppg,
+                method="blend", blend_weight=w)
         universe = sorted(
             set(real["batter"]) |
             {b for p in projections.values()
              for b in p.loc[p["projected_pa_ros"] > 0, "batter"]}
         )
-        for m, proj in projections.items():
-            rows.append({"cutoff": str(cutoff), "method": m,
-                         **score_projection(proj, real, universe=universe)})
-    return pd.DataFrame(rows)
+        yield cutoff, projections, real, universe

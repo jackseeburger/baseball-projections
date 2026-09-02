@@ -11,10 +11,13 @@ import pandas as pd
 import pytest
 
 from src.projections.playing_time import (
+    BLEND_MIDPOINT_GAMES,
+    BLEND_SCALE_GAMES,
     DEFAULT_BENCH_SHARE,
     MAX_PA_SHARE,
     METHODS,
     cap_shares,
+    horizon_weight,
     is_active,
     is_injured,
     project_playing_time,
@@ -142,6 +145,152 @@ def test_no_history_hitter_gets_the_bench_default(frames):
     raw = DEFAULT_BENCH_SHARE * float(window["pa"].sum())
     expected = raw / (float(eligible["pa"].sum()) + raw)
     assert share == pytest.approx(expected, rel=1e-9)
+
+
+# --- the horizon blend ---
+
+# A fixture where the two windows genuinely disagree: 101 was a regular for the
+# first two months and has been benched for the last month, 102 the reverse.
+# Every other regular is steady, so the season and 30-day shares differ for
+# exactly two hitters and the blend has something to interpolate between.
+FADING, RISING = 101, 102
+
+
+def make_split_game_logs(days: int = 90) -> pd.DataFrame:
+    logs = make_game_logs(days)
+    recent = pd.to_datetime(logs["date"]) >= pd.Timestamp(CUTOFF) - pd.Timedelta(days=30)
+    logs.loc[(logs["batter"] == FADING) & recent, "pa"] = 1
+    logs.loc[(logs["batter"] == RISING) & ~recent, "pa"] = 1
+    return logs
+
+
+@pytest.fixture
+def split_frames():
+    logs = make_split_game_logs()
+    team_logs = logs.groupby(["team_id", "date"], as_index=False)["pa"].sum()
+    return make_roster(), logs, team_logs, make_remaining()
+
+
+def _blend(frames, weight=None, games=30):
+    roster, logs, team_logs, _ = frames
+    remaining = make_remaining(games)
+    return project_playing_time(roster, logs, remaining, CUTOFF, team_logs=team_logs,
+                                method="blend", blend_weight=weight)
+
+
+def test_horizon_weight_is_monotone_and_bounded():
+    horizons = np.arange(0, 200, 1.0)
+    w = horizon_weight(horizons)
+    assert np.all(np.diff(w) < 0)                     # strictly decreasing in h
+    # Saturates at both ends, a few scale lengths either side of the midpoint.
+    assert horizon_weight(BLEND_MIDPOINT_GAMES - 5 * BLEND_SCALE_GAMES) > 0.99
+    assert horizon_weight(BLEND_MIDPOINT_GAMES + 5 * BLEND_SCALE_GAMES) < 0.01
+    assert np.all((w >= 0.0) & (w <= 1.0))
+    assert horizon_weight(BLEND_MIDPOINT_GAMES) == pytest.approx(0.5)
+    assert horizon_weight(BLEND_MIDPOINT_GAMES + BLEND_SCALE_GAMES) < 0.5
+    with pytest.raises(ValueError):
+        horizon_weight(30, scale=0.0)
+
+
+def test_blend_at_w_one_reproduces_last_30(split_frames):
+    """The short-horizon limit is exactly the old model."""
+    roster, logs, team_logs, remaining = split_frames
+    last_30 = project_playing_time(roster, logs, remaining, CUTOFF,
+                                   team_logs=team_logs, method="last_30")
+    blended = _blend(split_frames, weight=1.0)
+    np.testing.assert_allclose(blended["pa_share"].to_numpy(),
+                               last_30["pa_share"].to_numpy(), atol=1e-12)
+
+
+def test_blend_at_w_zero_is_the_season_share(split_frames):
+    """The long-horizon limit is the season-to-date share of the active roster.
+
+    Not the `season_share` *baseline*, which deliberately keeps no roster
+    filter at all — the blend's own long half runs through the model's
+    plumbing (IL zeroed, bench default), so what it reproduces is the season
+    share renormalized over the hitters who can actually bat.
+    """
+    roster, logs, _, _ = split_frames
+    shares = _blend(split_frames, weight=0.0).set_index("batter")["pa_share"]
+
+    season = window_pa(logs, CUTOFF, None).set_index("batter")["pa"]
+    team = roster[roster["team_id"] == 100]
+    default = DEFAULT_BENCH_SHARE * float(season.reindex(team["batter"]).fillna(0.0).sum())
+    active = team.loc[team["status_code"] == "A", "batter"]
+    weights = season.reindex(active).fillna(default)
+    expected = weights / weights.sum()
+    assert expected.max() < MAX_PA_SHARE          # the cap must not be binding
+    np.testing.assert_allclose(shares.reindex(active).to_numpy(),
+                               expected.to_numpy(), atol=1e-12)
+
+
+def test_blend_moves_monotonically_between_the_two_windows(split_frames):
+    """Every hitter's share slides from his 30-day share to his season share."""
+    ends = {w: _blend(split_frames, weight=w).set_index("batter")["pa_share"]
+            for w in (0.0, 1.0)}
+    grid = [_blend(split_frames, weight=w).set_index("batter")["pa_share"]
+            for w in np.linspace(0.0, 1.0, 11)]
+    moved = ends[1.0] - ends[0.0]
+    assert abs(moved.loc[RISING]) > 1e-3 and abs(moved.loc[FADING]) > 1e-3
+    for batter in ends[0.0].index:
+        path = np.array([g.loc[batter] for g in grid])
+        step = np.diff(path) * np.sign(moved.loc[batter] or 1.0)
+        assert np.all(step >= -1e-12), f"{batter} is not monotone in w"
+
+
+def test_blend_weight_follows_the_horizon(split_frames):
+    """With no override, a longer horizon leans further on the season window.
+
+    Monotone in the horizon, not merely different: every hitter's share slides
+    the same direction as the horizon grows, toward his season share. (It does
+    not *reach* it — the fitted weight only falls from about .84 to about .67
+    across every horizon a projection is ever asked for.)
+    """
+    season = _blend(split_frames, weight=0.0).set_index("batter")["pa_share"]
+    recent = _blend(split_frames, weight=1.0).set_index("batter")["pa_share"]
+    horizons = [5, 15, 30, 60, 100, 162]
+    shares = [_blend(split_frames, games=g).set_index("batter")["pa_share"]
+              for g in horizons]
+    toward_season = np.sign((season - recent).loc[[RISING, FADING]])
+    assert set(toward_season) == {-1.0, 1.0}     # they move opposite ways
+    for batter in (RISING, FADING):
+        path = np.array([sh.loc[batter] for sh in shares])
+        step = np.diff(path) * toward_season.loc[batter]
+        assert np.all(step > 0), f"{batter} does not slide toward his season share"
+        assert min(recent.loc[batter], season.loc[batter]) <= path.min()
+        assert path.max() <= max(recent.loc[batter], season.loc[batter])
+
+
+@pytest.mark.parametrize("games", [5, 20, 45, 80, 150])
+def test_blend_shares_sum_to_one_and_zero_the_unavailable(split_frames, games):
+    proj = _blend(split_frames, games=games)
+    totals = proj.groupby("team_id")["pa_share"].sum()
+    np.testing.assert_allclose(totals.to_numpy(), 1.0, atol=1e-12)
+    indexed = proj.set_index("batter")
+    assert indexed.loc[INJURED, "pa_share"] == 0.0
+    assert indexed.loc[OPTIONED, "pa_share"] == 0.0
+    assert indexed.loc[CALLUP, "pa_share"] > 0.0
+    assert proj["pa_share"].max() <= MAX_PA_SHARE + 1e-12
+
+
+@pytest.mark.parametrize("games", [10, 60])
+def test_blend_respects_the_lineup_slot_cap(games):
+    """A club with one hitter taking a third of its PA still gets capped."""
+    ids = list(range(301, 311))
+    rows = [{"batter": b, "team_id": 300, "status_code": "A"} for b in ids]
+    roster = pd.DataFrame(rows)
+    logs = pd.DataFrame([
+        {"batter": b, "team_id": 300, "date": d.date().isoformat(),
+         "pa": 8 if b == 301 else 2}
+        for d in _game_dates(90) for b in ids
+    ])
+    team_logs = logs.groupby(["team_id", "date"], as_index=False)["pa"].sum()
+    remaining = pd.DataFrame({"team_id": [300], "games_remaining": [games]})
+    proj = project_playing_time(roster, logs, remaining, CUTOFF,
+                                team_logs=team_logs, method="blend")
+    # Uncapped he would be 8/26 = .308 of his club's plate appearances.
+    assert proj["pa_share"].max() == pytest.approx(MAX_PA_SHARE)
+    assert proj["pa_share"].sum() == pytest.approx(1.0)
 
 
 def test_uniform_baseline_is_flat_over_the_active_roster(frames):
