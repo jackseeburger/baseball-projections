@@ -22,6 +22,12 @@ The output is a runs-allowed-per-9 number that drops straight into the
 existing Pythagenpat → log5 → HFA pipeline in place of the team's RA/G.
 `scripts/backtest_game_odds.py` scores it as `pythag_60_sp`.
 
+Everything above `── as-of-date assembly ──` is pure; the two helpers below it
+fetch (`rate_inputs`) and are shared by both callers of the term —
+`scripts/backtest_game_odds.py` walking a whole season and
+`scripts/run_playoff_odds.py` pricing tonight's slate — so the live odds and
+the scored backtest run the same chain by construction.
+
 Every constant below comes from outside the test set: Marcel's published
 recency weights, the standard FIP coefficients, published rate-stabilization
 points for the ballasts, 5.5 innings for an average start. The one free knob
@@ -33,6 +39,8 @@ from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from src.sim.strength import HFA_PRIOR, home_win_prob, pythagenpat
 
 # Marcel's recency weights: current season, one back, two back.
 MARCEL_WEIGHTS = (5.0, 4.0, 3.0)
@@ -225,3 +233,97 @@ def blend_starter_team(sp_ra9, team_ra9, lg_ra9, starter_ip: float = STARTER_IP,
 def starter_ra9_lookup(rates: pd.DataFrame, lg: dict, lg_ra9: float) -> dict:
     """{pitcher_id: FIP runs/9}. Missing ids fall back to `lg_ra9` at lookup."""
     return {int(k): float(v) for k, v in fip_ra9(rates, lg, lg_ra9).items()}
+
+
+# ─── as-of-date assembly: the same rates for the backtest and the live job ───
+
+def rate_inputs(season: int, pitcher_ids, prior_seasons: int = 2,
+                refresh: bool = False) -> dict:
+    """Fetch everything the rate table needs for `season`, once.
+
+    The only function in this module that touches the network. Returns the
+    handful of frames `rate_table` slices per date: `prior_counts` (completed
+    seasons, Marcel-weighted alongside the current one), `game_logs` (this
+    season's appearances, dated, so a date cut can be applied), and `league`
+    (pooled rates from the completed seasons — the current-season logs we hold
+    are starters-only, so pooling them would bias the regression target).
+
+    Responses are cached under data/cache/statsapi/ (gitignored), so a rerun
+    of either caller is offline and identical.
+
+    `refresh` re-pulls the *current* season's game logs, and only those. Their
+    cache key is the season, not a date, so a live caller asking about today
+    would otherwise be served a snapshot taken whenever the file was first
+    written and silently miss every start since — harmless for the backtest
+    (it reads a finished season once) and wrong for the nightly job, which
+    passes refresh=True. The completed prior seasons never move, so they stay
+    cached either way.
+    """
+    from src.data.mlb_stats_api import fetch_pitcher_game_logs, fetch_season_pitching
+
+    prior = pd.concat(
+        [fetch_season_pitching(y) for y in range(season - prior_seasons, season)],
+        ignore_index=True)
+    prior_counts = normalize_counts(prior)
+    logs = fetch_pitcher_game_logs(pitcher_ids, season, refresh=refresh)
+    logs = logs[logs["game_type"] == "R"]
+    game_logs = normalize_counts(logs)
+    game_logs["date"] = logs["date"].to_numpy()
+    return {"season": season, "prior_counts": prior_counts,
+            "game_logs": game_logs, "league": league_rates(prior_counts)}
+
+
+def rate_table(inputs: dict, as_of: str, lg_ra9: float,
+               ballast=BALLAST_BF) -> dict:
+    """{pitcher_id: FIP runs/9} using only appearances *strictly before* `as_of`.
+
+    Pure — `inputs` is what `rate_inputs` returns. For the nightly job `as_of`
+    is today, so a start made earlier today (or last night's late game, once
+    the log posts) is still excluded, exactly as in the walk-forward backtest.
+    `lg_ra9` anchors the FIP constant to the season's run environment, so a
+    league-average arm returns the team's own runs-allowed rate unchanged.
+    """
+    current = appearances_before(inputs["game_logs"], as_of)
+    counts = pd.concat([inputs["prior_counts"], current], ignore_index=True)
+    rates = marcel_rates(counts, inputs["season"], inputs["league"], ballast=ballast)
+    return starter_ra9_lookup(rates, inputs["league"], lg_ra9)
+
+
+def build_rate_table(as_of: str, pitcher_ids, season: int, lg_ra9: float,
+                     ballast=BALLAST_BF, prior_seasons: int = 2,
+                     refresh: bool = False) -> dict:
+    """`rate_inputs` + `rate_table` for a single date (the nightly job's case).
+
+    The backtest wants the two halves apart — it fetches once and re-slices for
+    each of ~160 dates — so this convenience wrapper exists for the caller that
+    only ever asks about one day.
+    """
+    inputs = rate_inputs(season, pitcher_ids, prior_seasons=prior_seasons,
+                         refresh=refresh)
+    return rate_table(inputs, as_of, lg_ra9, ballast=ballast)
+
+
+def game_home_prob(team_rates: pd.DataFrame, home_id, away_id, sp_ids,
+                   sp_ra9: dict, lg_ra9: float, hfa: float = HFA_PRIOR,
+                   starter_ip: float = STARTER_IP) -> tuple[float, int]:
+    """P(home wins) for one game with both starters known — the `pythag_60_sp` chain.
+
+    `team_rates` is indexed by team_id with rs_pg / ra_pg columns (station D's
+    regressed run rates: `strength.regressed_run_rates`, or the backtest's
+    walk-forward equivalent). `sp_ids` is (home starter id, away starter id);
+    an id missing from `sp_ra9` is a pitcher with no history and is scored at
+    league average, which leaves that side exactly at its team rate.
+
+    Returns (P(home), number of the two starter slots that had no history).
+    """
+    no_history = 0
+    talent = {}
+    for side, team_id, pid in (("home", home_id, sp_ids[0]),
+                               ("away", away_id, sp_ids[1])):
+        no_history += int(int(pid) not in sp_ra9)
+        ra9 = blend_starter_team(sp_ra9.get(int(pid), lg_ra9),
+                                 team_rates.loc[team_id, "ra_pg"], lg_ra9,
+                                 starter_ip=starter_ip)
+        talent[side] = pythagenpat(float(team_rates.loc[team_id, "rs_pg"]),
+                                   float(ra9), 1.0)
+    return float(home_win_prob(talent["home"], talent["away"], hfa)), no_history

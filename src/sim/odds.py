@@ -15,9 +15,15 @@ PERCENTILES = (5, 25, 50, 75, 95)
 def run_playoff_odds(
     state: SeasonState, strength: pd.Series, hfa: float,
     n_sims: int = 20_000, seed: int = 0,
+    p_home_overrides: dict[int, float] | None = None,
 ) -> pd.DataFrame:
+    """`p_home_overrides` (game_pk → P(home)) replaces the log5 probability for
+    the remaining games it names; see `season.simulate_remaining`. The
+    postseason bracket still runs on team strength — nobody has announced a
+    Game 1 starter in September."""
     rng = np.random.default_rng(seed)
-    home_wins = simulate_remaining(state, strength, hfa, n_sims, rng)
+    home_wins = simulate_remaining(state, strength, hfa, n_sims, rng,
+                                   p_home_overrides=p_home_overrides)
     records = tally(state, home_wins)
     ctx = TiebreakContext.build(state, records, home_wins, rng)
     strength_arr = strength.reindex(state.team_ids).to_numpy()

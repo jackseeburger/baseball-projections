@@ -30,9 +30,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
-from src.data.mlb_stats_api import (
-    fetch_pitcher_game_logs, fetch_probables, fetch_schedule, fetch_season_pitching,
-)
+from src.data.mlb_stats_api import fetch_probables, fetch_schedule
 from src.sim import starters as sp_model
 from src.sim.season import from_schedule
 from src.sim.strength import HFA_PRIOR, home_win_prob, pythagenpat
@@ -105,19 +103,19 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
 # ─── station E starting-pitcher term ───
 
 def starter_day_context(tot: pd.DataFrame, date: str, sp_ctx: dict) -> dict:
-    """Everything the starter model needs for one slate, built from the past only."""
-    current = sp_model.appearances_before(sp_ctx["game_logs"], date)
-    counts = pd.concat([sp_ctx["prior_counts"], current], ignore_index=True)
-    # League rates come from the completed prior seasons only: the current-season
-    # logs we hold are starters-only, so pooling them would bias the regression
-    # target. The current run environment enters through lg_ra9, which anchors
-    # the FIP constant to season-to-date league runs per game.
-    lg = sp_ctx["league"]
+    """Everything the starter model needs for one slate, built from the past only.
+
+    `starters.rate_table` does the pitcher half (rates from appearances
+    strictly before `date`); the team half is the same regressed run rates
+    `pythag_60` uses. The live nightly job calls the same two functions for a
+    single date — see `scripts/run_playoff_odds.py`.
+    """
+    # The current run environment enters through lg_ra9, which anchors the FIP
+    # constant to season-to-date league runs per game.
     lg_ra9 = float(tot["ra"].sum() / max(tot["g"].sum(), 1))
-    rates = sp_model.marcel_rates(counts, sp_ctx["season"], lg,
-                                  ballast=sp_ctx["ballast"])
     return {
-        "sp_ra9": sp_model.starter_ra9_lookup(rates, lg, lg_ra9),
+        "sp_ra9": sp_model.rate_table(sp_ctx, date, lg_ra9,
+                                      ballast=sp_ctx["ballast"]),
         "lg_ra9": lg_ra9,
         "team": team_rates(tot, SP_BALLAST_GAMES),
         "probables": sp_ctx["probables"],
@@ -134,16 +132,11 @@ def starter_game_prob(g, day: dict, hfa: float):
     flags = {"sp_fallback": sp_ids is None, "sp_no_history": 0}
     if sp_ids is None:
         return None, flags
-    team, lg_ra9 = day["team"], day["lg_ra9"]
-    strength = {}
-    for side, team_id, pid in (("home", g.home_id, sp_ids[0]),
-                               ("away", g.away_id, sp_ids[1])):
-        flags["sp_no_history"] += int(pid not in day["sp_ra9"])
-        ra9 = sp_model.blend_starter_team(day["sp_ra9"].get(pid, lg_ra9),
-                                          team.loc[team_id, "ra_pg"], lg_ra9,
-                                          starter_ip=day["starter_ip"])
-        strength[side] = pythagenpat(float(team.loc[team_id, "rs_pg"]), float(ra9), 1.0)
-    return float(home_win_prob(strength["home"], strength["away"], hfa)), flags
+    p_home, no_history = sp_model.game_home_prob(
+        day["team"], g.home_id, g.away_id, sp_ids, day["sp_ra9"],
+        day["lg_ra9"], hfa, starter_ip=day["starter_ip"])
+    flags["sp_no_history"] = no_history
+    return p_home, flags
 
 
 def build_sp_context(season: int, scored: pd.DataFrame, ballast: float,
@@ -159,17 +152,10 @@ def build_sp_context(season: int, scored: pd.DataFrame, ballast: float,
     pmap = {int(r.game_pk): (int(r.home_sp_id), int(r.away_sp_id))
             for r in probables.itertuples(index=False)}
 
-    prior = pd.concat(
-        [fetch_season_pitching(y) for y in range(season - prior_seasons, season)],
-        ignore_index=True)
-    prior_counts = sp_model.normalize_counts(prior)
-
-    logs = fetch_pitcher_game_logs({p for ids in pmap.values() for p in ids}, season)
-    logs = logs[logs["game_type"] == "R"]
-    game_logs = sp_model.normalize_counts(logs)
-    game_logs["date"] = logs["date"].to_numpy()
-    return {"probables": pmap, "prior_counts": prior_counts, "game_logs": game_logs,
-            "league": sp_model.league_rates(prior_counts), "season": season,
+    inputs = sp_model.rate_inputs(
+        season, {p for ids in pmap.values() for p in ids},
+        prior_seasons=prior_seasons)
+    return {**inputs, "probables": pmap,
             "ballast": ballast, "starter_ip": starter_ip}
 
 

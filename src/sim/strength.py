@@ -20,6 +20,37 @@ def pythagenpat(rs: float, ra: float, games: float) -> float:
     return float(rs ** x / (rs ** x + ra ** x))
 
 
+def regressed_run_rates(standings: pd.DataFrame,
+                        regress_games: float = 60.0) -> pd.DataFrame:
+    """team_id → runs scored / allowed per game, regressed toward the league.
+
+    The half-step inside `regressed_strength`, exposed on its own because the
+    station E starting-pitcher term needs the *rates*, not the win% they
+    collapse to: it moves a team's RA/G by how far its announced starter sits
+    from league average before Pythagenpat is applied
+    (`src/sim/starters.blend_starter_team`). Columns: rs_pg, ra_pg.
+    """
+    st = standings.copy()
+    games = st["wins"] + st["losses"]
+    lg_rs = st["runs_scored"].sum() / games.sum()
+    lg_ra = st["runs_allowed"].sum() / games.sum()
+    # Build on `standings`' own row index, then relabel by team_id. Handing
+    # team ids to the DataFrame constructor as `index=` would *reindex* the
+    # columns by label instead of renaming the rows, silently producing NaNs.
+    out = pd.DataFrame({
+        "rs_pg": (st["runs_scored"] + regress_games * lg_rs) / (games + regress_games),
+        "ra_pg": (st["runs_allowed"] + regress_games * lg_ra) / (games + regress_games),
+    })
+    out.index = pd.Index(st["team_id"].astype(int).to_numpy(), name="team_id")
+    return out
+
+
+def league_ra_per_game(standings: pd.DataFrame) -> float:
+    """League runs allowed per game — the anchor the starter FIPs are centred on."""
+    games = (standings["wins"] + standings["losses"]).sum()
+    return float(standings["runs_allowed"].sum() / max(games, 1))
+
+
 def regressed_strength(standings: pd.DataFrame, regress_games: float = 60.0) -> pd.Series:
     """team_id → talent win%.
 
@@ -28,17 +59,11 @@ def regressed_strength(standings: pd.DataFrame, regress_games: float = 60.0) -> 
     A 60-game ballast is a standard in-season shrinkage; tune against the
     backtest harness once historical standings are wired in.
     """
-    st = standings.copy()
-    st["games"] = st["wins"] + st["losses"]
-    lg_rs = st["runs_scored"].sum() / st["games"].sum()
-    lg_ra = st["runs_allowed"].sum() / st["games"].sum()
-    out = {}
-    for _, r in st.iterrows():
-        g = r["games"]
-        rs_pg = (r["runs_scored"] + regress_games * lg_rs) / (g + regress_games)
-        ra_pg = (r["runs_allowed"] + regress_games * lg_ra) / (g + regress_games)
-        out[int(r["team_id"])] = pythagenpat(rs_pg, ra_pg, 1.0)
-    return pd.Series(out, name="strength")
+    rates = regressed_run_rates(standings, regress_games)
+    return pd.Series(
+        {int(t): pythagenpat(r["rs_pg"], r["ra_pg"], 1.0) for t, r in rates.iterrows()},
+        name="strength",
+    )
 
 
 def from_run_environment(rs_per_game: pd.Series, ra_per_game: pd.Series) -> pd.Series:
