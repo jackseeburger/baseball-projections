@@ -109,7 +109,7 @@ and it must stay that way until [A]–[C] beat their baselines.
 | **E. Per-game P(win)** | Home win prob for one game | log5 + HFA on team strength (Brier .2462) | **+ starting pitcher: .2448** · Kalshi **.2416** / Polymarket **.2417** (756 games, measured — [market-benchmark-2026.md](market-benchmark-2026.md)) | **Wired, live** (Sept 2) — the starter term prices every remaining game with both probables posted; the rest keep team strength | `strength.home_win_prob`, `src/sim/starters.py` |
 | **F. Season sim** | Monte Carlo, MLB tiebreakers, bracket | — (plumbing) | Within 1.6 pts of FanGraphs; coin-flip control within 1.9 | **Wired, validated** | `src/sim/season.py`, `standings.py`, `bracket.py` |
 | **G. Odds** | P(playoffs/div/bye/pennant/WS), win bands | — | Live, 20k sims | **Wired, live** | `src/sim/odds.py` |
-| **H. Site + archive** | Landing page, dated JSON, nightly job | — | Live; first snapshot 2026-09-01 | **Wired**; nightly first run pending | `scripts/run_playoff_odds.py`, `nightly-odds.yml` |
+| **H. Site + archive** | Landing page, **Model Accuracy page**, dated JSON, nightly job | — | Live; first snapshot 2026-09-01. Accuracy page renders the A/E/G scoreboards from generated JSON only (`public/data/accuracy/`), with a stale badge and a reason wherever a section could not be rebuilt | **Wired**; nightly first run pending | `scripts/run_playoff_odds.py`, `scripts/build_accuracy_json.py`, `nightly-odds.yml` |
 | **M. Market** | Daily archive of prices from **exchanges** (Kalshi, Polymarket: bid/ask, last, volume, open interest — public, no key) and **sportsbooks** (~30 books incl. Pinnacle via The Odds API, de-vigged); 2026 pre-game closes reconstructed for both exchanges; score E/A/G against all three | The market price itself | Kalshi ≈ Polymarket within ~1 pt on the same games | **Wired** — `market-snapshot.yml` 3×/day, closes in `market_closes_2026.parquet`; CLV / fill-aware ROI not yet | `src/market/` |
 
 Scoreboards: [accuracy-2026.md](accuracy-2026.md) (stations A, E, G),
@@ -170,7 +170,7 @@ Keyless work (runs in any cloud session now):
 2b. **Props pipeline** — map station A's K%/HR projections + station B's
    PA to per-game prop probabilities; score against archived prop lines.
    First direct test of whether A has monetizable edge.
-3. **Accuracy page** on the site from the scoreboard docs (roadmap 3, page 4).
+3. ~~**Accuracy page** on the site from the scoreboard docs (roadmap 3, page 4).~~ **Done** — `scripts/build_accuracy_json.py` writes `public/data/accuracy/{latest,YYYY-MM-DD}.json` from `score_2026_projections.py --json-out`, `backtest_game_odds.py --json-out` and the §2b control table; the page hand-types no numbers. Market rows need the `R2_*` secrets on the nightly runner; without them that section renders stale.
 
 Needs R2 / Modal / W&B:
 4. **Edge pocket #1** — refit A with real ages + binomial likelihood +

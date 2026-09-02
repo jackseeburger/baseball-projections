@@ -1,0 +1,18 @@
+{
+ "generated_at": "2026-09-02T21:00:00+00:00",
+ "season": 2026,
+ "min_games": 20,
+ "n_games": 1774,
+ "first_date": "2026-04-19",
+ "last_date": "2026-09-02",
+ "market_file": null,
+ "market_models": [],
+ "realized_home_win_rate": 0.5292,
+ "scores": [
+  {"model": "pythag_60_sp", "brier": 0.2465, "log_loss": 0.6861, "mean_p_home": 0.5336},
+  {"model": "pythag_60", "brier": 0.2478, "log_loss": 0.6888, "mean_p_home": 0.5340},
+  {"model": "home_constant", "brier": 0.2497, "log_loss": 0.6926, "mean_p_home": 0.5354}
+ ],
+ "sp_fallback_games": 2,
+ "sp_no_history_slots": 22
+}

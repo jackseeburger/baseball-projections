@@ -200,6 +200,9 @@ def main() -> None:
     parser.add_argument("--market", type=Path, default=None,
                         help="market_closes parquet from scripts/backfill_market_closes.py; "
                              "scores each venue's pre-game close as a model on the common games")
+    parser.add_argument("--json-out", type=Path, default=None,
+                        help="also write the printed score table to PATH as JSON "
+                             "(the market-joined table when --market is given)")
     args = parser.parse_args()
     ballasts = [float(b) for b in args.ballasts.split(",")]
 
@@ -248,6 +251,32 @@ def main() -> None:
                                                         realized=("home_win", "mean"))
         print(f"\nCalibration ({model}):")
         print(cal.round(3).to_string())
+
+    if args.json_out is not None:
+        import json
+        from datetime import datetime, timezone
+        # `preds` is the market-joined common-game set when --market was given,
+        # otherwise the full walk-forward set; either way the table below is the
+        # one printed last, scored on exactly the games it names.
+        venues = list(market_models) if args.market is not None else []
+        table = score(preds, models + venues)
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "season": args.season,
+            "min_games": args.min_games,
+            "n_games": int(len(preds)),
+            "first_date": str(preds["date"].min()),
+            "last_date": str(preds["date"].max()),
+            "market_file": args.market.name if args.market is not None else None,
+            "market_models": venues,
+            "realized_home_win_rate": float(preds["home_win"].mean()),
+            "scores": json.loads(table.to_json(orient="records")),
+            "sp_fallback_games": int(preds["sp_fallback"].sum()) if sp_ctx is not None else None,
+            "sp_no_history_slots": int(preds["sp_no_history"].sum()) if sp_ctx is not None else None,
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
+        print(f"\nwrote {args.json_out}")
 
 
 if __name__ == "__main__":

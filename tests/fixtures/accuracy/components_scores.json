@@ -1,0 +1,25 @@
+{
+ "generated_at": "2026-09-02T21:00:00+00:00",
+ "season": 2026,
+ "min_trials": 150,
+ "components": ["k_rate", "iso"],
+ "scores": [
+  {"component": "k_rate", "model": "depth_charts", "n_players": 263, "total_trials": 108665,
+   "log_loss": 0.5001, "mae": 0.0234, "rmse": 0.0301},
+  {"component": "k_rate", "model": "marcel", "n_players": 263, "total_trials": 108665,
+   "log_loss": 0.5102, "mae": 0.0261, "rmse": 0.0330},
+  {"component": "k_rate", "model": "bayes_preseason", "n_players": 263, "total_trials": 108665,
+   "log_loss": 0.5155, "mae": 0.0271, "rmse": 0.0345},
+  {"component": "iso", "model": "depth_charts", "n_players": 259, "total_trials": 95793,
+   "log_loss": null, "mae": 0.0289, "rmse": 0.0368},
+  {"component": "iso", "model": "marcel", "n_players": 259, "total_trials": 95793,
+   "log_loss": null, "mae": 0.0321, "rmse": 0.0406},
+  {"component": "iso", "model": "bayes_preseason", "n_players": 259, "total_trials": 95793,
+   "log_loss": null, "mae": 0.0333, "rmse": 0.0413}
+ ],
+ "mae_rank": [
+  {"model": "depth_charts", "k_rate": 1.0, "iso": 1.0, "mean_rank": 1.0},
+  {"model": "marcel", "k_rate": 2.0, "iso": 2.0, "mean_rank": 2.0},
+  {"model": "bayes_preseason", "k_rate": 3.0, "iso": 3.0, "mean_rank": 3.0}
+ ]
+}

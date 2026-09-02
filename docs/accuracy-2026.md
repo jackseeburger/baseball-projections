@@ -7,6 +7,13 @@
 This page exists to answer one question honestly: **do our models have edge?**
 Right now the answer is no, and the numbers below say exactly where.
 
+The site's **Model Accuracy** page renders these same scoreboards for a reader:
+`scripts/build_accuracy_json.py` runs the two scoring scripts, parses §2b's
+control table out of this file, and writes `public/data/accuracy/latest.json`
+plus a dated copy. Nothing on that page is typed by hand — if a section cannot
+be rebuilt it carries a visible stale badge and the reason. Edit the §2b table
+here and the page follows.
+
 ## 1. Preseason player projections vs. 2026 actuals
 
 All systems scored on the **same 263 hitters** (≥150 PA), trials-weighted.
