@@ -16,6 +16,7 @@
     </div>
     <ul class="nav-links">
       <li><a href="#" data-page="playoffs" class="active">Playoff Odds</a></li>
+      <li><a href="#" data-page="accuracy">Model Accuracy</a></li>
       <li><a href="#" data-page="overview">Overview</a></li>
       <li><a href="#" data-page="player">Player Lookup</a></li>
       <li><a href="#" data-page="comparison">System Comparison</a></li>
@@ -52,6 +53,24 @@
       <div class="card">
         <h3>Method</h3>
         <p class="method-note" id="playoffs-method"></p>
+      </div>
+    </section>
+
+    <!-- Model Accuracy Page (station H) — every number comes from
+         public/data/accuracy/latest.json, written by scripts/build_accuracy_json.py.
+         Nothing here is typed by hand. -->
+    <section id="page-accuracy" class="page">
+      <h1>Model Accuracy</h1>
+      <p class="subtitle" id="accuracy-subtitle"></p>
+      <div id="accuracy-sections"></div>
+      <div class="card">
+        <h3>How to read this</h3>
+        <div id="accuracy-glossary"></div>
+      </div>
+      <div class="card">
+        <h3>Where these numbers come from</h3>
+        <div class="table-scroll" id="accuracy-provenance"></div>
+        <p class="method-note" id="accuracy-provenance-note"></p>
       </div>
     </section>
 

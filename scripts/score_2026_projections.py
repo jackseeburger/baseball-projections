@@ -29,6 +29,8 @@ COMPONENTS = ["k_rate", "bb_rate", "hr_rate", "iso", "babip"]
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--min-trials", type=int, default=150)
+    parser.add_argument("--json-out", type=Path, default=None,
+                        help="also write the printed tables to PATH as JSON")
     args = parser.parse_args()
 
     seasons = pd.read_parquet(ROOT / "data/parquet/hitter_seasons_api.parquet")
@@ -55,6 +57,22 @@ def main() -> None:
              .unstack(0))
     print("\nMAE rank by component (1 = best):")
     print(ranks.assign(mean_rank=ranks.mean(1)).sort_values("mean_rank").round(1).to_string())
+
+    if args.json_out is not None:
+        import json
+        from datetime import datetime, timezone
+        ranked = ranks.assign(mean_rank=ranks.mean(axis=1)).sort_values("mean_rank")
+        payload = {
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "season": 2026,
+            "min_trials": args.min_trials,
+            "components": COMPONENTS,
+            "scores": json.loads(out.to_json(orient="records")),
+            "mae_rank": json.loads(ranked.reset_index().to_json(orient="records")),
+        }
+        args.json_out.parent.mkdir(parents=True, exist_ok=True)
+        args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
+        print(f"\nwrote {args.json_out}")
 
 
 if __name__ == "__main__":
