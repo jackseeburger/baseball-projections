@@ -197,8 +197,10 @@ def arms(component: str, params: dict, projections_dir: Path,
 def score_cells(seasons: pd.DataFrame, pa: pd.DataFrame, components: list[str],
                 params: dict, projections_dir: Path, min_trials: int,
                 season_years: list[int], cutoffs: list[str],
-                restricted: dict | None = None) -> pd.DataFrame:
-    """MAE/log-loss per arm and the tuned-vs-stock paired difference, per cell."""
+                restricted: dict | None = None
+                ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """(scores, paired): MAE/log loss per arm, and the tuned-vs-stock paired
+    difference, for every component x cell of the holdout."""
     rows, paired = [], []
     for component in components:
         cells = ([("season", y, None) for y in season_years]
@@ -220,8 +222,9 @@ def score_cells(seasons: pd.DataFrame, pa: pd.DataFrame, components: list[str],
                                    providers=providers, min_trials=min_trials)
                 label = cutoff
             rows.append(score(results).assign(cell=label, kind=kind))
-            for arm in ([a for a in ("marcel_tuned", "marcel_tuned_noage")
-                         if a in providers]):
+            for arm in ("marcel_tuned", "marcel_tuned_noage"):
+                if arm not in providers:
+                    continue
                 d = tuning.paired_from_results(results, arm, "marcel")
                 paired.append({"component": component, "cell": label,
                                "kind": kind, "arm": arm, **d})

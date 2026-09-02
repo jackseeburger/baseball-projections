@@ -411,9 +411,13 @@ constants had a story attached — the ballast moving toward the stabilization
 point in both directions at once, down for the reliable component and up for
 the unreliable one.
 
-The result also survives its obvious robustness checks. Refitting with 2020
-excluded (the 60-game season) gives nearly the same constants — K% ballast 75
-instead of 100, the same weights — and the same holdout verdict. The
+The result also survives its obvious robustness checks. Refitting with **2020
+excluded** (the 60-game season, and the one most likely to be driving a
+ballast estimate somewhere strange) moves the constants barely — K% ballast
+75 instead of 100 with the same 1 / 0.4 / 0.2 weights, BABIP's ballast
+unchanged at 600 — the guard still fires on BB% and nothing else, and the
+holdout verdict is the same to two decimal places: 15/25 cells, pooled
+**−1.11% ± 0.38**. The
 ballast-and-weights-only arm, which cannot exploit the level-correction
 degeneracy at all, clears the gate too and does so more evenly: **18 of 25
 cells, −1.01% ± 0.23 (t −4.45)**, better than stock on four components and
