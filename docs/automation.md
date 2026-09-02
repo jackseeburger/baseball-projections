@@ -93,11 +93,11 @@ for Layer 1), never in the repo:
 
 | Credential | Status | Needed for |
 |---|---|---|
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | ❌ add | reading/writing Statcast + snapshots. Use these names: the platform injects its own `AWS_*` pair (not usable, not yours) |
-| `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ❌ add | boto3/DuckDB against R2 |
-| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ❌ add | sessions launching training/sim runs |
-| `WANDB_API_KEY` | ❌ add | reading run status, logging |
-| `ODDS_API_KEY` | ❌ add | station M market-line archive (The Odds API, free tier) |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | ✅ verified | reading/writing Statcast + snapshots. Use these names: the platform injects its own `AWS_*` pair (not usable, not yours) |
+| `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ✅ verified | boto3/DuckDB against R2 — go through `src/data/r2.py`, which strips the bucket path Cloudflare appends to the endpoint it shows you |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ⚠️ set, unusable from cloud sessions | Modal's client is gRPC, which the session proxy does not pass. Refits are launched from **GitHub Actions** (add the same two names as Actions secrets) or a laptop, never from a Claude session |
+| `WANDB_API_KEY` | ✅ verified | reading run status, logging |
+| `ODDS_API_KEY` | ✅ verified (500 req/month) | station M sportsbook lines (The Odds API). Also needed as a GitHub Actions secret |
 
 Everything in stations D–H and the exchange half of station M runs **without
 any of these** (MLB Stats API, Chadwick, Kalshi and Polymarket market data are

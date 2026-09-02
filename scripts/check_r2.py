@@ -1,15 +1,12 @@
 import os
 """Check what's in R2."""
-import boto3
-from botocore.config import Config
+import sys
+from pathlib import Path
 
-s3 = boto3.client('s3',
-    endpoint_url=os.environ['R2_ENDPOINT_URL'],
-    aws_access_key_id=os.environ['R2_ACCESS_KEY_ID'],
-    aws_secret_access_key=os.environ['R2_SECRET_ACCESS_KEY'],
-    config=Config(signature_version='s3v4'),
-    region_name='auto'
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.r2 import get_s3_client  # noqa: E402
+
+s3 = get_s3_client()
 
 response = s3.list_objects_v2(Bucket='baseball-data')
 total = 0

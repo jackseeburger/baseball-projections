@@ -13,35 +13,20 @@ Usage:
     import duckdb
     conn = duckdb.connect()
     conn.execute("INSTALL httpfs; LOAD httpfs;")
-    conn.execute(f"SET s3_endpoint='{R2_ENDPOINT.replace('https://','')}'")
-    conn.execute(f"SET s3_access_key_id='{R2_ACCESS_KEY}'")
-    conn.execute(f"SET s3_secret_access_key='{R2_SECRET_KEY}'")
-    conn.execute("SET s3_region='auto'")
-    conn.execute("SET s3_url_style='path'")
+    for stmt in duckdb_settings():
+        conn.execute(stmt)
     result = conn.execute("SELECT * FROM read_parquet('s3://baseball-data/statcast/*.parquet')").df()
 """
-import os
 import io
+import sys
+from pathlib import Path
+
 import pandas as pd
-import boto3
-from botocore.config import Config
 
-# R2 configuration — reads from env vars with fallbacks
-R2_ENDPOINT = os.environ['R2_ENDPOINT_URL']
-R2_ACCESS_KEY = os.environ['R2_ACCESS_KEY_ID']
-R2_SECRET_KEY = os.environ['R2_SECRET_ACCESS_KEY']
-BUCKET = os.getenv('R2_BUCKET_NAME', 'baseball-data')
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.r2 import bucket, duckdb_settings, get_s3_client  # noqa: E402
 
-
-def get_s3_client():
-    """Get a boto3 S3 client configured for R2."""
-    return boto3.client('s3',
-        endpoint_url=R2_ENDPOINT,
-        aws_access_key_id=R2_ACCESS_KEY,
-        aws_secret_access_key=R2_SECRET_KEY,
-        config=Config(signature_version='s3v4'),
-        region_name='auto'
-    )
+BUCKET = bucket()
 
 
 def load_statcast(years=None, columns=None):
