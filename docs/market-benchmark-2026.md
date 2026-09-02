@@ -1,7 +1,7 @@
 # Market Benchmark — 2026 per-game P(win) vs. the exchanges
 
-Station E scored against station M (docs/architecture.md §0: *the market is
-the bar*). Produced by:
+Stations E and C scored against station M (docs/architecture.md §0: *the
+market is the bar*). Produced by:
 
 ```
 python scripts/backfill_market_closes.py --season 2026
@@ -224,6 +224,176 @@ league and the double-counting is the price of getting a component-rate
 estimate of the relief innings at all. Both of those calls were made on 2025.
 No constant was chosen by looking at a 2026 score.
 
+## Station C — the run environment rebuilt from the players
+
+Everything above starts from the same top-down number: the club's
+season-to-date runs scored and allowed, regressed with a 60-game ballast.
+That is a record of what happened, and it does not know the roster changed.
+Station C (`src/sim/run_environment.py`) builds the other half of the
+estimate from the players who will actually play, and blends the two:
+
+```
+RS_bottom_up = lg_RS9 + PA/game · Σ_i  (hitter i's share of the club's PA)
+                                     · (his runs above average per PA)
+RA_bottom_up = (5.5/9) · rotation FIP RA/9   (top-5 by starts, weighted by starts)
+             + (3.5/9) · bullpen  FIP RA/9   (workload-weighted)
+
+RS_C = w · RS_bottom_up + (1 − w) · RS_pythag60      (same for RA)
+```
+
+Nothing new is estimated: the hitter rates are the same Marcel-regressed
+component rates and linear weights the lineup term uses, the PA shares are
+station B's trailing-share machinery with its one-lineup-slot cap, and the
+pitcher rates are the same Marcel/FIP table the announced starter and the pen
+are priced off. C is the *assembly*. `pythag_C_sp` then applies exactly the
+starter delta `pythag_60_sp` applies, so the pair is directly comparable.
+
+Produced by:
+
+```
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+    --market data/parquet/market_closes_2026.parquet
+```
+
+### Scoreboard — same 756 games
+
+| Model | Brier | Log loss | Mean P(home) |
+|---|---|---|---|
+| **Kalshi close** | **0.24156** | **0.6759** | 0.537 |
+| **Polymarket close** | **0.24165** | **0.6761** | 0.531 |
+| **pythag_C_sp** (station C + starter, new) | **0.24428** | **0.6816** | 0.532 |
+| pythag_60_sp_lu_bp (+ lineups + bullpen) | 0.24454 | 0.6821 | 0.532 |
+| pythag_60_sp_lu (+ lineups) | 0.24479 | 0.6826 | 0.532 |
+| **pythag_60_sp** (starters — the gate) | 0.24483 | 0.6827 | 0.533 |
+| **pythag_C** (station C alone, no starter) | **0.24565** | **0.6844** | 0.532 |
+| pythag_60 (production) | 0.24619 | 0.6855 | 0.533 |
+
+**`pythag_C_sp` beats `pythag_60_sp` by 0.00055** — paired Brier −0.00055
+(se 0.00086, t = −0.64, n = 756). It clears the gate, and it does so on the
+wider sets too: 0.24603 vs 0.24657 on all 1,776 games of 2026 (−0.00054,
+se 0.00051, t = −1.06) and 0.24401 vs 0.24468 on all 2,105 of 2025
+(−0.00067, se 0.00049, t = −1.36). Without the starter, `pythag_C` beats
+`pythag_60` by the same amount (0.24565 vs 0.24619, −0.00054, se 0.00087).
+Every one of those is inside one standard error on its own set; the sign is
+the same on all three, which is the only reason to believe it — the same
+standard the starter, lineup and bullpen terms are held to.
+
+For scale: C moves a game's probability by 0.020 on average (sd 0.024)
+against `pythag_60_sp`, which is about half of what the starter term moves
+and roughly five times what the lineup and bullpen terms move.
+
+### It is not shrinkage
+
+The bottom-up estimate is *less spread out* than season-to-date run
+differential — FIP and linear weights on heavily regressed component rates
+cannot produce a .700 club — so blending the two compresses the league. C
+puts 9 of the 756 games below 0.40 and 19 above 0.65 where `pythag_60_sp`
+puts 24 and 42. And `pythag_60` is known to be overconfident exactly there
+(its top bucket predicts 0.685 and realizes 0.617). So a gain from plain
+shrinkage would look identical to a gain from knowing the roster.
+
+`--c-control league` settles it. It replaces the bottom-up half with league
+average, making `pythag_C` exactly *"`pythag_60` shrunk half the way to the
+league"* with no player information in it at all:
+
+| | 756 market games | 2025, 2105 games |
+|---|---|---|
+| `pythag_C_sp` − `pythag_60_sp`, real C | **−0.00055** (se 0.00086) | **−0.00067** (se 0.00049) |
+| `pythag_C_sp` − `pythag_60_sp`, shrinkage control | −0.00000 (se 0.00104) | −0.00022 (se 0.00073) |
+| `pythag_C` − `pythag_60`, real C | −0.00054 (se 0.00087) | −0.00052 (se 0.00050) |
+| `pythag_C` − `pythag_60`, shrinkage control | **+0.00044** (se 0.00105) | **+0.00052** (se 0.00075) |
+
+Shrinking the production model halfway to the league is worth nothing with a
+starter on top and is actively *worse* without one. The gain is the players.
+
+### Where it comes from
+
+Split by month on 2026 (all games, `pythag_C_sp` − `pythag_60_sp`):
+
+| slice | n | pythag_60_sp | pythag_C_sp | paired |
+|---|---|---|---|---|
+| July (up to and around the deadline) | 335 | 0.24733 | 0.24710 | −0.00023 (se 0.00132) |
+| **August (post-deadline)** | 417 | 0.24303 | **0.24217** | **−0.00086** (se 0.00113) |
+| September | 19 | 0.25123 | 0.24894 | −0.00229 (se 0.00553) |
+
+The post-deadline month is where C is worth the most and July is where it is
+worth the least, which is the direction the station was built for — but at
+these sample sizes the difference between the two months is itself well
+inside noise, so it is a lead, not a finding. **The September call-up slice
+cannot be measured on 2026 at all**: the season is 19 games old on the last
+scored date (2026-09-02). On 2025's full September (374 games) C is worth
+−0.00068 (se 0.00112), indistinguishable from its August value there
+(−0.00052, se 0.00109). Nothing in the data yet separates "C helps after the
+deadline" from "C helps everywhere by about the same amount".
+
+### Against the market
+
+C is the first term that moves as far as the market does. Our deviation from
+`pythag_60` correlates **0.75** with the market's deviation from `pythag_60`
+at a slope of **1.06** — the starter term alone was 0.68 at slope 1.21 (we
+under-reacted by a fifth) and the full station-E stack 0.72 at 1.13. Taken
+on its own against the market's deviation from `pythag_60_sp`, the C term
+correlates 0.46 at slope **0.83**: the first term we move *further* on than
+the market does, which is a reason to prefer the smaller of the two blend
+weights 2025 could not separate. The market's residual edge over us is now
+**0.00271** (se 0.00138, t = 1.97), down from 0.00326 over `pythag_60_sp`
+and 0.00297 over the full E stack — still real, and still where park,
+weather, rest and a better pitcher model live.
+
+### How station C avoids fitting the test set
+
+Three free knobs, all chosen walk-forward on **2025 only**, and `--c-weight 0`
+reproduces `pythag_60` and `pythag_60_sp` to the last bit (paired difference
++0.00000 with a standard error of 0.00000 on both seasons), so the sweep is a
+clean nesting and any gain is the roster information and only that.
+
+**The blend weight**, `{0, .25, .5, .75, 1}` against `pythag_60_sp` on 2025:
+
+| w | 0 | 0.25 | 0.5 | 0.75 | 1 |
+|---|---|---|---|---|---|
+| paired Brier | +0.00000 | −0.00047 | **−0.00067** | −0.00059 | −0.00022 |
+
+An inverted U with an interior minimum at 0.5 and a flat floor from 0.25 to
+0.75 — the two halves of the estimate are worth about the same, and a pure
+bottom-up model (w = 1) throws away the park, defense, baserunning and
+sequencing information that only the top-down half has and gives most of the
+gain back. That is the same lesson `starters.py` records from its
+absolute-level blend, in a milder form.
+
+**The two windows**, `{15, 30, 60, season}` days of plate appearances by
+`{30, 45, season}` days of starts, at w = 0.5 on 2025 — 12 cells spanning
+0.00027 Brier, won by season-to-date shares with a 30-day rotation
+(−0.00067) over 30-day shares with a 30-day rotation (−0.00052). Longer wins
+for the shares here and shorter wins for station B's own forecasts because
+the two answer different questions: B forecasts one hitter's next month, C
+wants the club's *average* batter, and averaging over more plate appearances
+buys more than reacting a week sooner. The rotation goes the other way — 30
+days is about six turns, enough to identify five men, and short enough that a
+starter traded in July is out of the August rotation.
+
+Nothing else in C has a free constant. The 5.5/3.5 innings split, the top-5
+rotation, the one-lineup-slot cap on a share and the linear weights are all
+taken unchanged from the terms already scored, and both halves are centred on
+the league by construction: a club of league-average hitters returns exactly
+league RS/G and a league-average staff exactly league RA/9, so the bottom-up
+estimate can only redistribute runs across clubs, never move the league.
+
+**Coverage is total.** Across all 1,776 games of 2026, 0 of 3,552 club-games
+failed to get a bottom-up estimate for either half (0 of 1,512 on the 756),
+and 2 games fell back to `pythag_C` for a missing probable. The batter
+universe — every hitter who has appeared in a posted lineup this season, 637
+men in 2026 and 661 in 2025 — covers **99.98%** of the plate appearances the
+clubs' own team logs record for 2026 and 99.99% for 2025 (worst club 99.75%);
+what it misses is the pinch hitter who never started a game all year.
+
+**Park is deliberately not applied.** `src/data/park_factors.py` computes
+team-season factors from a league-wide hitter-season table with a documented
+approximation (no home/road splits), keyed by team abbreviation and year
+rather than team id and date, and nothing the simulator reads is wired to it.
+More to the point, park is already inside the top-down half of the blend,
+where it was measured; a park factor would only be needed if C were swapped in
+whole rather than blended.
+
 ## What this does not yet show
 
 - Sportsbook closes (Pinnacle) — the archive started 2026-09-02, so a
@@ -238,9 +408,16 @@ No constant was chosen by looking at a 2026 score.
   fair. It is not a simulation of predicting at 9am, where late scratches would
   cost a little.
 - **Park, weather, rest and travel** — none of them are in the model, and the
-  0.0030 the market still holds is where what is left of it lives. Lineups and
+  0.0027 the market still holds is where what is left of it lives. Lineups and
   bullpen state *are* now in, and between them they were worth 0.0003 of the
-  0.0033: most of the gap was never in either of them.
+  0.0033: most of the gap was never in either of them. Station C — the run
+  environment rebuilt from the roster — took another 0.0003, leaving 0.0027
+  (se 0.0014, t = 1.97).
+- **Which half of station C is doing the work.** The blend applies one weight
+  to runs scored and runs allowed together, so the hitters-and-playing-time
+  half and the rotation-and-pen half were never separated. A two-weight sweep
+  on 2025 would say whether C is really a pitching-staff term wearing a run
+  environment's clothes.
 - **A morning-of bullpen or lineup.** Same caveat as the probable pitcher: the
   boxscore's posted order equals the card the club filed except for late
   scratches, which the backfill silently absorbs, and relief usage is read from
