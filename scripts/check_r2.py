@@ -1,14 +1,12 @@
+import os
 """Check what's in R2."""
-import boto3
-from botocore.config import Config
+import sys
+from pathlib import Path
 
-s3 = boto3.client('s3',
-    endpoint_url='https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com',
-    aws_access_key_id='18170dc8b2b4805d3c057f69bb5b8ffb',
-    aws_secret_access_key='3b7f08cb995538ce5ce81572036d416a5535b8b582e53f2ac2ad80b9fd9a687a',
-    config=Config(signature_version='s3v4'),
-    region_name='auto'
-)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.r2 import get_s3_client  # noqa: E402
+
+s3 = get_s3_client()
 
 response = s3.list_objects_v2(Bucket='baseball-data')
 total = 0

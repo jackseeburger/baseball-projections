@@ -93,16 +93,32 @@ for Layer 1), never in the repo:
 
 | Credential | Status | Needed for |
 |---|---|---|
-| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | ❌ add | reading/writing Statcast + snapshots. Use these names: the platform injects its own `AWS_*` pair (not usable, not yours) |
-| `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ❌ add | boto3/DuckDB against R2 |
-| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ❌ add | sessions launching training/sim runs |
-| `WANDB_API_KEY` | ❌ add | reading run status, logging |
-| `ODDS_API_KEY` | ❌ add | station M market-line archive (The Odds API, free tier) |
+| `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | ✅ verified | reading/writing Statcast + snapshots. Use these names: the platform injects its own `AWS_*` pair (not usable, not yours) |
+| `R2_ENDPOINT_URL`, `R2_BUCKET_NAME` | ✅ verified | boto3/DuckDB against R2 — go through `src/data/r2.py`, which strips the bucket path Cloudflare appends to the endpoint it shows you |
+| `MODAL_TOKEN_ID` / `MODAL_TOKEN_SECRET` | ⚠️ set, unusable from cloud sessions | Modal's client is gRPC, which the session proxy does not pass. Refits are launched from **GitHub Actions** (add the same two names as Actions secrets) or a laptop, never from a Claude session |
+| `WANDB_API_KEY` | ✅ verified | reading run status, logging |
+| `ODDS_API_KEY` | ✅ verified (500 req/month) | station M sportsbook lines (The Odds API). Also needed as a GitHub Actions secret |
 
-Everything in stations D–H runs **without any of these** (MLB Stats API and
-Chadwick are public), which is why the simulator, site, and nightly job shipped
-on day one. The nightly sim runs on GitHub Actions, not Modal, for that reason;
-Modal is reserved for Bayesian refits.
+Everything in stations D–H and the exchange half of station M runs **without
+any of these** (MLB Stats API, Chadwick, Kalshi and Polymarket market data are
+all public), which is why the simulator, site, nightly job, and market archive
+shipped before any key existed. Both scheduled jobs run on GitHub Actions, not
+Modal, for that reason; Modal is reserved for Bayesian refits.
+
+Two GitHub Actions jobs commit data to `main` today, serialized by a shared
+`concurrency` group:
+
+| Workflow | Schedule (UTC) | Writes |
+|---|---|---|
+| `nightly-odds.yml` | 09:15, backup 11:45 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
+| `market-snapshot.yml` | 10:00, 16:30, 23:00 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
+
+Git is the interim archive because it needs no credentials; once the `R2_*`
+keys exist the snapshots move to R2 and the repo keeps only `latest.json`.
+
+**Never commit credentials.** Early scripts hard-coded R2 keys as env-var
+fallbacks; those were removed and the key must be treated as leaked and
+rotated. Scripts now fail loudly if the `R2_*` variables are missing.
 
 Network policy must allow: `modal.com`, `api.wandb.ai`, the R2 endpoint,
 `statsapi.mlb.com`, `baseballsavant.mlb.com`, `github.com`, PyPI.

@@ -9,24 +9,18 @@ import sys
 import gc
 import pyarrow as pa
 import pyarrow.parquet as pq
-import boto3
-from botocore.config import Config
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.data.r2 import bucket, get_s3_client  # noqa: E402
 
 # R2 config
-R2_ENDPOINT = 'https://108be5c536e5066d63e944b682eb83e7.r2.cloudflarestorage.com'
-R2_ACCESS_KEY = '18170dc8b2b4805d3c057f69bb5b8ffb'
-R2_SECRET_KEY = '3b7f08cb995538ce5ce81572036d416a5535b8b582e53f2ac2ad80b9fd9a687a'
-BUCKET = 'baseball-data'
+BUCKET = bucket()
 DB_PATH = 'data/statcast_local.db'
 CHUNK_SIZE = 50_000
 
-s3 = boto3.client('s3',
-    endpoint_url=R2_ENDPOINT,
-    aws_access_key_id=R2_ACCESS_KEY,
-    aws_secret_access_key=R2_SECRET_KEY,
-    config=Config(signature_version='s3v4'),
-    region_name='auto'
-)
+s3 = get_s3_client()
 
 # Check existing uploads
 existing = set()

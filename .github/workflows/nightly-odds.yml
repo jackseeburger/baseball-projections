@@ -16,6 +16,11 @@ on:
 permissions:
   contents: write
 
+# Serialize with the market snapshot job: both commit to main.
+concurrency:
+  group: data-commits
+  cancel-in-progress: false
+
 jobs:
   odds:
     runs-on: ubuntu-latest
@@ -39,5 +44,6 @@ jobs:
             echo "no changes"
           else
             git commit -m "data: playoff odds snapshot $(date -u +%F)"
+            git pull --rebase origin main
             git push
           fi
