@@ -33,6 +33,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -562,6 +563,26 @@ def paired_t_line(df: pd.DataFrame, model: str, base: str) -> str:
             f"(se {se:.5f}, t = {t:+.2f}, n = {n})")
 
 
+def model_names(*groups) -> list[str]:
+    """The model columns to score, in order, each named exactly once.
+
+    The scored set is assembled in pieces — the ballast sweep, then whichever
+    of the station models were built, then one column per market venue — and
+    the venue columns are appended to `models` when `--market` is joined *and*
+    kept in a separate list for the JSON payload's `market_models`. Adding the
+    two together at the end therefore scored, printed and wrote every venue
+    twice; downstream the site had to dedupe by model name to draw a table.
+    Assemble the list through here instead, so a name can only appear once
+    however many times it is contributed.
+    """
+    seen, names = set(), []
+    for name in [n for group in groups for n in group]:
+        if name not in seen:
+            seen.add(name)
+            names.append(name)
+    return names
+
+
 def score(df: pd.DataFrame, models: list[str]) -> pd.DataFrame:
     y = df["home_win"].astype(float).to_numpy()
     out = []
@@ -572,6 +593,36 @@ def score(df: pd.DataFrame, models: list[str]) -> pd.DataFrame:
                     "log_loss": float(-np.mean(y * np.log(p) + (1 - y) * np.log(1 - p))),
                     "mean_p_home": float(p.mean())})
     return pd.DataFrame(out).sort_values("brier").reset_index(drop=True)
+
+
+def score_payload(preds: pd.DataFrame, models: list[str], venues: list[str], *,
+                  generated_at: str, season: int, min_games: int,
+                  market_file: str | None, sp_fallback_games: int | None,
+                  sp_no_history_slots: int | None) -> dict:
+    """The document `--json-out` writes: the printed table plus its provenance.
+
+    `preds` is the market-joined common-game set when `--market` was given and
+    the full walk-forward set otherwise; either way it is the population the
+    table names. One row per model, each model exactly once — `venues` is
+    already inside `models` by the time this is called, and the site reads the
+    rows straight into a ranked table, so a repeated name would be a repeated
+    row on the page.
+    """
+    table = score(preds, model_names(models, venues))
+    return {
+        "generated_at": generated_at,
+        "season": season,
+        "min_games": min_games,
+        "n_games": int(len(preds)),
+        "first_date": str(preds["date"].min()),
+        "last_date": str(preds["date"].max()),
+        "market_file": market_file,
+        "market_models": list(venues),
+        "realized_home_win_rate": float(preds["home_win"].mean()),
+        "scores": json.loads(table.to_json(orient="records")),
+        "sp_fallback_games": sp_fallback_games,
+        "sp_no_history_slots": sp_no_history_slots,
+    }
 
 
 def main() -> None:
@@ -742,7 +793,7 @@ def main() -> None:
 
     if args.market is not None:
         preds, market_models = join_market(preds, pd.read_parquet(args.market))
-        models = models + market_models
+        models = model_names(models, market_models)
         print(f"\n{len(preds)} games also priced by every venue in {args.market.name} — "
               f"the market is the bar (docs/architecture.md §0):\n")
         print(score(preds, models).round(5).to_string(index=False))
@@ -788,27 +839,17 @@ def main() -> None:
         print(cal.round(3).to_string())
 
     if args.json_out is not None:
-        import json
         from datetime import datetime, timezone
-        # `preds` is the market-joined common-game set when --market was given,
-        # otherwise the full walk-forward set; either way the table below is the
-        # one printed last, scored on exactly the games it names.
-        venues = list(market_models) if args.market is not None else []
-        table = score(preds, models + venues)
-        payload = {
-            "generated_at": datetime.now(timezone.utc).isoformat(),
-            "season": args.season,
-            "min_games": args.min_games,
-            "n_games": int(len(preds)),
-            "first_date": str(preds["date"].min()),
-            "last_date": str(preds["date"].max()),
-            "market_file": args.market.name if args.market is not None else None,
-            "market_models": venues,
-            "realized_home_win_rate": float(preds["home_win"].mean()),
-            "scores": json.loads(table.to_json(orient="records")),
-            "sp_fallback_games": int(preds["sp_fallback"].sum()) if sp_ctx is not None else None,
-            "sp_no_history_slots": int(preds["sp_no_history"].sum()) if sp_ctx is not None else None,
-        }
+        payload = score_payload(
+            preds, models,
+            list(market_models) if args.market is not None else [],
+            generated_at=datetime.now(timezone.utc).isoformat(),
+            season=args.season, min_games=args.min_games,
+            market_file=args.market.name if args.market is not None else None,
+            sp_fallback_games=(int(preds["sp_fallback"].sum())
+                               if sp_ctx is not None else None),
+            sp_no_history_slots=(int(preds["sp_no_history"].sum())
+                                 if sp_ctx is not None else None))
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
         print(f"\nwrote {args.json_out}")
