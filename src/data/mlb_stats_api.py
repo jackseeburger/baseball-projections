@@ -487,6 +487,8 @@ def fetch_hitter_game_logs(player_ids, season: int,
         df = df[df["game_type"].isna() | (df["game_type"] == "R")].reset_index(drop=True)
     logger.info(f"{season} hitting logs: {len(df)} player-games "
                 f"for {df['batter'].nunique() if len(df) else 0} hitters")
+    return df
+
 
 # ─── Station E: posted lineups and batter rates ───
 

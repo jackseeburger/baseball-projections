@@ -152,6 +152,38 @@ def window_pa(game_logs: pd.DataFrame, cutoff, window_days: int | None = None) -
     return kept.groupby("batter", as_index=False)["pa"].sum()
 
 
+def window_pa_by_team(game_logs: pd.DataFrame, cutoff,
+                      window_days: int | None = PRIMARY_WINDOW_DAYS) -> pd.DataFrame:
+    """`window_pa`, but split by the club the plate appearances were taken for.
+
+    `game_logs`: batter, team_id, date, pa. Same strict `date < cutoff` guard,
+    same window semantics (`window_days=None` for the season to date); the only
+    difference is the grouping key.
+
+    `window_pa` deliberately ignores `team_id` because station B starts from a
+    roster frame that already says who is on which club, so a traded hitter's
+    old plate appearances should count toward the share he earns on his new
+    team. Station C (`src.sim.run_environment`) has no roster frame — it infers
+    membership *from* the appearances — so it needs the split, and a traded
+    hitter contributes to whichever pen, lineup and share he actually batted
+    for on the day. Returns `team_id, batter, pa`.
+    """
+    cutoff = _as_date(cutoff)
+    cols = ["team_id", "batter", "pa"]
+    if game_logs.empty or "team_id" not in game_logs.columns:
+        return pd.DataFrame(columns=cols)
+    dates = _dates(game_logs)
+    mask = dates < cutoff
+    if window_days is not None:
+        mask &= dates >= cutoff - pd.Timedelta(days=window_days)
+    kept = game_logs[mask].dropna(subset=["team_id"])
+    if not len(kept):
+        return pd.DataFrame(columns=cols)
+    out = kept.groupby(["team_id", "batter"], as_index=False)["pa"].sum()
+    out["team_id"] = out["team_id"].astype("int64")
+    return out.loc[:, cols]
+
+
 def _mapped(batters: pd.Series, table: pd.DataFrame) -> pd.Series:
     """`batter -> pa` lookup that survives an empty table."""
     if table.empty:
