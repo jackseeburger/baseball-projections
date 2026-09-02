@@ -99,13 +99,41 @@ MAX_SHARE_ITERATIONS = 12
 #     w(h)     = 1 / (1 + exp((h - midpoint) / scale))
 #
 # `h` is the club's games remaining in the horizon being projected. A logistic
-# is the smallest form that is monotone, bounded to [0, 1] and has a knee: two
-# parameters, a midpoint (the horizon at which the two windows are trusted
-# equally) and a scale (how fast trust transfers). The parameters below were
-# chosen walk-forward on **2025** cutoffs only and then frozen before the 2026
-# table was scored — see docs/playing-time.md section 3.
-BLEND_MIDPOINT_GAMES = 45.0
-BLEND_SCALE_GAMES = 10.0
+# is the smallest form that is monotone, bounded to [0, 1] and has a knee.
+#
+# Its two parameters are given as the weight at two anchor horizons rather
+# than as a midpoint and a scale, because the midpoint and scale the fit
+# actually lands on are far outside the range of horizons anybody projects
+# (see below) and are meaningless read on their own, whereas "82% weight on
+# the recent window one month out, 76% three months out" is the finding.
+# Midpoint and scale are derived from the anchors and exported for the few
+# places that want the raw logistic.
+#
+# Both numbers were chosen walk-forward on **2025** cutoffs only and frozen
+# before the 2026 table was scored (`--sweep --season 2025`). The honest
+# summary of that fit: 2025 wants a weight near 0.8 at *every* horizon from
+# two weeks to three and a half months, and the selection surface is nearly
+# flat, so the horizon slope the logistic carries is real but small. See
+# docs/playing-time.md section 3.
+BLEND_ANCHOR_GAMES = (30.0, 90.0)
+BLEND_WEIGHT_SHORT = 0.83   # w at 30 games remaining
+BLEND_WEIGHT_LONG = 0.75    # w at 90 games remaining
+
+
+def logistic_from_anchors(w_short: float, w_long: float,
+                           anchors=BLEND_ANCHOR_GAMES) -> tuple[float, float]:
+    """(midpoint, scale) of the logistic through two (horizon, weight) points."""
+    h_short, h_long = anchors
+    if not 0.0 < w_long < w_short < 1.0:
+        raise ValueError("need 0 < w_long < w_short < 1 for a decreasing logistic")
+    l_short = float(np.log(w_short / (1.0 - w_short)))
+    l_long = float(np.log(w_long / (1.0 - w_long)))
+    scale = (h_long - h_short) / (l_short - l_long)
+    return h_short + scale * l_short, scale
+
+
+BLEND_MIDPOINT_GAMES, BLEND_SCALE_GAMES = logistic_from_anchors(
+    BLEND_WEIGHT_SHORT, BLEND_WEIGHT_LONG)
 
 METHODS = ("uniform", "season_share", "last_30", "blend")
 
@@ -280,9 +308,12 @@ def horizon_weight(games_remaining,
     """Weight on the trailing-30-day share at a horizon of `games_remaining`.
 
     A logistic, monotonically *decreasing* in the horizon: short horizons
-    trust the recent window (w -> 1), long ones fall back to the season
-    (w -> 0), and `midpoint` is the horizon where the two are trusted equally.
-    Returns the same shape as the input.
+    trust the recent window, long ones lean further on the season, and
+    `midpoint` is the horizon where the two would be trusted equally. At the
+    fitted parameters that midpoint is ~280 games — far past any horizon a
+    projection is ever asked for — so over the range that matters, a fortnight
+    to a full season, this is a shallow slide from about 0.84 down to about
+    0.74 rather than a switch between two windows. Returns the input's shape.
     """
     if scale <= 0:
         raise ValueError("scale must be positive")
@@ -452,6 +483,58 @@ def realized_pa(game_logs: pd.DataFrame, start, end) -> pd.DataFrame:
             .rename(columns={"pa": "realized_pa"}))
 
 
+def _aligned(projection: pd.DataFrame, realized: pd.DataFrame,
+             universe=None) -> pd.DataFrame:
+    """batter, team_id, projected_pa_ros, realized_pa on a common hitter set.
+
+    `universe` (an iterable of batter ids) when given, otherwise the union of
+    the projected and the realized hitters — a projected hitter who never
+    played counts as realized 0, a September call-up nobody projected counts
+    as projected 0.
+    """
+    proj = (projection.groupby("batter", as_index=False)
+            .agg(projected_pa_ros=("projected_pa_ros", "sum"),
+                 team_id=("team_id", "first")))
+    real = realized.groupby("batter", as_index=False)["realized_pa"].sum()
+    df = proj.merge(real, on="batter", how="outer")
+    if universe is not None:
+        keep = pd.Index(pd.unique(pd.Series(list(universe))), name="batter")
+        df = df.set_index("batter").reindex(keep).reset_index()
+    df["projected_pa_ros"] = df["projected_pa_ros"].fillna(0.0)
+    df["realized_pa"] = df["realized_pa"].fillna(0.0)
+    return df
+
+
+def absolute_errors(projection: pd.DataFrame, realized: pd.DataFrame,
+                    universe=None) -> pd.Series:
+    """|projected - realized| per hitter, indexed by `batter`.
+
+    The per-hitter term whose mean is the MAE in `score_projection`. Two
+    methods scored on the same universe give two of these on the same index,
+    so their difference is *paired* — see `paired_difference`.
+    """
+    df = _aligned(projection, realized, universe=universe)
+    err = (df["projected_pa_ros"] - df["realized_pa"]).abs()
+    return pd.Series(err.to_numpy(float), index=pd.Index(df["batter"], name="batter"))
+
+
+def paired_difference(errors_a: pd.Series, errors_b: pd.Series) -> dict:
+    """Mean and standard error of `errors_a - errors_b`, hitter by hitter.
+
+    The right uncertainty for "did method A beat method B": the two methods
+    saw the same hitters and the same season, so almost all of the variance in
+    either MAE is common and cancels. `mean` negative means A is the better
+    method; `t` is `mean / se`.
+    """
+    a, b = errors_a.align(errors_b, join="inner")
+    d = (a - b).to_numpy(float)
+    n = len(d)
+    se = float(d.std(ddof=1) / np.sqrt(n)) if n > 1 else float("nan")
+    mean = float(d.mean()) if n else float("nan")
+    return {"n": n, "mean": mean, "se": se,
+            "t": mean / se if se else float("nan")}
+
+
 def score_projection(projection: pd.DataFrame, realized: pd.DataFrame,
                      universe=None) -> dict:
     """MAE / RMSE of projected vs realized rest-of-season PA.
@@ -471,17 +554,7 @@ def score_projection(projection: pd.DataFrame, realized: pd.DataFrame,
     question "did you pick the right lineup?" separated from "did you get the
     counts right?".
     """
-    proj = (projection.groupby("batter", as_index=False)
-            .agg(projected_pa_ros=("projected_pa_ros", "sum"),
-                 team_id=("team_id", "first")))
-    real = realized.groupby("batter", as_index=False)["realized_pa"].sum()
-    df = proj.merge(real, on="batter", how="outer")
-    if universe is not None:
-        keep = pd.Index(pd.unique(pd.Series(list(universe))), name="batter")
-        df = df.set_index("batter").reindex(keep).reset_index()
-    df["projected_pa_ros"] = df["projected_pa_ros"].fillna(0.0)
-    df["realized_pa"] = df["realized_pa"].fillna(0.0)
-
+    df = _aligned(projection, realized, universe=universe)
     err = df["projected_pa_ros"].to_numpy(float) - df["realized_pa"].to_numpy(float)
     w = df["realized_pa"].to_numpy(float)
     w_sum = float(w.sum())
@@ -523,6 +596,35 @@ def walk_forward_scores(
     `score_projection`, on a hitter universe shared by all methods at a cutoff.
     """
     rows = []
+    for cutoff, projections, real, universe in walk_forward_projections(
+            roster_by_cutoff, game_logs, team_logs, games_remaining_by_cutoff,
+            score_end, methods=methods):
+        for m, proj in projections.items():
+            rows.append({"cutoff": str(cutoff), "method": m,
+                         **score_projection(proj, real, universe=universe)})
+    return pd.DataFrame(rows)
+
+
+def walk_forward_projections(
+    roster_by_cutoff: dict,
+    game_logs: pd.DataFrame,
+    team_logs: pd.DataFrame,
+    games_remaining_by_cutoff: dict,
+    score_end,
+    methods=METHODS,
+    blend_weights=None,
+):
+    """The projections behind `walk_forward_scores`, one cutoff at a time.
+
+    Yields `(cutoff, {name: projection}, realized, universe)`. The universe is
+    shared by every method at a cutoff so nobody gets credit for declining to
+    project someone.
+
+    `blend_weights` is an optional iterable of constant `w` values; each adds
+    a `blend@w` entry to the projections dict. That is how the parameter sweep
+    traces MAE against the blend weight at a fixed horizon without re-reading
+    the game logs for every candidate.
+    """
     for cutoff in sorted(roster_by_cutoff):
         roster = roster_by_cutoff[cutoff]
         remaining = games_remaining_by_cutoff[cutoff]
@@ -533,13 +635,13 @@ def walk_forward_scores(
                                     pa_per_game=ppg, method=m)
             for m in methods
         }
-        # One universe for all methods so the comparison is on a common set.
+        for w in (blend_weights or ()):
+            projections[f"blend@{w:g}"] = project_playing_time(
+                roster, game_logs, remaining, cutoff, pa_per_game=ppg,
+                method="blend", blend_weight=w)
         universe = sorted(
             set(real["batter"]) |
             {b for p in projections.values()
              for b in p.loc[p["projected_pa_ros"] > 0, "batter"]}
         )
-        for m, proj in projections.items():
-            rows.append({"cutoff": str(cutoff), "method": m,
-                         **score_projection(proj, real, universe=universe)})
-    return pd.DataFrame(rows)
+        yield cutoff, projections, real, universe

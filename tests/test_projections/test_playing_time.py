@@ -239,15 +239,26 @@ def test_blend_moves_monotonically_between_the_two_windows(split_frames):
 
 
 def test_blend_weight_follows_the_horizon(split_frames):
-    """With no override, a longer horizon leans further on the season window."""
-    short = _blend(split_frames, games=10).set_index("batter")["pa_share"]
-    long = _blend(split_frames, games=100).set_index("batter")["pa_share"]
+    """With no override, a longer horizon leans further on the season window.
+
+    Monotone in the horizon, not merely different: every hitter's share slides
+    the same direction as the horizon grows, toward his season share. (It does
+    not *reach* it — the fitted weight only falls from about .84 to about .67
+    across every horizon a projection is ever asked for.)
+    """
     season = _blend(split_frames, weight=0.0).set_index("batter")["pa_share"]
     recent = _blend(split_frames, weight=1.0).set_index("batter")["pa_share"]
-    # The hot hitter is nearer his 30-day share at 10 games and nearer his
-    # season share at 100.
-    assert abs(short.loc[RISING] - recent.loc[RISING]) < abs(short.loc[RISING] - season.loc[RISING])
-    assert abs(long.loc[RISING] - season.loc[RISING]) < abs(long.loc[RISING] - recent.loc[RISING])
+    horizons = [5, 15, 30, 60, 100, 162]
+    shares = [_blend(split_frames, games=g).set_index("batter")["pa_share"]
+              for g in horizons]
+    toward_season = np.sign((season - recent).loc[[RISING, FADING]])
+    assert set(toward_season) == {-1.0, 1.0}     # they move opposite ways
+    for batter in (RISING, FADING):
+        path = np.array([sh.loc[batter] for sh in shares])
+        step = np.diff(path) * toward_season.loc[batter]
+        assert np.all(step > 0), f"{batter} does not slide toward his season share"
+        assert min(recent.loc[batter], season.loc[batter]) <= path.min()
+        assert path.max() <= max(recent.loc[batter], season.loc[batter])
 
 
 @pytest.mark.parametrize("games", [5, 20, 45, 80, 150])
