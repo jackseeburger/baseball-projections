@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-03T11:50:36.512536+00:00",
+ "generated_at": "2026-09-03T13:09:29.205516+00:00",
  "as_of": "2026-09-03",
  "season": 2026,
  "season_end": "2026-09-27",
@@ -66,8 +66,8 @@
   "triples_per_double": 0.12,
   "note": "FanGraphs 2024 linear weights, same constants as the preseason wOBA on this site."
  },
- "stale": false,
- "stale_reason": null,
+ "stale": true,
+ "stale_reason": "could not rebuild the projection: ValueError: R2_ENDPOINT_URL must look like https://<account>.r2.cloudflarestorage.com. Showing the 2026-09-03 projection carried over from latest.json.",
  "players": [
   {
    "batter": 592450,
@@ -31828,5 +31828,6 @@
    "hr_ros": 0.13,
    "fip_ros": 5.01894
   }
- ]
+ ],
+ "requested_as_of": "2026-09-03"
 }
