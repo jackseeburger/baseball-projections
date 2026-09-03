@@ -19,7 +19,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/accuracy"
-SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+SECTIONS = ("components", "contact_quality", "ros_backtest",
+            "pitcher_ros_backtest", "pitcher_workload", "game_odds",
             "team_backtest",
             "playoff_odds_control")
 
@@ -38,13 +39,19 @@ build = _load_builder()
 
 @pytest.fixture
 def doc(tmp_path):
-    """A full document built from fixture score files (no network, no scripts)."""
+    """A full document built from fixture score files (no network, no scripts).
+
+    `contact_quality` has no override — its inputs are the committed
+    data/models/contact_quality_{hitter,pitcher}.json payloads, read the same
+    way `team_backtest` reads its committed run.
+    """
     return build.build_document(
         out_dir=tmp_path,
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
         ros_json=FIXTURES / "ros_backtest.json",
         pitcher_ros_json=FIXTURES / "pitcher_ros_backtest.json",
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
         git_sha="0123456789abcdef",
     )
 
@@ -335,6 +342,195 @@ def test_ros_input_note_is_silent_when_the_parquet_is_there(tmp_path):
     assert build.ros_input_note(path) is None
 
 
+# ─── the pitcher workload section (station B-P) ──────────────────
+
+def test_pitcher_workload_scores_the_arm_the_site_serves(doc):
+    """The page must not mark a challenger live that the site is not running."""
+    section = doc["sections"]["pitcher_workload"]
+    assert section["live_arm"] == "structural"
+    live = [r for r in section["rows"] if r["is_production"]]
+    assert [r["model"] for r in live] == ["structural"]
+    assert live[0]["is_ours"] is True
+
+
+def test_pitcher_workload_ranks_every_row(doc):
+    section = doc["sections"]["pitcher_workload"]
+    rows = section["rows"]
+    assert [r["rank"] for r in rows] == list(range(1, len(rows) + 1))
+    maes = [r["metrics"]["mae"] for r in rows]
+    assert maes == sorted(maes), "ranked ascending by MAE"
+
+
+def test_pitcher_workload_shows_the_dumb_baselines(doc):
+    section = doc["sections"]["pitcher_workload"]
+    models = {r["model"] for r in section["rows"]}
+    assert {"zero", "last_season", "season_rate", "recent_rate"} <= models
+    baselines = [r for r in section["rows"] if r["is_baseline"]]
+    assert {r["model"] for r in baselines} == {"zero", "last_season",
+                                                "season_rate", "recent_rate"}
+
+
+def test_pitcher_workload_framing_states_the_win_read_off_the_payload(doc):
+    """Every number in the sentence is recomputed from `pooled`, not typed
+    in, so it flips on its own if a future run's numbers do."""
+    section = doc["sections"]["pitcher_workload"]
+    payload = json.loads((FIXTURES / "pitcher_workload_backtest.json").read_text())
+    pooled = {(p["method"], p["vs"]): p for p in payload["pooled"]}
+    p = pooled[("structural", "season_rate")]
+    framing = section["framing"]
+    assert f"{abs(p['mean_mae_diff']):.1f} batters faced a pitcher" in framing
+    assert f"t {p['t']:+.1f}" in framing
+    assert "Three challengers were built to beat it" in framing
+    assert "all three lose" in framing
+
+
+def test_pitcher_workload_names_station_bs_ported_change_by_name(doc):
+    """`blend_il` is a direct port of station B's own winning hitter-side
+    change; when it loses here the framing has to say so by name, not just
+    as one more challenger."""
+    section = doc["sections"]["pitcher_workload"]
+    assert "`blend_il`" in section["framing"]
+    assert "station B's own winning hitter change" in section["framing"]
+
+
+def test_pitcher_workload_flags_unserved_candidates_that_beat_it(doc):
+    """structural_cal/structural_hazard score lower MAE than the served model
+    on this same holdout (docs/pitcher-workload.md §7); the table must not
+    hide that, and the row must not be tagged as live."""
+    section = doc["sections"]["pitcher_workload"]
+    by_model = {r["model"]: r for r in section["rows"]}
+    for m in ("structural_cal", "structural_hazard"):
+        assert by_model[m]["is_production"] is False
+        assert by_model[m]["metrics"]["mae"] < by_model["structural"]["metrics"]["mae"]
+    assert "not served" in " ".join(section["notes"])
+
+
+def test_pitcher_workload_input_note_names_the_missing_files(tmp_path):
+    note = build.pitcher_workload_input_note(tmp_path, seasons=(2024,))
+    assert note and "pitcher workload backtest not run" in note
+    assert "pitcher_appearances_2024.parquet" in note
+
+
+def test_pitcher_workload_input_note_is_silent_when_present(tmp_path):
+    for kind in build.WORKLOAD_REQUIRED_KINDS:
+        (tmp_path / f"{kind}_2024.parquet").write_bytes(b"not really a parquet")
+    assert build.pitcher_workload_input_note(tmp_path, seasons=(2024,)) is None
+
+
+def test_pitcher_workload_section_falls_back_when_its_inputs_are_missing(
+        tmp_path, doc, monkeypatch):
+    """A missing data/workload/ checkout must carry the previous snapshot
+    forward rather than fail the build — the same contract every other
+    section has."""
+    build.write_document(doc, tmp_path)
+    monkeypatch.setattr(build, "pitcher_workload_input_note",
+                        lambda: "pitcher workload backtest not run: fixture missing")
+    later = build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=FIXTURES / "ros_backtest.json",
+        pitcher_ros_json=FIXTURES / "pitcher_ros_backtest.json",
+        pitcher_workload_json=None,
+        git_sha="deadbeef")
+    section = later["sections"]["pitcher_workload"]
+    assert section["stale"] is True
+    assert "pitcher workload backtest not run" in section["stale_reason"]
+    assert "carried over" in section["stale_reason"]
+    assert section["rows"] == doc["sections"]["pitcher_workload"]["rows"]
+
+
+# ─── the contact-quality section (station A) ─────────────────────
+
+def test_contact_quality_shows_contact_vs_marcel_tuned(doc):
+    """The primary ask this section exists to answer."""
+    section = doc["sections"]["contact_quality"]
+    by_model = {r["model"]: r for r in section["rows"]}
+    assert {"marcel_tuned", "contact"} <= set(by_model)
+    assert by_model["marcel_tuned"]["is_baseline"] is True
+    # ISO is the clearest hitter win in the writeup: contact must beat it.
+    assert by_model["contact"]["metrics"]["iso"] < by_model["marcel_tuned"]["metrics"]["iso"]
+
+
+def test_contact_quality_is_never_marked_as_the_live_projection(doc):
+    """Gated, not wired: no row here may claim to be what the site serves."""
+    section = doc["sections"]["contact_quality"]
+    assert not any(r["is_production"] for r in section["rows"])
+
+
+def test_contact_quality_framing_states_the_gate_count_and_the_miss(doc):
+    section = doc["sections"]["contact_quality"]
+    hitter = json.loads(build.CONTACT_HITTER_JSON.read_text())
+    pitcher = json.loads(build.CONTACT_PITCHER_JSON.read_text())
+    tracked = [(s, c) for s in ("hitter", "pitcher") for c in build.CONTACT_TRACKED[s]]
+    paired = {}
+    for side, payload in (("hitter", hitter), ("pitcher", pitcher)):
+        for p in payload["paired"]:
+            if p["scope"] == "all" and p["component"] in build.CONTACT_TRACKED[side]:
+                paired[(p["arm"], p["base"], p["component"])] = p
+    cleared = sum(1 for s, c in tracked
+                 if paired[("contact", "marcel_tuned", c)]["diff"] < 0)
+    assert f"{cleared} of {len(tracked)} components" in section["framing"]
+    assert "misses on" in section["framing"]
+
+
+def test_contact_quality_states_it_is_gated_but_not_wired(doc):
+    """The judgement call is spelled out in the framing, not left implicit."""
+    section = doc["sections"]["contact_quality"]
+    assert "NOT YET WIRED" in section["framing"]
+    assert "arbitrary date" in section["framing"]
+    assert "1st of a month" in section["framing"]
+
+
+def test_contact_quality_states_the_hsgp_surface_lost(doc):
+    section = doc["sections"]["contact_quality"]
+    assert "Hilbert-space Gaussian-process" in section["framing"]
+    assert "loses to them" in section["framing"]
+
+
+def test_contact_quality_excludes_the_pitcher_walk_rate_components(doc):
+    """Those clear the gate too, but the writeup's own control shows the gain
+    is a fitted recalibration of Marcel with nothing to do with contact
+    quality — they don't belong on a contact-quality scoreboard."""
+    section = doc["sections"]["contact_quality"]
+    keys = {c["key"] for c in section["columns"]}
+    assert "p_bb_rate" not in keys
+    assert "p_bbhbp_rate" not in keys
+
+
+def test_contact_quality_input_note_names_the_missing_files(tmp_path):
+    note = build.contact_quality_input_note(tmp_path / "h.json", tmp_path / "p.json")
+    assert note and "h.json" in note and "p.json" in note
+
+
+def test_contact_quality_input_note_is_silent_when_both_are_present(tmp_path):
+    h, p = tmp_path / "h.json", tmp_path / "p.json"
+    h.write_text("{}")
+    p.write_text("{}")
+    assert build.contact_quality_input_note(h, p) is None
+
+
+def test_contact_quality_section_falls_back_when_its_inputs_are_missing(tmp_path, doc):
+    """A checkout missing the committed payloads must carry the previous
+    snapshot forward rather than fail the build."""
+    build.write_document(doc, tmp_path)
+    later = build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=FIXTURES / "ros_backtest.json",
+        pitcher_ros_json=FIXTURES / "pitcher_ros_backtest.json",
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
+        contact_hitter_json=tmp_path / "absent_hitter.json",
+        contact_pitcher_json=tmp_path / "absent_pitcher.json",
+        git_sha="deadbeef")
+    section = later["sections"]["contact_quality"]
+    assert section["stale"] is True
+    assert "contact-quality payload" in section["stale_reason"]
+    assert "carried over" in section["stale_reason"]
+    assert section["rows"] == doc["sections"]["contact_quality"]["rows"]
+
+
 # ─── staleness and archiving ─────────────────────────────────────
 
 def test_a_skipped_section_falls_back_to_the_previous_snapshot(tmp_path, doc):
@@ -344,6 +540,7 @@ def test_a_skipped_section_falls_back_to_the_previous_snapshot(tmp_path, doc):
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
         ros_json=FIXTURES / "ros_backtest.json",
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
         git_sha="deadbeef")
     section = later["sections"]["game_odds"]
     assert section["stale"] is True
@@ -355,6 +552,7 @@ def test_a_missing_section_with_no_history_still_has_the_shape(tmp_path):
     later = build.build_document(
         out_dir=tmp_path, skip=("components", "ros_backtest", "game_odds"),
         components_json=None, game_odds_json=None, ros_json=None,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
         git_sha="deadbeef")
     for name in ("components", "ros_backtest", "game_odds"):
         section = later["sections"][name]
@@ -457,6 +655,7 @@ def test_the_refit_bayes_arm_is_labelled_with_its_own_scale(tmp_path):
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
         ros_json=ros,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
         git_sha="deadbeef",
     )["sections"]["ros_backtest"]
 
@@ -493,6 +692,7 @@ def _ros_payload_with_bayes(tmp_path, scale):
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
         ros_json=ros,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
         git_sha="deadbeef",
     )["sections"]["ros_backtest"]
 
@@ -536,7 +736,9 @@ def test_a_mixed_run_does_not_claim_one_pitcher_setting(tmp_path):
         out_dir=tmp_path,
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
-        ros_json=ros, git_sha="deadbeef",
+        ros_json=ros,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
+        git_sha="deadbeef",
     )["sections"]["ros_backtest"]["notes"])
     assert "on at some cutoffs and off at others" in notes
 
@@ -564,7 +766,9 @@ def _ros_with_bayes_paired(tmp_path, ts):
         out_dir=tmp_path,
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
-        ros_json=ros, git_sha="deadbeef",
+        ros_json=ros,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
+        git_sha="deadbeef",
     )["sections"]["ros_backtest"]["framing"]
 
 
@@ -602,7 +806,9 @@ def test_a_missing_paired_test_adds_no_significance_claim(tmp_path):
         out_dir=tmp_path,
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
-        ros_json=ros, git_sha="deadbeef",
+        ros_json=ros,
+        pitcher_workload_json=FIXTURES / "pitcher_workload_backtest.json",
+        git_sha="deadbeef",
     )["sections"]["ros_backtest"]["framing"]
     assert "the fair comparison" in framing
     assert "significant" not in framing

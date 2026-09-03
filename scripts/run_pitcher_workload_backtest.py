@@ -30,6 +30,7 @@ import argparse
 import json
 import logging
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -500,6 +501,7 @@ def main() -> None:
     if args.json_out:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps({
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "unit": args.unit, "seasons": list(args.seasons),
             "table": table.to_dict("records"),
             "pooled": pooled(paired).to_dict("records"),
