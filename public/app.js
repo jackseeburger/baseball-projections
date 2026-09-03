@@ -280,42 +280,123 @@ function pearsonCorr(x, y) {
 function renderPlayerPage() {
   const input = document.getElementById("player-search");
   const sugDiv = document.getElementById("player-suggestions");
-  const players = DATA.comparison.filter(d => d.name && d.name !== "");
+  const sideSel = document.getElementById("player-side");
+  const hitters = DATA.comparison.filter(d => d.name && d.name !== "");
+  // Pitchers come from the rest-of-season file, which is the only place the
+  // site has a pitcher at all; a checkout without it keeps the toggle off.
+  const pitchers = rosPitchers().filter(d => d.name);
+  if (sideSel && !pitchers.length) sideSel.disabled = true;
+
+  const onPitchers = () => !!(sideSel && sideSel.value === "pitchers");
+  const list = () => (onPitchers() ? pitchers : hitters);
+  const idOf = d => onPitchers() ? +d.pitcher : +d.batter;
+  const show = d => onPitchers() ? renderPitcherCard(d) : renderPlayerCard(d);
 
   input.addEventListener("input", () => {
     const q = input.value.toLowerCase();
     if (q.length < 2) { sugDiv.classList.remove("visible"); return; }
-    const matches = players.filter(d => d.name.toLowerCase().includes(q)).slice(0, 12);
+    const matches = list().filter(d => d.name.toLowerCase().includes(q)).slice(0, 12);
     sugDiv.innerHTML = matches.map(d =>
-      `<div class="suggestion-item" data-batter="${d.batter}">
-        <span>${d.name}</span><span class="team">${d.team} · ${Math.round(d.age)}</span>
+      `<div class="suggestion-item" data-id="${idOf(d)}">
+        <span>${esc(d.name)}</span><span class="team">${esc(d.team || d.team_abbrev || "")}` +
+        `${onPitchers() ? " · " + esc(d.role || "") : " · " + Math.round(d.age)}</span>
       </div>`
     ).join("");
     sugDiv.classList.add("visible");
     sugDiv.querySelectorAll(".suggestion-item").forEach(el => {
       el.addEventListener("click", () => {
-        const batter = +el.dataset.batter;
+        const id = +el.dataset.id;
         input.value = el.querySelector("span").textContent;
         sugDiv.classList.remove("visible");
-        renderPlayerCard(players.find(d => d.batter === batter));
+        show(list().find(d => idOf(d) === id));
       });
     });
   });
 
   input.addEventListener("blur", () => setTimeout(() => sugDiv.classList.remove("visible"), 200));
 
-  // Default: the best hitter who actually has a rest-of-season projection.
-  // Ranking by the preseason number alone lands on whoever is hurt — a card
-  // whose headline block says "no projected plate appearances".
-  if (players.length) {
-    const byPreseason = [...players].sort((a, b) => (b.our_woba || 0) - (a.our_woba || 0));
-    const defaultPlayer = byPreseason.find(p => {
+  // Default: the best player on this side who actually has a rest-of-season
+  // projection. Ranking hitters by the preseason number alone lands on
+  // whoever is hurt — a card whose headline block says "no projected plate
+  // appearances" — so the default skips past them.
+  const showDefault = () => {
+    if (onPitchers()) {
+      const ranked = [...pitchers].sort((a, b) => (+a.fip_ros) - (+b.fip_ros));
+      const first = ranked.find(p => +p.bf_ros >= 20) || ranked[0];
+      if (!first) return;
+      input.value = first.name;
+      renderPitcherCard(first);
+      return;
+    }
+    if (!hitters.length) return;
+    const byPreseason = [...hitters].sort((a, b) => (b.our_woba || 0) - (a.our_woba || 0));
+    const first = byPreseason.find(p => {
       const row = rosPlayer(p.batter);
       return row && +row.pa_ros >= 50;
     }) || byPreseason[0];
-    input.value = defaultPlayer.name;
-    renderPlayerCard(defaultPlayer);
-  }
+    input.value = first.name;
+    renderPlayerCard(first);
+  };
+  if (sideSel) sideSel.addEventListener("change", showDefault);
+  showDefault();
+}
+
+/** The pitcher card: the rest-of-season block, and nothing else.
+ *
+ * There is no preseason pitcher projection on this site and no career WAR
+ * chart for a pitcher, so this card is deliberately the live block alone
+ * rather than a hitter card with most of it blanked out. */
+function renderPitcherCard(row) {
+  const container = document.getElementById("player-card");
+  const careerCard = document.getElementById("career-war-card");
+  if (careerCard) careerCard.style.display = "none";
+  if (!row) { container.innerHTML = ""; return; }
+  const doc = rosDoc();
+  const arms = rosPitcherArms();
+
+  let table = '<table class="ros-table"><thead><tr><th>Component</th>';
+  arms.forEach(a => {
+    table += `<th class="num${a.is_live ? " ros-live-col" : ""}">${esc(a.label)}</th>`;
+  });
+  table += "</tr></thead><tbody>";
+  ROS_PITCHER_STATS.forEach(stat => {
+    table += `<tr><td class="name-cell">${stat.label}</td>`;
+    arms.forEach(a => {
+      table += `<td class="num${a.is_live ? " ros-live-col" : ""}">` +
+        `${rosFmt(row[`${stat.key}_rate_${a.key}`])}</td>`;
+    });
+    table += "</tr>";
+  });
+  table += "</tbody></table>";
+
+  const tiles = [
+    ["BF", rosFmt(row.bf_ros, 0)],
+    ["FIP", rosFmt(row.fip_ros, 2)],
+    ["K", rosFmt(row.k_ros, 1)],
+    ["BB", rosFmt(row.bb_ros, 1)],
+    ["HR", rosFmt(row.hr_ros, 1)],
+  ].map(([label, value]) =>
+    `<div class="ros-tile"><span class="ros-tile-value">${value}</span>
+       <span class="ros-tile-label">${label}</span></div>`).join("");
+
+  container.innerHTML = `
+    <div class="player-header">
+      <h2>${esc(row.name || row.pitcher)}</h2>
+      <div class="player-meta">
+        <span>${esc(row.team_abbrev || "")}</span>
+        <span>${row.role === "SP" ? "Starter" : "Reliever"}</span>
+        <span>${rosFmt(row.appearances, 0)} appearances, ` +
+          `${rosFmt(row.bf_to_date, 0)} batters faced so far</span>
+      </div>
+    </div>
+    <div class="card ros-card">
+      <h3>Rest of season <span class="ros-asof">as of ${esc(row.as_of)}</span></h3>
+      ${rosFramingHTML()}
+      <div class="ros-tiles">${tiles}</div>
+      <div class="table-scroll">${table}</div>
+      <p class="method-note">${esc((doc && doc.pitcher_method) || "")}</p>
+    </div>`;
+  wireROSLinks(container);
 }
 
 function renderPlayerCard(player) {
@@ -507,7 +588,24 @@ const ROS_SHORT_LABELS = {
   marcel: "live", bayes: "pre. Bayes", marcel_preseason: "pre. Marcel",
 };
 
+// The pitcher block of the same file. Four components, because those are the
+// four that cleared the serving gate; the walks-plus-hit-batsmen rate the
+// odds model uses is scored in the harness but is not a column here, since a
+// column labelled BB% has to mean walks. There is no Bayesian arm — the
+// preseason components were only ever fit for hitters.
+const ROS_PITCHER_STATS = [
+  { key: "k", label: "K%" },
+  { key: "bb", label: "BB%" },
+  { key: "hr", label: "HR/BF" },
+  { key: "babip", label: "BABIP" },
+];
+const ROS_PITCHER_FALLBACK_ARMS = [
+  { key: "marcel", label: "Live (tuned Marcel + 2026)", is_live: true },
+  { key: "marcel_preseason", label: "Preseason tuned Marcel", is_live: false },
+];
+
 let _rosIndex = null;
+let _rosPitcherIndex = null;
 
 function rosDoc() {
   return DATA.ros && Array.isArray(DATA.ros.players) ? DATA.ros : null;
@@ -526,6 +624,26 @@ function rosPlayer(batter) {
     doc.players.forEach(p => _rosIndex.set(+p.batter, p));
   }
   return _rosIndex.get(+batter) || null;
+}
+
+/** The pitcher rows, empty in a file written before the pitcher block existed. */
+function rosPitchers() {
+  const doc = rosDoc();
+  return doc && Array.isArray(doc.pitchers) ? doc.pitchers : [];
+}
+
+function rosPitcherArms() {
+  const doc = rosDoc();
+  return (doc && doc.pitcher_arms && doc.pitcher_arms.length)
+    ? doc.pitcher_arms : ROS_PITCHER_FALLBACK_ARMS;
+}
+
+function rosPitcher(pitcher) {
+  if (!_rosPitcherIndex) {
+    _rosPitcherIndex = new Map();
+    rosPitchers().forEach(p => _rosPitcherIndex.set(+p.pitcher, p));
+  }
+  return _rosPitcherIndex.get(+pitcher) || null;
 }
 
 function rosFmt(v, digits = 3) {
@@ -610,6 +728,10 @@ function renderPlayerROS(player) {
 }
 
 // ─── leaderboard block ───────────────────────────────────────────
+// One card, two sides. The hitters/pitchers toggle swaps the row source, the
+// component menu and the workload column; everything else — the arm columns,
+// the framing line, the live-column styling — is shared, because the two
+// blocks of the file have the same shape.
 function renderROSLeaderboard() {
   const card = document.getElementById("ros-leaderboard-card");
   if (!card) return;
@@ -625,28 +747,55 @@ function renderROSLeaderboard() {
   document.getElementById("ros-framing").innerHTML = rosFramingHTML();
   wireROSLinks(card);
 
+  const sideSel = document.getElementById("ros-side");
   const statSel = document.getElementById("ros-component");
   const paSel = document.getElementById("ros-minpa");
   const countSel = document.getElementById("ros-count");
-  const draw = () => renderROSLeaderboardTable(statSel.value, +paSel.value, +countSel.value);
+  // A file written before the pitcher block existed has no pitchers to show.
+  if (sideSel && !rosPitchers().length) sideSel.disabled = true;
+
+  const side = () => (sideSel && sideSel.value === "pitchers") ? "pitchers" : "hitters";
+  const fillStats = () => {
+    const stats = side() === "pitchers" ? ROS_PITCHER_STATS : ROS_STATS;
+    const keep = statSel.value;
+    statSel.innerHTML = stats.map(s =>
+      `<option value="${s.key}">${esc(s.label)}</option>`).join("");
+    if (stats.some(s => s.key === keep)) statSel.value = keep;
+  };
+  const draw = () => {
+    document.getElementById("ros-minpa-label").textContent =
+      side() === "pitchers" ? "Min BF: " : "Min PA: ";
+    document.getElementById("ros-method").textContent =
+      (side() === "pitchers" ? doc.pitcher_method : doc.method) || "";
+    renderROSLeaderboardTable(side(), statSel.value, +paSel.value, +countSel.value);
+  };
+  if (sideSel) sideSel.addEventListener("change", () => { fillStats(); draw(); });
   [statSel, paSel, countSel].forEach(el => el.addEventListener("change", draw));
-  document.getElementById("ros-method").textContent = doc.method || "";
+  fillStats();
   draw();
 }
 
-function renderROSLeaderboardTable(statKey, minPA, count) {
+function renderROSLeaderboardTable(side, statKey, minWork, count) {
   const doc = rosDoc();
-  const stat = ROS_STATS.find(s => s.key === statKey) || ROS_STATS[0];
-  const arms = rosArms();
-  const rows = doc.players
-    .filter(p => p.woba_ros != null && +p.pa_ros >= minPA)
-    .sort((a, b) => (+b.woba_ros) - (+a.woba_ros))
+  const pitchers = side === "pitchers";
+  const stats = pitchers ? ROS_PITCHER_STATS : ROS_STATS;
+  const stat = stats.find(s => s.key === statKey) || stats[0];
+  const arms = pitchers ? rosPitcherArms() : rosArms();
+  // Hitters rank by wOBA descending, pitchers by FIP ascending: on both sides
+  // the top of the table is the better player.
+  const workKey = pitchers ? "bf_ros" : "pa_ros";
+  const summaryKey = pitchers ? "fip_ros" : "woba_ros";
+  const rows = (pitchers ? rosPitchers() : doc.players)
+    .filter(p => p[summaryKey] != null && +p[workKey] >= minWork)
+    .sort((a, b) => pitchers ? (+a.fip_ros) - (+b.fip_ros)
+                             : (+b.woba_ros) - (+a.woba_ros))
     .slice(0, count);
 
   let h = '<table class="acc-table ros-table"><thead><tr>' +
     "<th>#</th><th>Player</th><th>Team</th>" +
-    '<th class="num">PA</th><th class="num">K</th><th class="num">BB</th>' +
-    '<th class="num">HR</th><th class="num ros-live-col">wOBA</th>';
+    (pitchers ? '<th>Role</th><th class="num">BF</th>' : '<th class="num">PA</th>') +
+    '<th class="num">K</th><th class="num">BB</th><th class="num">HR</th>' +
+    `<th class="num ros-live-col">${pitchers ? "FIP" : "wOBA"}</th>`;
   arms.forEach(a => {
     const label = ROS_SHORT_LABELS[a.key] || a.label;
     h += `<th class="num${a.is_live ? " ros-live-col" : ""}" title="${esc(a.label)}">` +
@@ -656,13 +805,15 @@ function renderROSLeaderboardTable(statKey, minPA, count) {
 
   rows.forEach((p, i) => {
     h += `<tr><td>${i + 1}</td>` +
-      `<td class="name-cell">${esc(p.name || p.batter)}</td>` +
+      `<td class="name-cell">${esc(p.name || p.pitcher || p.batter)}</td>` +
       `<td class="team-cell">${esc(p.team_abbrev || "")}</td>` +
-      `<td class="num">${rosFmt(p.pa_ros, 0)}</td>` +
+      (pitchers ? `<td class="team-cell">${esc(p.role || "")}</td>` : "") +
+      `<td class="num">${rosFmt(p[workKey], 0)}</td>` +
       `<td class="num">${rosFmt(p.k_ros, 1)}</td>` +
       `<td class="num">${rosFmt(p.bb_ros, 1)}</td>` +
       `<td class="num">${rosFmt(p.hr_ros, 1)}</td>` +
-      `<td class="num ros-live-col">${rosFmt(p.woba_ros)}</td>`;
+      `<td class="num ros-live-col">` +
+      `${pitchers ? rosFmt(p.fip_ros, 2) : rosFmt(p.woba_ros)}</td>`;
     arms.forEach(a => {
       h += `<td class="num${a.is_live ? " ros-live-col" : ""}">` +
         `${rosFmt(p[`${stat.key}_rate_${a.key}`])}</td>`;
@@ -671,10 +822,12 @@ function renderROSLeaderboardTable(statKey, minPA, count) {
   });
   h += "</tbody></table>";
   document.getElementById("ros-leaderboard-table").innerHTML = h;
+  const total = pitchers ? (doc.n_pitchers || rosPitchers().length) : doc.n_hitters;
   document.getElementById("ros-count-note").textContent =
-    `${rows.length} of ${doc.n_hitters} projected hitters shown ` +
-    `(at least ${minPA} projected plate appearances), ranked by projected ` +
-    `rest-of-season wOBA.`;
+    `${rows.length} of ${total} projected ${pitchers ? "pitchers" : "hitters"} ` +
+    `shown (at least ${minWork} projected ` +
+    `${pitchers ? "batters faced" : "plate appearances"}), ranked by projected ` +
+    `rest-of-season ${pitchers ? "FIP" : "wOBA"}.`;
 }
 
 
@@ -1576,7 +1729,8 @@ function renderBracket(teams) {
 // scripts/build_accuracy_json.py generates from the scoring scripts.
 // Nothing here is hard-coded: this renderer only formats and labels.
 // ══════════════════════════════════════════════════════════════════
-const ACCURACY_ORDER = ["ros_backtest", "components", "game_odds", "playoff_odds_control"];
+const ACCURACY_ORDER = ["ros_backtest", "pitcher_ros_backtest", "components",
+                        "game_odds", "playoff_odds_control"];
 
 function esc(v) {
   return String(v == null ? "" : v)

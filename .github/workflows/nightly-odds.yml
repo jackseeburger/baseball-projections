@@ -43,6 +43,8 @@ jobs:
         run: python scripts/run_playoff_odds.py --sims 20000
       # Station A, live (docs/ros-projections.md). Marcel fed the season to
       # date x station B's projected PA, written to public/data/projections/.
+      # Since Sept 3 the same file also carries the pitcher block: the tuned
+      # pitcher Marcel's rates times a structural batters-faced projection.
       # Needs the 2026 PA parquet from R2 and the MLB Stats API; without
       # either it keeps the last committed file and marks it stale rather than
       # failing, so no `|| true` is needed — the script exits 0 by design.
@@ -64,8 +66,9 @@ jobs:
       #     → downloads market/market_closes_2026.parquet so the per-game table
       #       carries the Kalshi and Polymarket closing-line rows, and
       #       pa_outcomes/pa_outcomes_2026.parquet so the rest-of-season
-      #       section (and the projection step above) can be rebuilt. Without
-      #       them those sections render with a stale badge.
+      #       sections — the hitter one and the pitcher one — and the
+      #       projection step above can be rebuilt. Without them those sections
+      #       render with a stale badge.
       # (boto3 is not in requirements-ci.txt, so the download is skipped there
       # too; add it alongside the secrets when they are configured.)
       - name: Build accuracy page data

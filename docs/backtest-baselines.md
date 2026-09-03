@@ -831,3 +831,343 @@ python scripts/tune_marcel.py --markdown       # refit, refreeze, score, tables
 python scripts/tune_marcel.py --skip-tune      # score the committed params
 python scripts/build_ros_projections.py --as-of 2026-09-02
 ```
+
+---
+
+# The pitcher side of station A — Sept 3, 2026
+
+**Run:** Sept 3, 2026 · **Data:** 2015–2026 pitcher season totals from the
+Stats API (`data/parquet/pitcher_seasons_api.parquet`, 9,811 pitcher-seasons,
+Chadwick ages on 100% of them) plus the PA-level 2026 outcomes
+(`pa_outcomes/pa_outcomes_2026.parquet`, 157,749 plate appearances through
+Sept 1) **aggregated by pitcher instead of by batter** · **Method:**
+`python scripts/run_pitcher_backtest.py` for the scores and the gate,
+`python scripts/tune_marcel_pitchers.py` for the constants.
+
+Station A has always had a pitcher shaped hole in it. Station E's starter term
+computes Marcel-weighted K, BB+HBP and HR rates per batter faced and has done
+since it shipped, but those rates were never scored against a baseline and
+never reached the site — they went straight into a FIP and out into a game
+price. This section scores them, tunes them, and puts four of them on the
+player pages.
+
+Nothing here is a new estimator. The pitcher components register into the same
+`COMPONENTS` registry the hitter ones live in, under a `p_` prefix, and
+`marcel_pitcher` *is* `marcel_tuned` carrying pitcher constants. The only
+thing the harness needed was to stop assuming its id column was called
+`batter`.
+
+## The components, and where the definitions do not overlap
+
+| Component | Numerator / denominator | Same as station E? |
+|---|---|---|
+| `p_k_rate` | K / BF | **yes**, bit for bit |
+| `p_bbhbp_rate` | (BB + HBP) / BF | **yes**, bit for bit |
+| `p_hr_rate` | HR / BF | **yes**, bit for bit |
+| `p_bb_rate` | BB / BF | **no** — station E has only the pair |
+| `p_babip` | (H − HR) / (AB − K − HR + SF) | **no** — FIP is defined to ignore balls in play |
+
+On the three that overlap, `pitcher_rates` with `PITCHER_STOCK_PARAMS`
+reproduces `starters.marcel_rates` to 1e-16 on the real 2024–2026 counts frame,
+and `tests/test_sim/test_starters.py` pins the two together on a fixed
+pitcher-season, on a whole rate table, and on the ballast unit conversion.
+`src/sim/starters.py` is now a *caller* of the provider rather than a second
+implementation of it, so station A and station E cannot drift.
+
+Two definitional gaps remain and are not reproducible, because station E never
+had them. **BB%** on the site means walks; station E's FIP term folds hit
+batsmen in because FIP treats them identically, and the published
+stabilization point it regresses with is the pair's. Both are projected, both
+are scored, and only the walks-only one is a site column. **BABIP against**
+does not exist in station E at all — FIP is *defined* to ignore balls in play —
+so it is projected here because the site wants it and because "does
+BABIP-against carry any signal" is now a question the harness can answer.
+
+Stock constants are station E's: 5/4/3 recency, ballast = 2× the published
+stabilization point (K 70 BF, BB and BB+HBP 170, HR 1300, BABIP 2000 BIP), and
+**no age term at all** — station E never aged a pitcher, so every age effect in
+the tuned arm is something the search found rather than something assumed.
+
+## The arms
+
+| Arm | Sees 2026? | What it is |
+|---|---|---|
+| `marcel_pitcher_tuned` | **yes** | the served arm: fitted ballast, recency weights and constrained age curve, frozen in `src/eval/marcel_pitcher_params.json` |
+| `marcel_pitcher` | **yes** | stock, i.e. what station E runs |
+| `marcel_pitcher_tuned_preseason` | no | the same tuned arm with the partial season withheld — the control that isolates in-season information |
+| `season_to_date` | **yes** | this year's rate regressed to league with the component's stabilization point |
+| `previous_season` | no | 2025 rate, unregressed |
+| `league_average` | **yes** | league rate through the cutoff |
+
+Five cells: season-level 2025 and 2026 (train ≤ Y−1) and the three 2026
+cutoffs (train on everything strictly before the date, score every batter faced
+on or after it). Scored on pitchers with ≥ 100 realized trials after the
+cutoff, trials-weighted, on the same pitchers across every arm.
+
+## MAE by arm and cell (bold = best arm in that cell)
+
+| Component | Arm | 2025 | 2026 | 2026-05-01 | 2026-07-01 | 2026-08-01 |
+|---|---|---|---|---|---|---|
+| **K%** | marcel_pitcher_tuned | **0.0288** | **0.0314** | **0.0308** | **0.0354** | 0.0383 |
+|  | marcel_pitcher | 0.0305 | 0.0324 | 0.0318 | 0.0357 | 0.0397 |
+|  | season_to_date | — | — | 0.0368 | 0.0367 | **0.0379** |
+|  | marcel_pitcher_tuned_preseason | — | — | 0.0331 | 0.0377 | 0.0433 |
+|  | marcel_pitcher_preseason | — | — | 0.0342 | 0.0389 | 0.0447 |
+|  | previous_season | 0.0373 | 0.0389 | 0.0387 | 0.0411 | 0.0495 |
+|  | league_average | 0.0402 | 0.0416 | 0.0445 | 0.0472 | 0.0499 |
+| **BB%** | marcel_pitcher_tuned | **0.0142** | **0.0160** | 0.0168 | **0.0202** | **0.0231** |
+|  | marcel_pitcher | **0.0142** | **0.0160** | 0.0168 | **0.0202** | **0.0231** |
+|  | season_to_date | — | — | 0.0214 | 0.0204 | 0.0234 |
+|  | marcel_pitcher_tuned_preseason | — | — | **0.0166** | 0.0212 | 0.0241 |
+|  | previous_season | 0.0211 | 0.0202 | 0.0199 | 0.0248 | 0.0263 |
+|  | league_average | 0.0182 | 0.0201 | 0.0245 | 0.0245 | 0.0275 |
+| **(BB+HBP)%** | marcel_pitcher_tuned | **0.0148** | **0.0174** | 0.0184 | **0.0211** | 0.0236 |
+|  | marcel_pitcher | **0.0148** | **0.0174** | 0.0184 | **0.0211** | 0.0236 |
+|  | season_to_date | — | — | 0.0231 | 0.0215 | **0.0235** |
+|  | marcel_pitcher_tuned_preseason | — | — | **0.0182** | 0.0220 | 0.0245 |
+|  | previous_season | 0.0216 | 0.0218 | 0.0217 | 0.0265 | 0.0273 |
+|  | league_average | 0.0196 | 0.0220 | 0.0265 | 0.0260 | 0.0279 |
+| **HR/BF** | marcel_pitcher_tuned | **0.0087** | **0.0089** | **0.0095** | 0.0123 | **0.0124** |
+|  | marcel_pitcher | **0.0087** | **0.0089** | **0.0095** | 0.0123 | **0.0124** |
+|  | season_to_date | — | — | 0.0098 | 0.0126 | 0.0126 |
+|  | marcel_pitcher_tuned_preseason | — | — | 0.0096 | **0.0122** | 0.0125 |
+|  | previous_season | 0.0120 | 0.0117 | 0.0123 | 0.0130 | 0.0137 |
+|  | league_average | 0.0090 | 0.0094 | 0.0100 | 0.0129 | 0.0130 |
+| **BABIP** | marcel_pitcher_tuned | **0.0257** | 0.0270 | **0.0263** | 0.0316 | 0.0403 |
+|  | marcel_pitcher | 0.0259 | **0.0269** | 0.0263 | 0.0315 | 0.0403 |
+|  | season_to_date | — | — | 0.0264 | **0.0315** | 0.0400 |
+|  | marcel_pitcher_tuned_preseason | — | — | 0.0264 | 0.0320 | **0.0386** |
+|  | previous_season | 0.0395 | 0.0391 | 0.0382 | 0.0431 | 0.0439 |
+|  | league_average | 0.0264 | 0.0272 | 0.0267 | 0.0317 | 0.0405 |
+
+Pitchers scored (common across arms): K% / BB% / (BB+HBP)% / HR — 427 · 413 ·
+326 · 189 · 104; BABIP — 366 · 333 · 240 · 114 · **12**.
+
+`marcel_pitcher_preseason` — the *stock* preseason control — is listed only
+under K%. For the three components the guard sent back to stock it is the same
+arm as `marcel_pitcher_tuned_preseason` to the digit; for BABIP it differs by
+at most .0012 (Aug 1: .0398 against .0386) and neither is the best cell.
+`scripts/run_pitcher_backtest.py` prints every arm in every cell.
+
+## The paired test against each dumb baseline
+
+Trials-weighted paired difference in absolute error, served arm minus
+baseline, per pitcher on the same cell. Negative means the served arm is
+better. These per-cell standard errors are the honest ones.
+
+**vs `league_average`**
+
+| Component | 2025 | 2026 | 2026-05-01 | 2026-07-01 | 2026-08-01 |
+|---|---|---|---|---|---|
+| K% | −.01142 ± .00161 (t −7.1) | −.01027 ± .00160 (t −6.4) | −.01370 ± .00157 (t −8.7) | −.01180 ± .00206 (t −5.7) | −.01158 ± .00281 (t −4.1) |
+| BB% | −.00392 ± .00061 (t −6.4) | −.00407 ± .00059 (t −6.9) | −.00760 ± .00079 (t −9.6) | −.00427 ± .00099 (t −4.3) | −.00439 ± .00125 (t −3.5) |
+| (BB+HBP)% | −.00479 ± .00066 (t −7.3) | −.00458 ± .00064 (t −7.1) | −.00809 ± .00087 (t −9.3) | −.00483 ± .00102 (t −4.7) | −.00431 ± .00125 (t −3.4) |
+| HR/BF | −.00031 ± .00010 (t −3.1) | −.00054 ± .00010 (t −5.3) | −.00052 ± .00009 (t −5.7) | −.00060 ± .00014 (t −4.2) | −.00059 ± .00020 (t −3.0) |
+| BABIP | −.00070 ± .00030 (t −2.3) | −.00026 ± .00034 (t −0.8) | −.00040 ± .00026 (t −1.6) | −.00010 ± .00046 (t −0.2) | −.00017 ± .00123 (t −0.1) |
+
+**vs `previous_season`**
+
+| Component | 2025 | 2026 | 2026-05-01 | 2026-07-01 | 2026-08-01 |
+|---|---|---|---|---|---|
+| K% | −.00853 ± .00133 (t −6.4) | −.00754 ± .00113 (t −6.7) | −.00784 ± .00162 (t −4.8) | −.00579 ± .00229 (t −2.5) | −.01123 ± .00294 (t −3.8) |
+| BB% | −.00684 ± .00110 (t −6.2) | −.00418 ± .00077 (t −5.4) | −.00304 ± .00086 (t −3.5) | −.00454 ± .00107 (t −4.2) | −.00316 ± .00121 (t −2.6) |
+| (BB+HBP)% | −.00679 ± .00113 (t −6.0) | −.00437 ± .00086 (t −5.1) | −.00322 ± .00090 (t −3.6) | −.00534 ± .00126 (t −4.2) | −.00377 ± .00141 (t −2.7) |
+| HR/BF | −.00328 ± .00060 (t −5.4) | −.00278 ± .00048 (t −5.7) | −.00287 ± .00056 (t −5.1) | −.00069 ± .00065 (t −1.1) | −.00127 ± .00086 (t −1.5) |
+| BABIP | −.01378 ± .00203 (t −6.8) | −.01212 ± .00183 (t −6.6) | −.01192 ± .00207 (t −5.8) | −.01143 ± .00281 (t −4.1) | −.00354 ± .00771 (t −0.5) |
+
+**vs `season_to_date`** (only defined at a cutoff)
+
+| Component | 2026-05-01 | 2026-07-01 | 2026-08-01 |
+|---|---|---|---|
+| K% | −.00596 ± .00119 (t −5.0) | −.00138 ± .00113 (t −1.2) | **+.00036** ± .00116 (t +0.3) |
+| BB% | −.00453 ± .00060 (t −7.5) | −.00018 ± .00056 (t −0.3) | −.00031 ± .00067 (t −0.5) |
+| (BB+HBP)% | −.00470 ± .00067 (t −7.1) | −.00040 ± .00060 (t −0.7) | **+.00009** ± .00069 (t +0.1) |
+| HR/BF | −.00031 ± .00009 (t −3.6) | −.00031 ± .00010 (t −3.1) | −.00017 ± .00012 (t −1.4) |
+| BABIP | −.00019 ± .00017 (t −1.1) | **+.00018** ± .00026 (t +0.7) | **+.00033** ± .00072 (t +0.4) |
+
+## The gate
+
+The rule for this task: **the served arm must beat every dumb baseline out of
+sample on every component it serves.** Pooled n-weighted within a component
+across its cells — the cells share pitchers and the three cutoffs are nested
+windows of one season, so this pooled SE is optimistic and the per-cell tables
+above are the honest ones.
+
+| Component | vs league average | vs previous season | vs season to date | Clears? |
+|---|---|---|---|---|
+| **K%** | −.01166 (t −14.3) | −.00793 (t −11.0) | −.00350 (t −4.7) | **yes** |
+| **BB%** | −.00487 (t −14.3) | −.00468 (t −10.1) | −.00249 (t −6.6) | **yes** |
+| **(BB+HBP)%** | −.00544 (t −14.9) | −.00490 (t −9.9) | −.00258 (t −6.3) | **yes** |
+| **HR/BF** | −.00048 (t −9.3) | −.00257 (t −9.3) | −.00029 (t −4.9) | **yes** |
+| **BABIP** | −.00042 (t −2.5) | −.01248 (t −11.7) | **−.00006 (t −0.4)** | **yes, by nothing** |
+
+All five clear, so all five are served — the four the site shows, plus the
+walks-plus-hit-batsmen rate station E consumes. **Read BABIP's row honestly.**
+Its win over season-to-date is six hundred-thousandths of a rate with a t of
+−0.4. Its win over league average is 1.5% of league average's MAE, but only
+the 2025 cell reaches a t past 2 — the other four sit between −1.6 and −0.1.
+What the table actually says about BABIP against is DIPS: a pitcher's own
+balls in play carry so little signal that regressing them 1,387 balls deep to
+league is nearly indistinguishable from just using league. It clears the letter of the gate. It
+is not a model win, and the accuracy page says so in a note.
+
+The one place the served arm loses a *cell* outright is K% and (BB+HBP)% at
+Aug 1 against season-to-date, on 104 pitchers with a month left, at t +0.3 and
++0.1. That is the same shape the hitter table has at Aug 1 and it is noise;
+pooling is what the gate is stated on.
+
+## The in-season increment
+
+`marcel_pitcher_tuned` minus `marcel_pitcher_tuned_preseason`, as a fraction of
+the preseason arm's MAE (negative = folding in the current season helps):
+
+| Component | May 1 | Jul 1 | Aug 1 |
+|---|---|---|---|
+| K% | −6.9% | −6.1% | −11.5% |
+| BB% | +1.2% | −4.7% | −4.1% |
+| (BB+HBP)% | +1.1% | −4.1% | −3.7% |
+| HR/BF | −1.0% | +0.8% | −0.8% |
+| BABIP | −0.4% | −1.3% | +4.4% *(n=12)* |
+
+Same ordering the hitters show and for the same reason: in-season batters
+faced carry information about the components that carry information at all.
+Pitcher K% gains more from the current season than hitter K% does (−6 to −11%
+against −5 to −6%), which is what you would expect from a rate that stabilizes
+in 70 batters faced against one that takes 60 plate appearances *and* is
+partly the pitcher's doing. BB% at May 1 is the one cell where the partial
+season actively hurts, and it is a month of data against a 340-batter ballast.
+
+## Tuning the constants
+
+Same procedure, same module (`src/eval/tuning.py`), same script layer —
+`scripts/tune_marcel_pitchers.py` imports the search, the guard and the league
+choice from `scripts/tune_marcel.py` so the two runs cannot diverge in method.
+Coordinate search on predict years 2020–2024 (train ≤ Y−1), objective = mean
+trials-weighted MAE, the age term constrained to a peak inside 25–31 with
+slopes of opposite signs, and an inner-validation guard (fit 2020–2022, score
+2023–2024) that sends a component back to stock if the fit does not beat stock
+there.
+
+**The aging direction is the hitter table's, flipped on strikeouts and only on
+strikeouts.** A high K% is a good pitcher and a bad hitter; walks, home runs
+and hits on balls in play are bad for the pitcher either way. So `p_k_rate`
+peaks at the peak age and the other four trough there.
+
+### The inner validation, which is what the guard reads
+
+| Component | stock MAE | tuned MAE | tuned vs stock | ballast+weights only | generalises |
+|---|---|---|---|---|---|
+| p_k_rate | .029668 | .028763 | **−3.05%** | −0.32% | **yes** |
+| p_bb_rate | .016560 | .016650 | +0.54% | +0.54% | no |
+| p_bbhbp_rate | .018013 | .018084 | +0.39% | +0.39% | no |
+| p_hr_rate | .008530 | .008573 | +0.50% | +0.50% | no |
+| p_babip | .025362 | .025204 | **−0.62%** | −0.62% | **yes** |
+
+Three of five do not generalise inside the tuning window and are frozen
+holding stock's constants. That is the guard doing exactly what it is for, and
+it is why those components' two Marcel rows in the MAE table are identical.
+
+### The chosen constants
+
+| Component | ballast (real trials) | weights | league rate | peak age | slope young / old |
+|---|---|---|---|---|---|
+| **p_k_rate** | **107 BF** (was 140) | **1 / 0.4 / 0.2** | **weighted3** | **26** | **+0.012 / −0.006** |
+| p_bb_rate | 340 BF | 5 / 4 / 3 | last | — | flat *(stock, by the guard)* |
+| p_bbhbp_rate | 340 BF | 5 / 4 / 3 | last | — | flat *(stock, by the guard)* |
+| p_hr_rate | 2600 BF | 5 / 4 / 3 | last | — | flat *(stock, by the guard)* |
+| **p_babip** | **1387 BIP** (was 4000) | **1 / 0.2 / 0.4** | **weighted3** | — | flat |
+
+Ballasts are quoted in real trials at the most recent season's weight, which
+is the unit the published stabilization points are in. (`MarcelParams.ballast`
+stores them at the *average* year weight, a factor of `w0/mean(w)` away; the
+conversion is `starters.marcel_params` and it has its own test.) Note that the
+conversion uses each component's *own* fitted weights, so K%'s stored 200 is
+107 real batters faced and BABIP's stored 2600 is 1,387 real balls in play —
+both regress *less* than stock does, not more, because the shorter memory has
+already thrown away most of the sample.
+
+Two things in that table are worth reading twice. **K% wants a much shorter
+memory than 5/4/3** — the fitted weights put a fifth of the current season's
+weight on the year before last, against three fifths for Tango's defaults —
+which is the opposite of what the hitter fit wanted and is consistent with
+pitcher strikeout rate being a fast-moving thing (velocity, a new pitch, an
+injury) rather than a stable skill. And **K% got a real aging curve**: it
+peaks at 26 and falls after, which is the shape a pitcher's strikeout rate
+actually has, and the search was constrained to curves that turn over so it
+could not have produced a straight line instead.
+
+### Out of sample, tuned vs stock
+
+Paired per-pitcher difference in absolute error, `marcel_pitcher_tuned` minus
+`marcel_pitcher`:
+
+| Component | 2025 | 2026 | 2026-05-01 | 2026-07-01 | 2026-08-01 | pooled % of stock MAE |
+|---|---|---|---|---|---|---|
+| p_k_rate | −.00169 ± .00052 | −.00107 ± .00049 | −.00091 ± .00060 | −.00036 ± .00077 | −.00139 ± .00101 | **−3.52%** (t −4.2) |
+| p_babip | −.00026 ± .00017 | +.00005 ± .00020 | −.00009 ± .00013 | +.00009 ± .00025 | +.00005 ± .00075 | −0.32% (t −0.9) |
+| p_bb_rate, p_bbhbp_rate, p_hr_rate | 0 | 0 | 0 | 0 | 0 | 0 *(stock, by the guard)* |
+
+Pooled over all 25 component × cell cells the frozen file is **−0.81% ± 0.19
+of stock's MAE (t −4.3)**, with no component worse than stock. Almost all of
+it is K%.
+
+### The arm that was not frozen, and why it is worth naming
+
+The unguarded ballast-and-weights-only fit (`marcel_pitcher_tuned_noage`) does
+*better* out of sample than the frozen file — **−1.16% ± 0.22** pooled,
+negative on 5/5 components, 20 of 25 cells — because it keeps its ballast and
+weight fits for the three components the guard sent back to stock. Their
+inner-validation numbers said those fits were noise (+0.39% to +0.54%); the
+holdout says they were worth about a percent each. The two disagree, the
+sample sizes are similar, and the guard is a rule set before the holdout was
+looked at. The frozen file keeps the guard's answer. What that costs is
+recorded here rather than quietly re-fit away: **a third of a percent of MAE,
+if the holdout is right and the inner validation is wrong.**
+
+## Caveats
+
+- **The gate is stated on pooled differences, and pooling is generous.** The
+  five cells share pitchers, and the three cutoffs are nested windows of one
+  2026. The per-cell tables above are the honest ones; nothing that clears
+  pooled but loses per-cell at every horizon should be trusted, and nothing
+  here does — except BABIP, which does not really win anywhere.
+- **BABIP against at Aug 1 is 12 pitchers.** A 100-BIP floor at a one-month
+  horizon is brutal. Treat that column as absent, and the Jul 1 column
+  (n=114) as thin.
+- **2026 appears in the holdout twice.** The season-level 2026 cell and the
+  three cutoffs are the same season cut four ways. They are not four
+  independent pieces of evidence, and the 2025 cell is the only fully
+  independent one.
+- **Prior seasons come from the Stats API table, the partial season from
+  Statcast PA data.** The same universe-drift caveat the hitter side carries:
+  the 2026 API pitcher table has 158,289 batters faced against the PA
+  parquet's 157,749, a gap of 0.34%. Rebuilding prior seasons from
+  `pa_outcomes_<year>.parquet` would close it; only 2026 exists in R2 today.
+- **2020 is in the tuning window.** A 60-game season is a sixth of the
+  training weight for the 2021 fit and it is not a normal season for pitcher
+  workloads. The hitter fit has the same problem and it was left alone here
+  for comparability rather than because it is harmless.
+- **The tuned K% weights and the tuned K% age curve were fitted together.**
+  A much shorter memory and a peak at 26 are two ways of saying "recent is
+  what matters", and the coordinate search cannot tell which of them is
+  carrying the −3.5%. The no-age arm gets −1.2% on K%, which suggests roughly
+  a third of it is the weights, but that arm also has different ballasts.
+- **Nothing in the odds chain moved.** Station E keeps stock's constants
+  deliberately: a refit of station A must not change a game price without the
+  game price being re-scored. `scripts/backtest_game_odds.py --season 2026
+  --min-games 20 --market data/parquet/market_closes_2026.parquet` still reads
+  `pythag_C_sp_bpa_ip` **0.24388** on the 756 common games after the rate table
+  became a call into the provider.
+
+## Reproducing
+
+```
+python scripts/build_pitcher_seasons.py              # the season table
+python scripts/tune_marcel_pitchers.py --inner-validation
+python scripts/tune_marcel_pitchers.py --markdown    # refit, refreeze, score
+python scripts/tune_marcel_pitchers.py --skip-tune   # score the committed params
+python scripts/run_pitcher_backtest.py --markdown    # the tables and the gate
+python scripts/build_ros_projections.py              # the site's pitcher block
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+       --market data/parquet/market_closes_2026.parquet
+```

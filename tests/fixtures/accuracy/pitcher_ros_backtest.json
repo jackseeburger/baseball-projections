@@ -1,0 +1,1101 @@
+{
+ "generated_at": "2026-09-03T01:57:25.626429+00:00",
+ "min_trials": 100,
+ "components": [
+  "p_k_rate",
+  "p_bb_rate",
+  "p_hr_rate",
+  "p_babip"
+ ],
+ "component_labels": {
+  "p_k_rate": "K%",
+  "p_bb_rate": "BB%",
+  "p_hr_rate": "HR/BF",
+  "p_babip": "BABIP"
+ },
+ "cells": [
+  "2025",
+  "2026-08-01"
+ ],
+ "cutoffs": [
+  "2026-08-01"
+ ],
+ "season_years": [
+  2025
+ ],
+ "arms": [
+  "marcel_pitcher_tuned",
+  "marcel_pitcher",
+  "season_to_date",
+  "marcel_pitcher_tuned_preseason",
+  "marcel_pitcher_preseason",
+  "previous_season",
+  "league_average"
+ ],
+ "served_arm": "marcel_pitcher_tuned",
+ "dumb_baselines": [
+  "league_average",
+  "previous_season",
+  "season_to_date"
+ ],
+ "last_pa_date": "2026-09-01",
+ "scores": [
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.5295047176,
+   "mae": 0.0287968944,
+   "rmse": 0.0368813057,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.5298135962,
+   "mae": 0.0304917453,
+   "rmse": 0.0384645772,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "previous_season",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.5355406871,
+   "mae": 0.0373229639,
+   "rmse": 0.0501049425,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "league_average",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.5329749886,
+   "mae": 0.0402151766,
+   "rmse": 0.0508843268,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "season_to_date",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5212837807,
+   "mae": 0.0379217305,
+   "rmse": 0.0466733986,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5212602822,
+   "mae": 0.0382843892,
+   "rmse": 0.0466855213,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5218429466,
+   "mae": 0.0396748946,
+   "rmse": 0.0488601057,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher_tuned_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5232540528,
+   "mae": 0.0432605174,
+   "rmse": 0.0537778554,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "marcel_pitcher_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.523674364,
+   "mae": 0.0447144492,
+   "rmse": 0.0551357432,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "previous_season",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5263468216,
+   "mae": 0.0495189811,
+   "rmse": 0.0617819825,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_k_rate",
+   "model": "league_average",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.5255198155,
+   "mae": 0.0498646466,
+   "rmse": 0.0606981856,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.2801445472,
+   "mae": 0.0142375226,
+   "rmse": 0.0193133224,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.2801445472,
+   "mae": 0.0142375226,
+   "rmse": 0.0193133224,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "league_average",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.2812530148,
+   "mae": 0.0181596428,
+   "rmse": 0.0230717179,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "previous_season",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.2900713889,
+   "mae": 0.0210762808,
+   "rmse": 0.0329894274,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.2741501828,
+   "mae": 0.0231020171,
+   "rmse": 0.0293479658,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.2741501828,
+   "mae": 0.0231020171,
+   "rmse": 0.0293479658,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "season_to_date",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.2741999153,
+   "mae": 0.0234146015,
+   "rmse": 0.0294825194,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.274458291,
+   "mae": 0.0241499767,
+   "rmse": 0.0299603528,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "marcel_pitcher_tuned_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.274458291,
+   "mae": 0.0241499767,
+   "rmse": 0.0299603528,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "previous_season",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.2758377879,
+   "mae": 0.0262607963,
+   "rmse": 0.0327793887,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_bb_rate",
+   "model": "league_average",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.275634705,
+   "mae": 0.0274968335,
+   "rmse": 0.0329141772,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.135409216,
+   "mae": 0.0087307969,
+   "rmse": 0.0111203086,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.135409216,
+   "mae": 0.0087307969,
+   "rmse": 0.0111203086,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "league_average",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.1355810071,
+   "mae": 0.0090364397,
+   "rmse": 0.0115552373,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "previous_season",
+   "n_players": 427,
+   "total_trials": 146523,
+   "log_loss": 0.1593133698,
+   "mae": 0.0120105315,
+   "rmse": 0.0189700735,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.1393686941,
+   "mae": 0.0124254199,
+   "rmse": 0.0157572108,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.1393686941,
+   "mae": 0.0124254199,
+   "rmse": 0.0157572108,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.139401661,
+   "mae": 0.0125095037,
+   "rmse": 0.0158193096,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "marcel_pitcher_tuned_preseason",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.139401661,
+   "mae": 0.0125095037,
+   "rmse": 0.0158193096,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "season_to_date",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.1394292118,
+   "mae": 0.0125986874,
+   "rmse": 0.0158624436,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "league_average",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.139703494,
+   "mae": 0.0130176385,
+   "rmse": 0.0163724824,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_hr_rate",
+   "model": "previous_season",
+   "n_players": 104,
+   "total_trials": 13107,
+   "log_loss": 0.1405009723,
+   "mae": 0.0136911282,
+   "rmse": 0.0177840154,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 366,
+   "total_trials": 90376,
+   "log_loss": 0.6000865252,
+   "mae": 0.0256798664,
+   "rmse": 0.0327832602,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher",
+   "n_players": 366,
+   "total_trials": 90376,
+   "log_loss": 0.6001193201,
+   "mae": 0.0259433822,
+   "rmse": 0.0329872563,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_babip",
+   "model": "league_average",
+   "n_players": 366,
+   "total_trials": 90376,
+   "log_loss": 0.6001960544,
+   "mae": 0.0263768519,
+   "rmse": 0.0334631451,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_babip",
+   "model": "previous_season",
+   "n_players": 366,
+   "total_trials": 90376,
+   "log_loss": 0.6052646728,
+   "mae": 0.0394628341,
+   "rmse": 0.0551075441,
+   "cell": "2025",
+   "kind": "season"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher_tuned_preseason",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.611124417,
+   "mae": 0.0386370249,
+   "rmse": 0.0470796215,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher_preseason",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6111420107,
+   "mae": 0.0397568926,
+   "rmse": 0.0471498777,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "season_to_date",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6108717987,
+   "mae": 0.0400107995,
+   "rmse": 0.0459462692,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6110952734,
+   "mae": 0.0402876046,
+   "rmse": 0.0469420103,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "marcel_pitcher_tuned",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6109845011,
+   "mae": 0.0403359939,
+   "rmse": 0.0464465719,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "league_average",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6110869161,
+   "mae": 0.0405020328,
+   "rmse": 0.0469054759,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  },
+  {
+   "component": "p_babip",
+   "model": "previous_season",
+   "n_players": 12,
+   "total_trials": 1297,
+   "log_loss": 0.6138253513,
+   "mae": 0.0438748957,
+   "rmse": 0.0567493731,
+   "cell": "2026-08-01",
+   "kind": "cutoff"
+  }
+ ],
+ "paired": [
+  {
+   "component": "p_k_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "marcel_pitcher",
+   "n": 427,
+   "diff": -0.0016948509,
+   "se": 0.0005236554,
+   "t": -3.2365770489,
+   "win_rate": 0.5356292186
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "previous_season",
+   "n": 427,
+   "diff": -0.0085260695,
+   "se": 0.0013255133,
+   "t": -6.4322775201,
+   "win_rate": 0.6474751404
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "league_average",
+   "n": 427,
+   "diff": -0.0114182822,
+   "se": 0.0016090177,
+   "t": -7.0964303756,
+   "win_rate": 0.6437760625
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher",
+   "n": 104,
+   "diff": -0.0013905053,
+   "se": 0.0010084635,
+   "t": -1.3788355762,
+   "win_rate": 0.5547417411
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "season_to_date",
+   "n": 104,
+   "diff": 0.0003626587,
+   "se": 0.0011552401,
+   "t": 0.3139249882,
+   "win_rate": 0.469672694
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_preseason",
+   "n": 104,
+   "diff": -0.00643006,
+   "se": 0.001967288,
+   "t": -3.2684894091,
+   "win_rate": 0.6063935302
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "league_average",
+   "n": 104,
+   "diff": -0.0115802574,
+   "se": 0.0028098441,
+   "t": -4.1213166825,
+   "win_rate": 0.6335545892
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_tuned_preseason",
+   "n": 104,
+   "diff": -0.0049761282,
+   "se": 0.0017628561,
+   "t": -2.8227648956,
+   "win_rate": 0.5980773632
+  },
+  {
+   "component": "p_k_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "previous_season",
+   "n": 104,
+   "diff": -0.0112345918,
+   "se": 0.0029371666,
+   "t": -3.8249760836,
+   "win_rate": 0.5893797208
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "marcel_pitcher",
+   "n": 427,
+   "diff": 0.0,
+   "se": 0.0,
+   "t": null,
+   "win_rate": 0.0
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "previous_season",
+   "n": 427,
+   "diff": -0.0068387582,
+   "se": 0.0010950801,
+   "t": -6.2449842839,
+   "win_rate": 0.5849730077
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "league_average",
+   "n": 427,
+   "diff": -0.0039221202,
+   "se": 0.0006126081,
+   "t": -6.4023320496,
+   "win_rate": 0.6622168533
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher",
+   "n": 104,
+   "diff": 0.0,
+   "se": 0.0,
+   "t": null,
+   "win_rate": 0.0
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "season_to_date",
+   "n": 104,
+   "diff": -0.0003125843,
+   "se": 0.0006660622,
+   "t": -0.4693020132,
+   "win_rate": 0.5107194629
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_preseason",
+   "n": 104,
+   "diff": -0.0010479596,
+   "se": 0.0005743827,
+   "t": -1.8244970085,
+   "win_rate": 0.5764858473
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "league_average",
+   "n": 104,
+   "diff": -0.0043948163,
+   "se": 0.0012547682,
+   "t": -3.5024924945,
+   "win_rate": 0.6782635233
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_tuned_preseason",
+   "n": 104,
+   "diff": -0.0010479596,
+   "se": 0.0005743827,
+   "t": -1.8244970085,
+   "win_rate": 0.5764858473
+  },
+  {
+   "component": "p_bb_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "previous_season",
+   "n": 104,
+   "diff": -0.0031587792,
+   "se": 0.0012123886,
+   "t": -2.6054180188,
+   "win_rate": 0.6031891356
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "marcel_pitcher",
+   "n": 427,
+   "diff": 0.0,
+   "se": 0.0,
+   "t": null,
+   "win_rate": 0.0
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "previous_season",
+   "n": 427,
+   "diff": -0.0032797346,
+   "se": 0.0006019881,
+   "t": -5.4481719466,
+   "win_rate": 0.5639387673
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "league_average",
+   "n": 427,
+   "diff": -0.0003056428,
+   "se": 9.84646e-05,
+   "t": -3.1040874605,
+   "win_rate": 0.578127666
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher",
+   "n": 104,
+   "diff": 0.0,
+   "se": 0.0,
+   "t": null,
+   "win_rate": 0.0
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "season_to_date",
+   "n": 104,
+   "diff": -0.0001732674,
+   "se": 0.0001238866,
+   "t": -1.3985975012,
+   "win_rate": 0.506599527
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_preseason",
+   "n": 104,
+   "diff": -8.40837e-05,
+   "se": 0.0001012496,
+   "t": -0.8304602608,
+   "win_rate": 0.5063706416
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "league_average",
+   "n": 104,
+   "diff": -0.0005922186,
+   "se": 0.000197542,
+   "t": -2.997937046,
+   "win_rate": 0.6261539635
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_tuned_preseason",
+   "n": 104,
+   "diff": -8.40837e-05,
+   "se": 0.0001012496,
+   "t": -0.8304602608,
+   "win_rate": 0.5063706416
+  },
+  {
+   "component": "p_hr_rate",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "previous_season",
+   "n": 104,
+   "diff": -0.0012657083,
+   "se": 0.0008633692,
+   "t": -1.4660103822,
+   "win_rate": 0.5345998322
+  },
+  {
+   "component": "p_babip",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "marcel_pitcher",
+   "n": 366,
+   "diff": -0.0002635158,
+   "se": 0.0001651163,
+   "t": -1.5959403906,
+   "win_rate": 0.5466716827
+  },
+  {
+   "component": "p_babip",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "previous_season",
+   "n": 366,
+   "diff": -0.0137829677,
+   "se": 0.0020286493,
+   "t": -6.7941599996,
+   "win_rate": 0.6462335133
+  },
+  {
+   "component": "p_babip",
+   "cell": "2025",
+   "kind": "season",
+   "vs": "league_average",
+   "n": 366,
+   "diff": -0.0006969855,
+   "se": 0.0002996541,
+   "t": -2.3259666161,
+   "win_rate": 0.5598057006
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher",
+   "n": 12,
+   "diff": 4.83893e-05,
+   "se": 0.0007496821,
+   "t": 0.0645464302,
+   "win_rate": 0.5867386276
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "season_to_date",
+   "n": 12,
+   "diff": 0.0003251945,
+   "se": 0.0007238287,
+   "t": 0.4492698841,
+   "win_rate": 0.5936777178
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_preseason",
+   "n": 12,
+   "diff": 0.0005791013,
+   "se": 0.0011776363,
+   "t": 0.4917488766,
+   "win_rate": 0.5913646877
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "league_average",
+   "n": 12,
+   "diff": -0.0001660389,
+   "se": 0.0012272035,
+   "t": -0.1352985763,
+   "win_rate": 0.5080956052
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "marcel_pitcher_tuned_preseason",
+   "n": 12,
+   "diff": 0.0016989691,
+   "se": 0.0015029556,
+   "t": 1.1304186693,
+   "win_rate": 0.3407864302
+  },
+  {
+   "component": "p_babip",
+   "cell": "2026-08-01",
+   "kind": "cutoff",
+   "vs": "previous_season",
+   "n": 12,
+   "diff": -0.0035389018,
+   "se": 0.0077119043,
+   "t": -0.4588881865,
+   "win_rate": 0.4109483423
+  }
+ ],
+ "gate": [
+  {
+   "component": "p_k_rate",
+   "baselines_beaten": 3,
+   "of": 3,
+   "cells_better": 12,
+   "of_cells": 13,
+   "closest_baseline": "season_to_date",
+   "closest_diff": -0.003500976,
+   "closest_t": -4.7154442981,
+   "clears": true
+  },
+  {
+   "component": "p_bb_rate",
+   "baselines_beaten": 3,
+   "of": 3,
+   "cells_better": 13,
+   "of_cells": 13,
+   "closest_baseline": "season_to_date",
+   "closest_diff": -0.0024923788,
+   "closest_t": -6.6219826711,
+   "clears": true
+  },
+  {
+   "component": "p_hr_rate",
+   "baselines_beaten": 3,
+   "of": 3,
+   "cells_better": 13,
+   "of_cells": 13,
+   "closest_baseline": "season_to_date",
+   "closest_diff": -0.0002850148,
+   "closest_t": -4.8945254846,
+   "clears": true
+  },
+  {
+   "component": "p_babip",
+   "baselines_beaten": 3,
+   "of": 3,
+   "cells_better": 11,
+   "of_cells": 13,
+   "closest_baseline": "season_to_date",
+   "closest_diff": -5.97591e-05,
+   "closest_t": -0.4232069753,
+   "clears": true
+  }
+ ],
+ "gate_detail": [
+  {
+   "component": "p_k_rate",
+   "vs": "league_average",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0116642828,
+   "se": 0.0008132245,
+   "t": -14.3432511584
+  },
+  {
+   "component": "p_k_rate",
+   "vs": "previous_season",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0079335252,
+   "se": 0.0007181191,
+   "t": -11.0476454457
+  },
+  {
+   "component": "p_k_rate",
+   "vs": "season_to_date",
+   "cells": 3,
+   "n_pitcher_cells": 619,
+   "cells_better": 2,
+   "pooled_diff": -0.003500976,
+   "se": 0.0007424488,
+   "t": -4.7154442981
+  },
+  {
+   "component": "p_bb_rate",
+   "vs": "league_average",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0048659376,
+   "se": 0.0003401881,
+   "t": -14.3036695527
+  },
+  {
+   "component": "p_bb_rate",
+   "vs": "previous_season",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0046774383,
+   "se": 0.000462833,
+   "t": -10.1061045155
+  },
+  {
+   "component": "p_bb_rate",
+   "vs": "season_to_date",
+   "cells": 3,
+   "n_pitcher_cells": 619,
+   "cells_better": 3,
+   "pooled_diff": -0.0024923788,
+   "se": 0.0003763795,
+   "t": -6.6219826711
+  },
+  {
+   "component": "p_hr_rate",
+   "vs": "league_average",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0004770451,
+   "se": 5.1036e-05,
+   "t": -9.3472218761
+  },
+  {
+   "component": "p_hr_rate",
+   "vs": "previous_season",
+   "cells": 5,
+   "n_pitcher_cells": 1459,
+   "cells_better": 5,
+   "pooled_diff": -0.0025667558,
+   "se": 0.0002764666,
+   "t": -9.2841438898
+  },
+  {
+   "component": "p_hr_rate",
+   "vs": "season_to_date",
+   "cells": 3,
+   "n_pitcher_cells": 619,
+   "cells_better": 3,
+   "pooled_diff": -0.0002850148,
+   "se": 5.82314e-05,
+   "t": -4.8945254846
+  },
+  {
+   "component": "p_babip",
+   "vs": "league_average",
+   "cells": 5,
+   "n_pitcher_cells": 1065,
+   "cells_better": 5,
+   "pooled_diff": -0.0004224674,
+   "se": 0.0001665264,
+   "t": -2.5369392901
+  },
+  {
+   "component": "p_babip",
+   "vs": "previous_season",
+   "cells": 5,
+   "n_pitcher_cells": 1065,
+   "cells_better": 5,
+   "pooled_diff": -0.0124753727,
+   "se": 0.0010625531,
+   "t": -11.7409408587
+  },
+  {
+   "component": "p_babip",
+   "vs": "season_to_date",
+   "cells": 3,
+   "n_pitcher_cells": 366,
+   "cells_better": 1,
+   "pooled_diff": -5.97591e-05,
+   "se": 0.0001412054,
+   "t": -0.4232069753
+  }
+ ],
+ "served_components": [
+  "p_k_rate",
+  "p_bb_rate",
+  "p_hr_rate",
+  "p_babip"
+ ],
+ "withheld_components": []
+}

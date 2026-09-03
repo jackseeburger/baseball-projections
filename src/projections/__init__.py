@@ -7,7 +7,9 @@ multiplies one by the other.
 
 `ros` multiplies the two together for the site: the rest-of-season projection
 is Marcel fed the partial current season (station A's harness winner) times
-station B's projected PA.
+station B's projected PA. `pitcher_ros` is the same shape for pitchers, with
+the difference that only its rate half has cleared a gate — the workload half
+is structural and says so.
 """
 from src.projections.playing_time import (
     METHODS,
@@ -24,9 +26,15 @@ from src.projections.ros import (
     marcel_rates,
     ros_counting_line,
 )
+from src.projections.pitcher_ros import (
+    build_pitcher_projections,
+    projected_batters_faced,
+    ros_pitching_line,
+)
 
 __all__ = [
     "METHODS", "project_playing_time", "realized_pa", "score_projection",
     "team_pa_per_game", "walk_forward_scores", "window_pa",
     "build_ros_projections", "league_rates", "marcel_rates", "ros_counting_line",
+    "build_pitcher_projections", "projected_batters_faced", "ros_pitching_line",
 ]

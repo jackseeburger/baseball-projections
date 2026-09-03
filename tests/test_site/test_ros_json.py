@@ -233,6 +233,129 @@ def test_the_numbers_are_rounded_for_the_archive():
     assert player["pa_ros"] == pytest.approx(100.12)
 
 
+# ─── the pitcher block ───────────────────────────────────────────
+# Additive: the hitter contract above must keep passing unchanged, and does —
+# `assert_contract` is run against a document that carries pitchers too.
+
+PITCHER_RATE_COLUMNS = [f"{stat}_rate_{arm}"
+                        for stat in ("k", "bb", "hr", "babip")
+                        for arm in ("marcel", "marcel_preseason")]
+REQUIRED_PITCHER_KEYS = (
+    ["pitcher", "name", "team_id", "team_abbrev", "as_of", "role",
+     "appearances", "bf_to_date", "bf_ros"]
+    + PITCHER_RATE_COLUMNS + ["k_ros", "bb_ros", "hr_ros", "fip_ros"])
+
+
+def make_pitchers() -> pd.DataFrame:
+    rows = []
+    for i, (pitcher, name, role, fip) in enumerate(
+            [(10, "First Pitcher", "SP", 3.10), (11, "Second Pitcher", "RP", 4.20)]):
+        row = {"pitcher": pitcher, "name": name, "team_id": 100,
+               "team_abbrev": "NYY", "as_of": "2026-09-02", "role": role,
+               "appearances": 25 - i, "bf_to_date": 600 - 400 * i,
+               "bf_ros": 90.0 - 50 * i, "k_ros": 25.0, "bb_ros": 6.0,
+               "hr_ros": 2.5, "fip_ros": fip}
+        for column in PITCHER_RATE_COLUMNS:
+            row[column] = None if (pitcher == 11 and column.endswith("_preseason")) else 0.25
+        rows.append(row)
+    return pd.DataFrame(rows)[REQUIRED_PITCHER_KEYS]
+
+
+@pytest.fixture
+def doc_with_pitchers():
+    return build.to_document(make_projections(), "2026-09-02",
+                             git_sha="0123456789abcdef", season_end="2026-09-27",
+                             pitchers=make_pitchers())
+
+
+def test_adding_pitchers_leaves_the_hitter_contract_alone(doc, doc_with_pitchers):
+    assert_contract(doc_with_pitchers)
+    hitter_keys = ["as_of", "season", "through", "title", "n_hitters", "engine",
+                   "playing_time_method", "method", "framing", "arms",
+                   "components", "woba", "players"]
+    for key in hitter_keys:
+        assert doc_with_pitchers[key] == doc[key], key
+
+
+def test_the_pitcher_rows_carry_everything_the_page_reads(doc_with_pitchers):
+    assert doc_with_pitchers["n_pitchers"] == 2 == len(doc_with_pitchers["pitchers"])
+    for row in doc_with_pitchers["pitchers"]:
+        for key in REQUIRED_PITCHER_KEYS:
+            assert key in row, key
+        assert row["bf_ros"] is not None and row["bf_ros"] > 0
+        assert row["role"] in ("SP", "RP")
+    for path, value in walk_numbers(doc_with_pitchers):
+        assert not math.isnan(value) and not math.isinf(value), path
+
+
+def test_a_document_without_pitchers_still_declares_the_block(doc):
+    """A build whose pitcher inputs were missing must say "no pitchers", not
+    omit the key — the page would then be unable to tell an old file from a
+    failed build."""
+    assert doc["n_pitchers"] == 0
+    assert doc["pitchers"] == []
+    assert doc["pitcher_engine"]
+
+
+def test_the_document_names_the_pitcher_engine_and_the_workload_method(doc_with_pitchers):
+    """The rates are gated and the workload is not, so the file has to say so
+    in a field rather than only in prose."""
+    from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
+
+    assert doc_with_pitchers["pitcher_engine"] == PITCHER_ENGINE == "marcel_pitcher_tuned"
+    assert doc_with_pitchers["batters_faced_method"] == "structural"
+    assert "marcel_pitcher_params.json" in doc_with_pitchers["pitcher_method"]
+    assert "structural" in doc_with_pitchers["pitcher_method"]
+
+
+def test_the_pitcher_components_are_the_ones_that_cleared_the_gate(doc_with_pitchers):
+    from src.projections.pitcher_ros import SERVED_COMPONENTS
+
+    keys = [c["key"] for c in doc_with_pitchers["pitcher_components"]]
+    assert keys == list(SERVED_COMPONENTS)
+    # The walks-plus-hit-batsmen rate station E consumes is not a site column.
+    assert "p_bbhbp_rate" not in keys
+
+
+def test_the_pitcher_arms_are_labelled_with_the_live_one_marked(doc_with_pitchers):
+    arms = {a["key"]: a for a in doc_with_pitchers["pitcher_arms"]}
+    assert set(arms) == {"marcel", "marcel_preseason"}
+    assert arms["marcel"]["is_live"] is True
+    assert all(a["label"] and a["note"] for a in doc_with_pitchers["pitcher_arms"])
+
+
+def test_a_missing_pitcher_comparison_rate_is_null_not_nan(doc_with_pitchers):
+    rookie = next(p for p in doc_with_pitchers["pitchers"] if p["pitcher"] == 11)
+    assert rookie["k_rate_marcel_preseason"] is None
+    assert rookie["k_rate_marcel"] is not None
+
+
+def test_the_pitcher_numbers_are_rounded_for_the_archive():
+    frame = make_pitchers()
+    frame.loc[0, "fip_ros"] = 3.123456789
+    frame.loc[0, "bf_ros"] = 90.123456789
+    doc = build.to_document(make_projections(), "2026-09-02", git_sha="x",
+                            pitchers=frame)
+    row = doc["pitchers"][0]
+    assert row["fip_ros"] == pytest.approx(3.12346)
+    assert row["bf_ros"] == pytest.approx(90.12)
+
+
+def test_the_committed_projection_carries_the_pitcher_block():
+    from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
+
+    if not LATEST.exists():
+        pytest.skip("public/data/projections/latest.json not present")
+    doc = json.loads(LATEST.read_text())
+    if doc.get("stale"):
+        pytest.skip("carried-over projection")
+    assert doc.get("pitcher_engine") == PITCHER_ENGINE
+    assert doc.get("n_pitchers", 0) > 0
+    for row in doc["pitchers"][:25]:
+        for key in REQUIRED_PITCHER_KEYS:
+            assert key in row, key
+
+
 # ─── the stale path ──────────────────────────────────────────────
 
 def test_a_stale_document_carries_yesterdays_players_and_says_why(doc):

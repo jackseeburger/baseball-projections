@@ -10,6 +10,7 @@ this file's output it does not appear in the browser.
 Sections:
     components            scripts/score_2026_projections.py  (offline; data in git)
     ros_backtest          scripts/run_intraseason_backtest.py (needs the PA parquet)
+    pitcher_ros_backtest  scripts/run_pitcher_backtest.py     (needs the PA parquet)
     game_odds             scripts/backtest_game_odds.py      (MLB Stats API + R2 market closes)
     playoff_odds_control  docs/accuracy-2026.md §2b          (the coin-flip control run)
 
@@ -20,6 +21,7 @@ because an input was missing.
 Usage:
     python scripts/build_accuracy_json.py
     python scripts/build_accuracy_json.py --skip game_odds      # fast, no network
+    python scripts/build_accuracy_json.py --skip pitcher_ros_backtest
     python scripts/build_accuracy_json.py --components-json fixture.json
 """
 from __future__ import annotations
@@ -38,6 +40,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_LIVE_ENGINE  # noqa: E402
 from src.projections.ros import LIVE_ENGINE  # noqa: E402  (needs ROOT on sys.path)
 
 OUT_DIR = ROOT / "public/data/accuracy"
@@ -48,8 +51,10 @@ MARKET_PARQUET = ROOT / "data/parquet/market_closes_2026.parquet"
 MARKET_R2_KEY = "market/market_closes_2026.parquet"
 PLAYOFF_ODDS_DIR = ROOT / "public/data/playoff_odds"
 PA_PARQUET = ROOT / "data/parquet/pa_outcomes_2026.parquet"
+PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
 
-SECTIONS = ("components", "ros_backtest", "game_odds", "playoff_odds_control")
+SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+            "playoff_odds_control")
 
 # The rest-of-season section: four components (BABIP is 4 players at the Aug 1
 # cutoff, so it measures nothing there) and the four arms that answer "is
@@ -72,6 +77,32 @@ ROS_ARM_LABELS = {
 ROS_LIVE_ARM = LIVE_ENGINE
 # The control the "is in-season data worth anything?" line is measured against.
 ROS_CONTROL_ARM = "marcel_tuned_preseason"
+
+# The pitcher rest-of-season section. Five cells rather than three cutoffs —
+# season-level 2025 and 2026 come along, because the pitcher arm was scored on
+# them too — and the three dumb baselines are all shown, because the serving
+# gate is stated against all three and the reader should be able to check it.
+PITCHER_ROS_COMPONENTS = ("p_k_rate", "p_bb_rate", "p_hr_rate", "p_babip")
+PITCHER_ROS_ARMS = ("marcel_pitcher_tuned", "marcel_pitcher",
+                    "marcel_pitcher_tuned_preseason", "season_to_date",
+                    "previous_season", "league_average")
+PITCHER_ROS_ARM_LABELS = {
+    "marcel_pitcher_tuned": "Tuned pitcher Marcel + 2026 to date",
+    "marcel_pitcher": "Stock pitcher Marcel + 2026 to date",
+    "marcel_pitcher_tuned_preseason": "Tuned pitcher Marcel, 2026 withheld",
+    "marcel_pitcher_preseason": "Stock pitcher Marcel, 2026 withheld",
+    "season_to_date": "2026 rate, regressed",
+    "previous_season": "2025 rate, unregressed",
+    "league_average": "League average",
+}
+PITCHER_COMPONENT_LABELS = {
+    "p_k_rate": "K% MAE", "p_bb_rate": "BB% MAE", "p_hr_rate": "HR/BF MAE",
+    "p_babip": "BABIP MAE", "p_bbhbp_rate": "(BB+HBP)% MAE",
+}
+# Read from the module that serves it, so the page cannot mark an arm live
+# that src/projections/pitcher_ros.py is not running.
+PITCHER_ROS_LIVE_ARM = PITCHER_LIVE_ENGINE
+PITCHER_ROS_BASELINES = ("league_average", "previous_season", "season_to_date")
 
 # Display names. Text only — every number comes from a generated table.
 MODEL_LABELS = {
@@ -390,6 +421,137 @@ def section_ros(payload: dict) -> dict:
     }
 
 
+def _cell_label(cell: str) -> str:
+    """A season-level cell keeps its year; a cutoff becomes "Jul 1"."""
+    return cell if re.fullmatch(r"\d{4}", cell) else _cutoff_label(cell)
+
+
+def section_pitcher_ros(payload: dict) -> dict:
+    """Pitcher rest-of-season rates, scored by the same harness as the hitters.
+
+    One row per (cell, arm). The five cells are two whole seasons and three
+    intra-season cutoffs, and they are *not* comparable to each other — a
+    later cutoff scores a shorter, noisier rest of season — so the best value
+    is marked within its own block, exactly as the hitter table does it.
+
+    The framing is the gate, recomputed from the payload rather than asserted:
+    which components beat every dumb baseline, and which did not.
+    """
+    scores = payload["scores"]
+    components = [c for c in PITCHER_ROS_COMPONENTS
+                  if c in {r["component"] for r in scores}]
+    cells = payload.get("cells") or sorted({r["cell"] for r in scores})
+    arms = [a for a in PITCHER_ROS_ARMS if a in {r["model"] for r in scores}]
+
+    mae, n_pitchers = {}, {}
+    for r in scores:
+        mae[(r["cell"], r["model"], r["component"])] = num(r["mae"])
+        n_pitchers[(r["cell"], r["component"])] = int(r["n_players"])
+
+    rows = []
+    for cell in cells:
+        best = {}
+        for component in components:
+            values = [(mae[(cell, a, component)], a) for a in arms
+                      if (cell, a, component) in mae
+                      and mae[(cell, a, component)] is not None]
+            if values:
+                best[component] = min(values)[1]
+        for arm in arms:
+            metrics = {c: mae.get((cell, arm, c)) for c in components}
+            if all(v is None for v in metrics.values()):
+                continue
+            rows.append({
+                "model": arm,
+                "label": PITCHER_ROS_ARM_LABELS.get(arm, label_for(arm)),
+                "cutoff": _cell_label(cell),
+                "cutoff_date": cell,
+                "is_production": arm == PITCHER_ROS_LIVE_ARM,
+                "is_ours": False,
+                "is_baseline": (arm in PITCHER_ROS_BASELINES
+                                or arm == "marcel_pitcher"),
+                "is_market": False,
+                "metrics": metrics,
+                "best": [c for c in components if best.get(c) == arm],
+            })
+
+    gate = {g["component"]: g for g in payload.get("gate", [])}
+    cleared = [PITCHER_COMPONENT_LABELS.get(c, c).replace(" MAE", "")
+               for c in components if gate.get(c, {}).get("clears")]
+    withheld = [PITCHER_COMPONENT_LABELS.get(c, c).replace(" MAE", "")
+                for c in components if c in gate and not gate[c]["clears"]]
+    framing = (
+        "Lower is better, and only within a cell — the two season rows and the "
+        "three cutoffs score different windows, so every arm's MAE moves down "
+        "the table. The live arm is the tuned pitcher Marcel with the season to "
+        "date folded in, and the gate for putting a component on the site is "
+        "that it beats league average, the previous season *and* season to "
+        "date, pooled over these five cells.")
+    if cleared:
+        framing += f" Served: {', '.join(cleared)}."
+    if withheld:
+        framing += f" Not served, because it did not clear: {', '.join(withheld)}."
+
+    notes = [
+        "Training is the prior full pitcher seasons plus the current season "
+        "through the cutoff; the realized side is every batter faced on or "
+        "after it. The same leakage guard the hitter table uses rejects a "
+        "training plate appearance dated on or after the cutoff.",
+        f"Scored on pitchers with at least {payload.get('min_trials')} realized "
+        f"trials after the cutoff, trials-weighted, on the same pitchers across "
+        f"all arms.",
+        "The tuned constants are frozen in src/eval/marcel_pitcher_params.json, "
+        "fitted on 2020-2024 only, so every cell here is out of sample for "
+        "them. Three of the five components did not beat stock on an inner "
+        "validation inside the tuning window and are frozen holding stock's "
+        "constants, which is why their two Marcel rows are identical.",
+        "The walks-plus-hit-batsmen rate station E's starter term consumes is "
+        "scored in the same run but is not shown here or on the player pages: "
+        "a column labelled BB% has to mean walks.",
+    ]
+    babip = gate.get("p_babip")
+    if babip:
+        notes.append(
+            "BABIP against clears the gate by almost nothing — the closest "
+            f"baseline is {babip['closest_baseline'].replace('_', ' ')} at "
+            f"{babip['closest_diff']:+.5f} (t {babip['closest_t']:+.1f}). It is "
+            "served, and that is the DIPS result rather than a model win.")
+    last_pa = payload.get("last_pa_date")
+    if last_pa:
+        notes.append(f"The current season runs through {last_pa} in this run, so "
+                     f"the last cutoff's 'rest of season' is about a month.")
+    if n_pitchers and components:
+        counts = ", ".join(
+            f"{_cell_label(c)} {n_pitchers[(c, components[0])]}"
+            for c in cells if (c, components[0]) in n_pitchers)
+        notes.append(f"Pitchers scored per cell "
+                     f"({PITCHER_COMPONENT_LABELS[components[0]]}): {counts}.")
+
+    return {
+        "title": "Rest-of-season pitcher rates, walk-forward",
+        "framing": framing,
+        "source": "scripts/run_pitcher_backtest.py (docs/backtest-baselines.md, "
+                  "docs/ros-projections.md)",
+        "as_of": (payload.get("generated_at") or "")[:10] or None,
+        "n": (n_pitchers.get((cells[-1], components[0]))
+              if cells and components else None),
+        "n_label": "pitchers at the last cutoff",
+        "predict_year": 2026,
+        "cutoffs": list(cells),
+        "arms": arms,
+        "live_arm": PITCHER_ROS_LIVE_ARM,
+        "highlight_best": False,
+        "columns": ([{"key": "cutoff", "label": "Cell", "type": "text"},
+                     {"key": "label", "label": "Arm", "type": "text"}]
+                    + [{"key": c, "label": PITCHER_COMPONENT_LABELS.get(c, c),
+                        "type": "rate"} for c in components]),
+        "rows": rows,
+        "notes": notes,
+        "stale": False,
+        "stale_reason": None,
+    }
+
+
 def section_game_odds(payload: dict, market_note: str | None) -> dict:
     """Walk-forward per-game table, market closes included when we have them."""
     rows = []
@@ -544,6 +706,25 @@ def ros_input_note(pa_parquet: Path = PA_PARQUET) -> str | None:
     return None
 
 
+def pitcher_ros_input_note(pa_parquet: Path = PA_PARQUET,
+                           seasons: Path = PITCHER_SEASONS_PARQUET) -> str | None:
+    """Why the pitcher backtest cannot run here, or None if it can.
+
+    Same PA parquet as the hitter section, plus the pitcher season table. The
+    latter is committed, so this second clause only fires in an unusual
+    checkout — but a section that says which file is missing beats one that
+    says "it failed".
+    """
+    note = ros_input_note(pa_parquet)
+    if note:
+        return note.replace("rest-of-season backtest",
+                            "pitcher rest-of-season backtest")
+    if not seasons.exists():
+        return (f"pitcher rest-of-season backtest not run: {seasons.name} is "
+                f"absent (rebuild it with scripts/build_pitcher_seasons.py)")
+    return None
+
+
 def newest_previous(out_dir: Path) -> tuple[dict | None, str | None]:
     """Newest committed dated snapshot, for section-level fallback."""
     dated = sorted(p for p in out_dir.glob("*.json") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem))
@@ -573,7 +754,7 @@ def fallback(name: str, reason: str, previous: dict | None, previous_name: str |
 
 def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
                    components_json: Path | None = None, game_odds_json: Path | None = None,
-                   ros_json: Path | None = None,
+                   ros_json: Path | None = None, pitcher_ros_json: Path | None = None,
                    market_parquet: Path | None = MARKET_PARQUET, season: int = 2026,
                    timeout: int = 3600, work_dir: Path | None = None,
                    git_sha: str | None = None) -> dict:
@@ -625,6 +806,34 @@ def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
             sections["ros_backtest"] = fallback(
                 "ros_backtest",
                 err or f"could not score rest-of-season arms: {type(exc).__name__}: {exc}",
+                previous, previous_name)
+
+    # 1c. the pitcher half of the same walk-forward. Same inputs, same
+    # fallback: without the PA parquet it carries the last committed run.
+    if "pitcher_ros_backtest" in skip:
+        sections["pitcher_ros_backtest"] = fallback(
+            "pitcher_ros_backtest", "skipped by --skip pitcher_ros_backtest",
+            previous, previous_name)
+    else:
+        path, err = pitcher_ros_json, ""
+        if path is None:
+            missing = pitcher_ros_input_note()
+            if missing:
+                path, err = None, missing
+            else:
+                path = tmp / "pitcher_ros_backtest.json"
+                ok, err = run_script(
+                    ["scripts/run_pitcher_backtest.py",
+                     "--json-out", str(path)], timeout)
+                path = path if ok else None
+        try:
+            sections["pitcher_ros_backtest"] = section_pitcher_ros(
+                json.loads(Path(path).read_text()))
+        except Exception as exc:                              # noqa: BLE001
+            sections["pitcher_ros_backtest"] = fallback(
+                "pitcher_ros_backtest",
+                err or f"could not score pitcher rest-of-season arms: "
+                       f"{type(exc).__name__}: {exc}",
                 previous, previous_name)
 
     # 2. game odds — needs the MLB Stats API, and R2 for the market rows.
@@ -765,6 +974,9 @@ def main() -> None:
     parser.add_argument("--ros-json", type=Path, default=None,
                         help="use this run_intraseason_backtest --json-out file "
                              "instead of running the script (testing)")
+    parser.add_argument("--pitcher-ros-json", type=Path, default=None,
+                        help="use this run_pitcher_backtest --json-out file "
+                             "instead of running the script (testing)")
     parser.add_argument("--market-parquet", type=Path, default=MARKET_PARQUET)
     args = parser.parse_args()
 
@@ -772,6 +984,7 @@ def main() -> None:
                          components_json=args.components_json,
                          game_odds_json=args.game_odds_json,
                          ros_json=args.ros_json,
+                         pitcher_ros_json=args.pitcher_ros_json,
                          market_parquet=args.market_parquet, timeout=args.timeout)
     for row in doc["meta"]["status"]:
         state = "fresh" if row["fresh"] else "STALE"

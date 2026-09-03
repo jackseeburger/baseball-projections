@@ -155,7 +155,8 @@ def grid_summary(constrained: bool = True) -> dict:
 # --- ages -------------------------------------------------------------------
 
 def chadwick_ages(
-    seasons: pd.DataFrame, birthdates: pd.DataFrame | None = None
+    seasons: pd.DataFrame, birthdates: pd.DataFrame | None = None,
+    id_col: str = "batter",
 ) -> pd.DataFrame:
     """Replace `age` with the Chadwick register's age as of June 30.
 
@@ -164,13 +165,16 @@ def chadwick_ages(
     `debut - 23` proxy the early fits used). Ids missing from the register
     keep their existing age if there is one, else NaN — and `marcel_tuned`
     applies no age adjustment where age is missing.
+
+    `id_col` is "batter" for the hitter table and "pitcher" for the pitcher
+    one; the register keys on MLBAM ids, which are the same ids either way.
     """
     from src.data.birthdates import load_birthdates, seasonal_age
 
     if birthdates is None:
         birthdates = load_birthdates()
     out = seasons.copy()
-    ages = seasonal_age(birthdates, out["batter"].to_numpy(),
+    ages = seasonal_age(birthdates, out[id_col].to_numpy(),
                         out["season"].to_numpy())
     ages = pd.Series(ages, index=out.index)
     out["age"] = ages.fillna(out["age"]) if "age" in out.columns else ages
@@ -178,7 +182,8 @@ def chadwick_ages(
 
 
 def age_source_report(
-    seasons: pd.DataFrame, birthdates: pd.DataFrame | None = None
+    seasons: pd.DataFrame, birthdates: pd.DataFrame | None = None,
+    id_col: str = "batter",
 ) -> dict:
     """Coverage of the register on this season frame, and agreement with the API age."""
     from src.data.birthdates import load_birthdates, seasonal_age
@@ -186,13 +191,13 @@ def age_source_report(
     if birthdates is None:
         birthdates = load_birthdates()
     chad = pd.Series(
-        seasonal_age(birthdates, seasons["batter"].to_numpy(),
+        seasonal_age(birthdates, seasons[id_col].to_numpy(),
                      seasons["season"].to_numpy()),
         index=seasons.index,
     )
     report = {
         "rows": int(len(seasons)),
-        "batters": int(seasons["batter"].nunique()),
+        "batters": int(seasons[id_col].nunique()),
         "register_coverage": float(chad.notna().mean()),
     }
     if "age" in seasons.columns:
@@ -230,7 +235,7 @@ def make_split(
                          f"in {predict_year}")
     realized = realized.assign(
         realized_rate=realized[spec.successes] / realized[spec.trials]
-    )[["batter", spec.successes, spec.trials, "realized_rate"]].rename(
+    )[[spec.id_col, spec.successes, spec.trials, "realized_rate"]].rename(
         columns={spec.successes: "realized_successes", spec.trials: "trials"}
     )
     return Split(predict_year, train, realized.reset_index(drop=True))
@@ -249,8 +254,8 @@ def make_splits(
 def predict_split(split: Split, spec: ComponentSpec, params: MarcelParams) -> pd.DataFrame:
     """Scored frame for one split: realized joined to `marcel_tuned`'s prediction."""
     pred = marcel_tuned(split.train, spec, split.predict_year, params=params)
-    pred = pred.dropna(subset=["predicted"])[["batter", "predicted"]]
-    return split.realized.merge(pred, on="batter", how="inner")
+    pred = pred.dropna(subset=["predicted"])[[spec.id_col, "predicted"]]
+    return split.realized.merge(pred, on=spec.id_col, how="inner")
 
 
 def score_split(split: Split, spec: ComponentSpec, params: MarcelParams) -> dict:
@@ -393,7 +398,8 @@ def coordinate_search(
 # --- paired comparison -------------------------------------------------------
 
 def paired_abs_error_diff(
-    joined_a: pd.DataFrame, joined_b: pd.DataFrame, weight_col: str = "trials"
+    joined_a: pd.DataFrame, joined_b: pd.DataFrame, weight_col: str = "trials",
+    id_col: str = "batter",
 ) -> dict:
     """Trials-weighted paired difference in absolute error, A minus B.
 
@@ -402,8 +408,8 @@ def paired_abs_error_diff(
     a within-player comparison and its SE is not inflated by the spread of
     player skill. Negative means A is the better model.
     """
-    a = joined_a.set_index("batter")
-    b = joined_b.set_index("batter")
+    a = joined_a.set_index(id_col)
+    b = joined_b.set_index(id_col)
     common = a.index.intersection(b.index)
     a, b = a.loc[common], b.loc[common]
     d = ((a["predicted"] - a["realized_rate"]).abs()
@@ -422,12 +428,20 @@ def paired_abs_error_diff(
 
 
 def paired_from_results(
-    results: pd.DataFrame, model_a: str, model_b: str
+    results: pd.DataFrame, model_a: str, model_b: str,
+    id_col: str | None = None,
 ) -> dict:
-    """`paired_abs_error_diff` on a long frame from `backtest()`."""
-    cols = ["batter", "predicted", "realized_rate", "trials"]
+    """`paired_abs_error_diff` on a long frame from `backtest()`.
+
+    The id column is taken from the frame itself — `_run_split` names it after
+    the component's spec — so a pitcher result frame pairs on `pitcher`
+    without the caller saying so.
+    """
+    if id_col is None:
+        id_col = "pitcher" if "pitcher" in results.columns else "batter"
+    cols = [id_col, "predicted", "realized_rate", "trials"]
     a = results[results["model"] == model_a][cols]
     b = results[results["model"] == model_b][cols]
     if a.empty or b.empty:
         raise ValueError(f"missing model in results: {model_a!r} / {model_b!r}")
-    return paired_abs_error_diff(a, b)
+    return paired_abs_error_diff(a, b, id_col=id_col)

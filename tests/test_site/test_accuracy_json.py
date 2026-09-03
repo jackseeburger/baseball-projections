@@ -11,6 +11,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -18,7 +19,8 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/accuracy"
-SECTIONS = ("components", "ros_backtest", "game_odds", "playoff_odds_control")
+SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+            "playoff_odds_control")
 
 
 def _load_builder():
@@ -41,6 +43,7 @@ def doc(tmp_path):
         components_json=FIXTURES / "components_scores.json",
         game_odds_json=FIXTURES / "game_odds_market.json",
         ros_json=FIXTURES / "ros_backtest.json",
+        pitcher_ros_json=FIXTURES / "pitcher_ros_backtest.json",
         git_sha="0123456789abcdef",
     )
 
@@ -239,6 +242,82 @@ def test_ros_section_framing_is_counted_not_asserted(doc):
     assert "6 of 12" in section["framing"]         # vs stock Marcel
     assert "component-cutoff cells" in section["framing"]
     assert "tuned Marcel" in section["framing"]
+
+
+# ─── the pitcher rest-of-season section ──────────────────────────
+
+def test_pitcher_section_scores_the_arm_the_site_serves(doc):
+    """The page must not mark an arm live that the site is not running."""
+    from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
+
+    section = doc["sections"]["pitcher_ros_backtest"]
+    assert section["live_arm"] == PITCHER_ENGINE
+    live = [r for r in section["rows"] if r["is_production"]]
+    assert live and all(r["model"] == PITCHER_ENGINE for r in live)
+    assert len(live) == len(section["cutoffs"]), "one live row per cell"
+
+
+def test_pitcher_section_shows_all_three_dumb_baselines(doc):
+    """The gate is stated against all three, so the reader has to be able to
+    check it against all three."""
+    section = doc["sections"]["pitcher_ros_backtest"]
+    models = {r["model"] for r in section["rows"]}
+    assert {"league_average", "previous_season"} <= models
+    # season_to_date only exists at a cutoff, not on a whole-season row.
+    cutoff_models = {r["model"] for r in section["rows"]
+                     if not re.fullmatch(r"\d{4}", r["cutoff_date"])}
+    assert "season_to_date" in cutoff_models
+
+
+def test_pitcher_section_framing_is_read_off_the_gate_not_asserted(doc):
+    """Which components are served is recomputed from the payload every night,
+    so the sentence flips on its own if the result ever does."""
+    section = doc["sections"]["pitcher_ros_backtest"]
+    payload = json.loads((FIXTURES / "pitcher_ros_backtest.json").read_text())
+    served = [g["component"] for g in payload["gate"] if g["clears"]]
+    withheld = [g["component"] for g in payload["gate"] if not g["clears"]]
+    assert ("Served:" in section["framing"]) == bool(served)
+    assert ("Not served" in section["framing"]) == bool(withheld)
+
+
+def test_pitcher_section_marks_the_winner_inside_its_own_cell(doc):
+    """Cells score different windows, so the page must not rank the column
+    end to end."""
+    section = doc["sections"]["pitcher_ros_backtest"]
+    assert section["highlight_best"] is False
+    for cell in section["cutoffs"]:
+        rows = [r for r in section["rows"] if r["cutoff_date"] == cell]
+        for column in [c["key"] for c in section["columns"] if c["type"] == "rate"]:
+            values = [(r["metrics"][column], r["model"]) for r in rows
+                      if r["metrics"].get(column) is not None]
+            if not values:
+                continue
+            winner = min(values)[1]
+            marked = [r["model"] for r in rows if column in (r["best"] or [])]
+            assert marked == [winner], (cell, column)
+
+
+def test_pitcher_section_never_shows_the_walks_plus_hbp_component(doc):
+    """It is scored in the same run and consumed by station E, but a column
+    labelled BB% has to mean walks."""
+    section = doc["sections"]["pitcher_ros_backtest"]
+    assert "p_bbhbp_rate" not in [c["key"] for c in section["columns"]]
+
+
+def test_pitcher_section_is_stale_when_its_inputs_are_missing(tmp_path, monkeypatch):
+    monkeypatch.delenv("R2_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("R2_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("R2_ENDPOINT_URL", raising=False)
+    note = build.pitcher_ros_input_note(tmp_path / "absent.parquet")
+    assert note and "pitcher rest-of-season backtest not run" in note
+
+
+def test_pitcher_input_note_names_a_missing_season_table(tmp_path):
+    pa = tmp_path / "pa.parquet"
+    pa.write_text("")
+    note = build.pitcher_ros_input_note(pa, tmp_path / "absent_seasons.parquet")
+    assert note and "absent_seasons.parquet" in note
+    assert build.pitcher_ros_input_note(pa, pa) is None
 
 
 def test_ros_section_is_stale_when_the_pa_parquet_and_r2_are_both_missing(
