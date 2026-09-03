@@ -222,7 +222,14 @@ def build_seasons_table(
 
 
 def fetch_standings(season: int) -> pd.DataFrame:
-    """Current standings, one row per team (Phase 2.1)."""
+    """Current standings, one row per team (Phase 2.1).
+
+    For a *completed* season the endpoint serves the final table, which is
+    where the team backtest reads its outcomes from: `division_champ` and
+    `wild_card_leader` are the API's own flags for who won a division and who
+    took a wild card, so "made the playoffs" does not have to be re-derived
+    from a bracket whose shape changed in 2022.
+    """
     data = _get("standings", leagueId="103,104", season=season)
     rows = []
     for record in data.get("records", []):
@@ -238,6 +245,10 @@ def fetch_standings(season: int) -> pd.DataFrame:
                 "games_back": tr.get("gamesBack"),
                 "runs_scored": tr.get("runsScored"),
                 "runs_allowed": tr.get("runsAllowed"),
+                "division_rank": tr.get("divisionRank"),
+                "league_rank": tr.get("leagueRank"),
+                "division_champ": bool(tr.get("divisionChamp", False)),
+                "wild_card_leader": bool(tr.get("wildCardLeader", False)),
             })
     return pd.DataFrame(rows)
 

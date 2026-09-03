@@ -159,19 +159,23 @@ def tally(state: SeasonState, home_wins: np.ndarray) -> SimRecords:
     # Rank every intraleague game (completed then remaining, date order) per
     # team; a game counts toward the "last half" for a team if it falls in
     # the second half of that team's intraleague schedule.
-    all_games = pd.concat([
-        c.assign(_src="c", _i=np.arange(len(c))),
-        r.assign(_src="r", _i=np.arange(len(r))),
-    ], ignore_index=True)
+    # Concatenated home/away ids as plain arrays: this loop runs once per
+    # simulation *run* but 30 times inside it, and a DataFrame `.at` per game
+    # made it the single most expensive thing in a whole-season sim.
+    all_home = np.concatenate([c["home_id"].to_numpy(), r["home_id"].to_numpy()])
+    all_away = np.concatenate([c["away_id"].to_numpy(), r["away_id"].to_numpy()])
+    n_c = len(c)
     all_lg = np.concatenate([c_lg, r_lg])
     half_mask = {"c": np.zeros((len(c), n)), "r": np.zeros((len(r), n))}
     for t in state.team_ids:
-        involved = ((all_games["home_id"] == t) | (all_games["away_id"] == t)).to_numpy() & all_lg
+        involved = ((all_home == t) | (all_away == t)) & all_lg
         order = np.flatnonzero(involved)  # already date-sorted within c then r
         last_half = order[len(order) // 2:]
-        for gi in last_half:
-            src, i = all_games.at[gi, "_src"], all_games.at[gi, "_i"]
-            half_mask[src][i, idx[int(t)]] = 1.0
+        col = idx[int(t)]
+        in_c = last_half[last_half < n_c]
+        in_r = last_half[last_half >= n_c] - n_c
+        half_mask["c"][in_c, col] = 1.0
+        half_mask["r"][in_r, col] = 1.0
     hm_c, hm_r = half_mask["c"], half_mask["r"]
     # A team's win in a game counts if the game is in its last half.
     il_half_wins = (

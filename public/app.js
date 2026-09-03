@@ -1664,7 +1664,15 @@ function renderPlayoffs() {
     ". Pythagenpat converts each club's run rates to a talent win%, and every remaining game whose starters " +
     "nobody has announced yet is drawn with log5 plus a home-field multiplier; ties are broken by head-to-head, " +
     "intradivision, then intraleague-second-half record. " +
-    "Snapshots are archived daily and never overwritten.";
+    "Snapshots are archived daily and never overwritten. " +
+    // The measured framing, from docs/team-projection-backtest.md: 7,470
+    // club-projections an arm over 2015-2025. Keep this honest about where
+    // the edge is, because it is not here in September.
+    "Scored walk-forward on 2015-2025, the projected-wins column beats a .500 extrapolation of the current " +
+    "record by 1.31 wins of mean absolute error (2.00 in April, 0.14 in the last fortnight). The playoff, " +
+    "division, pennant and World Series probabilities beat that same extrapolation early and stop beating it " +
+    "around the start of August: past that point the standings have decided the season and this board is " +
+    "mostly arithmetic. See the Model Accuracy page.";
 }
 
 function renderOddsTable(elId, teams) {
@@ -1730,7 +1738,7 @@ function renderBracket(teams) {
 // Nothing here is hard-coded: this renderer only formats and labels.
 // ══════════════════════════════════════════════════════════════════
 const ACCURACY_ORDER = ["ros_backtest", "pitcher_ros_backtest", "components",
-                        "game_odds", "playoff_odds_control"];
+                        "game_odds", "team_backtest", "playoff_odds_control"];
 
 function esc(v) {
   return String(v == null ? "" : v)

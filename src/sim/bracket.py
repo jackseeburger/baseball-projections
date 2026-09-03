@@ -29,6 +29,7 @@ from src.sim.strength import PYTHAGENPAT_EXP, home_win_prob, pythagenpat
 
 SERIES_HOME_PATTERNS = {
     # wins needed → which games the higher seed hosts (1-indexed)
+    1: {1},                  # one game: the 2012-2021 wild card, at the higher seed
     2: {1, 2, 3},            # best-of-3: all at higher seed
     3: {1, 2, 5},            # best-of-5: 2-2-1
     4: {1, 2, 6, 7},         # best-of-7: 2-3-2
@@ -39,6 +40,58 @@ SERIES_HOME_PATTERNS = {
 # in October because the off days let the top of the rotation take the extra
 # start.
 DEFAULT_ROTATION_SIZE = 4
+
+
+@dataclass(frozen=True)
+class PlayoffFormat:
+    """How many clubs reach October and what the first round looks like.
+
+    The live board only ever needs one of these, but the walk-forward team
+    backtest (`src/eval/team_season.py`) scores seasons back to 2015, and the
+    field was five clubs a league then, not six. Getting that wrong is not a
+    modelling choice — it changes the *outcome* being scored, because two extra
+    clubs "made the playoffs" in a season where they did not.
+
+    `n_wild_cards` is per league; the three division winners are always seeded
+    1-3. `wc_wins_needed` is the first round's length (1 = the single-game wild
+    card of 2012-2021, 2 = the best-of-3 of 2022 on) and `byes` is how many top
+    seeds skip that round.
+    """
+    n_wild_cards: int = 3
+    wc_wins_needed: int = 2
+    byes: int = 2
+
+    @property
+    def n_seeds(self) -> int:
+        return 3 + self.n_wild_cards
+
+
+# 2022 on: six a league, best-of-3 wild card, byes for the top two seeds.
+MODERN = PlayoffFormat(n_wild_cards=3, wc_wins_needed=2, byes=2)
+# 2012-2021 (2020 excepted): five a league, a one-game wild card, no byes —
+# all three division winners skip it.
+ONE_GAME_WILD_CARD = PlayoffFormat(n_wild_cards=2, wc_wins_needed=1, byes=0)
+
+
+def format_for_season(season: int) -> PlayoffFormat:
+    """The postseason field in force for a season.
+
+    2020 raises: the 60-game season put *eight* clubs a league in a bracket
+    seeded by division place rather than by record, which is a different
+    seeding rule and not a parameter of this one. The team backtest excludes
+    2020 for that reason and says so.
+    """
+    season = int(season)
+    if season == 2020:
+        raise ValueError(
+            "2020 used an eight-club-per-league field seeded by division "
+            "place over a 60-game season; it is not a parameterisation of "
+            "this bracket. Exclude it explicitly.")
+    if season >= 2022:
+        return MODERN
+    if season >= 2012:
+        return ONE_GAME_WILD_CARD
+    raise ValueError(f"no playoff format wired for {season}")
 
 
 def strength_with_starter(p: float, ra9_delta: float, run_env: float,
@@ -182,22 +235,45 @@ class PostseasonResult:
     champion: int
 
 
+def _league_bracket(seeds: list[int], fmt: PlayoffFormat, strength: np.ndarray,
+                    hfa: float, rng: np.random.Generator,
+                    rotations: Rotations | None) -> tuple[int, int]:
+    """One league's wild-card and division rounds → the two LCS participants.
+
+    Six seeds (2022 on): 3v6 and 4v5 in the wild-card round, the byes waiting
+    at 1 and 2. Five seeds (2012-2021): one wild-card game between 4 and 5 at
+    the higher seed, then 1 v its winner and 2 v 3.
+    """
+    wc = fmt.wc_wins_needed
+    if fmt.n_wild_cards == 3:
+        s1, s2, s3, s4, s5, s6 = seeds
+        w45 = play_series(s4, s5, wc, strength, hfa, rng, rotations)
+        w36 = play_series(s3, s6, wc, strength, hfa, rng, rotations)
+        return (play_series(s1, w45, 3, strength, hfa, rng, rotations),
+                play_series(s2, w36, 3, strength, hfa, rng, rotations))
+    if fmt.n_wild_cards == 2:
+        s1, s2, s3, s4, s5 = seeds
+        w45 = play_series(s4, s5, wc, strength, hfa, rng, rotations)
+        return (play_series(s1, w45, 3, strength, hfa, rng, rotations),
+                play_series(s2, s3, 3, strength, hfa, rng, rotations))
+    raise ValueError(f"no bracket wired for {fmt.n_wild_cards} wild cards")
+
+
 def play_postseason(seeds_by_league: dict[int, list[int]], reg_wins: np.ndarray,
                     strength: np.ndarray, hfa: float,
                     rng: np.random.Generator,
-                    rotations: Rotations | None = None) -> PostseasonResult:
+                    rotations: Rotations | None = None,
+                    fmt: PlayoffFormat = MODERN) -> PostseasonResult:
     """Both leagues' brackets plus the World Series.
 
     `rotations` (optional) prices each game of every series with the starter
-    scheduled to pitch it; see `Rotations`.
+    scheduled to pitch it; see `Rotations`. `fmt` is the postseason field
+    (`PlayoffFormat`); the default is the six-club-per-league bracket in force
+    since 2022, which is what the live board runs.
     """
     pennants = {}
     for league_id, seeds in seeds_by_league.items():
-        s1, s2, s3, s4, s5, s6 = seeds
-        w45 = play_series(s4, s5, 2, strength, hfa, rng, rotations)
-        w36 = play_series(s3, s6, 2, strength, hfa, rng, rotations)
-        d1 = play_series(s1, w45, 3, strength, hfa, rng, rotations)
-        d2 = play_series(s2, w36, 3, strength, hfa, rng, rotations)
+        d1, d2 = _league_bracket(seeds, fmt, strength, hfa, rng, rotations)
         # Higher seed hosts the LCS
         hi, lo = (d1, d2) if seeds.index(d1) < seeds.index(d2) else (d2, d1)
         pennants[league_id] = play_series(hi, lo, 4, strength, hfa, rng, rotations)
