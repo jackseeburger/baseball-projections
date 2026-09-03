@@ -492,6 +492,25 @@ class TestScoring:
         assert int(cal["n"].sum()) == len(scored)
         assert list(cal["decile"]) == [1, 2, 3, 4, 5]
 
+    def test_paired_compares_the_same_club_on_the_same_date(self, schedule,
+                                                            teams):
+        split = ts.split_season_at(schedule, teams, CUTOFF, SEASON)
+        a = ts.project(split, ts.strength_even(split), "record_500",
+                       n_sims=60, seed=2)
+        b = ts.project(split, ts.strength_own_rate(split), "record_wpct",
+                       n_sims=60, seed=2)
+        outcomes = ts.final_records(schedule, teams).assign(
+            season=SEASON, made_playoffs=0, won_division=0, won_pennant=0,
+            won_ws=0)
+        scored = tb.attach_outcomes(pd.concat([a, b], ignore_index=True),
+                                    outcomes)
+        pair = tb.paired(scored, "record_500", "record_wpct")
+        assert set(pair["metric"]) == set(tb.PAIRED_METRICS)
+        assert (pair["n"] == CLUBS).all()
+        # The difference of the two arms' means is the mean of the pairs.
+        row = pair[pair["metric"] == "wins_abs_err"].iloc[0]
+        assert row["diff"] == pytest.approx(row["mean_a"] - row["mean_b"])
+
     def test_reliability_decomposes_the_brier_score(self, schedule, teams):
         scored = self._scored(schedule, teams)
         rel = tb.reliability(scored, "record_wpct", n_bins=5)
@@ -502,3 +521,61 @@ class TestScoring:
         assert abs(rel["residual"]) < 0.05
         assert rel["skill_score"] == pytest.approx(
             1.0 - rel["brier"] / rel["uncertainty"])
+
+
+class TestDriverArms:
+    """The two arms the driver builds without a Monte Carlo."""
+
+    def test_coin_flip_is_the_league_base_rate(self, schedule, teams):
+        from scripts.run_team_backtest import coin_flip_frame
+
+        split = ts.split_season_at(schedule, teams, CUTOFF, SEASON)
+        frame = coin_flip_frame(split)
+        assert len(frame) == CLUBS
+        # 12 of 30 in October since 2022, 10 of 30 before it.
+        assert frame["p_playoffs"].unique().tolist() == [12 / 30]
+        assert frame["p_division"].unique().tolist() == [6 / 30]
+        assert frame["p_pennant"].unique().tolist() == [2 / 30]
+        assert frame["p_ws"].unique().tolist() == [1 / 30]
+        # Half of everybody's schedule, whatever the standings say.
+        assert frame["proj_final_wins"].nunique() == 1
+        assert frame["proj_final_wins"].iloc[0] == pytest.approx(
+            len(schedule) / CLUBS)
+
+    def test_coin_flip_follows_the_five_club_field_before_2022(self, schedule,
+                                                               teams):
+        from scripts.run_team_backtest import coin_flip_frame
+
+        split = ts.split_season_at(schedule, teams, CUTOFF, 2016)
+        assert coin_flip_frame(split)["p_playoffs"].unique().tolist() == [10 / 30]
+
+    def test_rebase_preseason_moves_the_date_and_not_the_projection(
+            self, schedule, teams):
+        from scripts.run_team_backtest import rebase_preseason
+
+        opening = str(ts.regular_season_games(schedule, teams)["date"].min())
+        pre = ts.split_season_at(schedule, teams, opening, SEASON)
+        prior = ts.standings_from_games(
+            ts.regular_season_games(schedule, teams), teams)
+        frame = ts.project(pre, ts.strength_preseason(prior,
+                                                      pre.state.team_ids),
+                           "preseason", n_sims=60, seed=1)
+        later = ts.split_season_at(schedule, teams, CUTOFF, SEASON)
+        moved = rebase_preseason(frame, later)
+        # The projection does not move …
+        pd.testing.assert_series_equal(frame["proj_final_wins"],
+                                       moved["proj_final_wins"])
+        for c in ts.PROB_COLUMNS:
+            pd.testing.assert_series_equal(frame[c], moved[c])
+        # … but the record it is measured against does.
+        assert (moved["as_of"] == CUTOFF).all()
+        assert moved["wins_to_date"].sum() == later.games_played
+        assert np.allclose(moved["proj_rest_wins"],
+                           moved["proj_final_wins"] - moved["wins_to_date"])
+
+    def test_2020_is_never_scored(self):
+        from scripts.run_team_backtest import parse_seasons
+
+        assert 2020 not in parse_seasons("2015-2025")
+        assert parse_seasons("2019,2020,2021") == [2019, 2021]
+        assert parse_seasons("2020") == []

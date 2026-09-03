@@ -412,7 +412,8 @@ def ascii_curve(scored: pd.DataFrame, metric: str = "brier_playoffs",
     wide = wide.reindex(columns=arms)
     lo, hi = float(np.nanmin(wide.to_numpy())), float(np.nanmax(wide.to_numpy()))
     span = max(hi - lo, 1e-9)
-    marks = {a: c for a, c in zip(arms, "CR5WPX")}
+    marks = {"chain": "C", "record_500": "F", "record_wpct": "W",
+             "preseason": "P", "coin_flip": "X"}
     lines = [f"{metric}: {lo:.4f} (left) to {hi:.4f} (right)",
              "  " + " ".join(f"{marks[a]}={a}" for a in arms)]
     for bucket, row in wide.iterrows():

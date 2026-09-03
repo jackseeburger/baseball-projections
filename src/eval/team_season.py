@@ -189,7 +189,11 @@ def split_season_at(schedule: pd.DataFrame, teams: pd.DataFrame,
     as_of = str(as_of)
     reg = regular_season_games(schedule, teams)
     dates = reg["date"].astype(str)
-    played = reg[dates < as_of].reset_index(drop=True)
+    # `played` is the games that were played *and* have a result, which for a
+    # season in the books is every game before the cutoff and for a season
+    # still running (2026) excludes anything the schedule has not settled yet.
+    done = reg["home_score"].notna() & reg["away_score"].notna()
+    played = reg[(dates < as_of) & done].reset_index(drop=True)
     future = reg[dates >= as_of].reset_index(drop=True)
 
     cols = ["game_pk", "date", "home_id", "away_id"]
@@ -217,12 +221,19 @@ def weekly_cutoffs(schedule: pd.DataFrame, teams: pd.DataFrame,
     stops once fewer than `min_remaining` games are left, because past that
     point the standings have decided the season and there is nothing for any
     model to project.
+
+    For a season still in progress the walk also stops at the last game with a
+    result on file: a cutoff past today would hand the projection a standings
+    table built from games nobody has played.
     """
     reg = regular_season_games(schedule, teams)
     if reg.empty:
         return []
     dates = pd.to_datetime(reg["date"].astype(str))
+    settled = reg["home_score"].notna() & reg["away_score"].notna()
     first, last = dates.min(), dates.max()
+    if settled.any():
+        last = min(last, dates[settled].max())
     out, cursor = [], first + pd.Timedelta(days=skip_days)
     while cursor <= last:
         iso = str(cursor.date())
