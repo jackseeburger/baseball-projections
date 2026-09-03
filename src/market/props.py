@@ -69,6 +69,22 @@ DEFAULT_PA = 4.1                # a hitter in the game whose slot we never saw
 # league's ~4.2 batters per inning.
 STARTER_BF = 23.0
 
+# Is the opposing pitcher in the hitter's price? The gate rule
+# (architecture.md §3) decides: the matchup arm (`src/market/matchup.py`) is
+# the default only if it beats the current price out of sample, on the half of
+# the archive its one free constant was not chosen on.
+#
+# **It does, and since Sept 3 2026 it is on.** On the second half of the
+# archive (2026-08-17 to 09-02, 30,423 settled contracts) the matchup price
+# beats the current one by 0.00095 of Brier paired per contract, t = -4.4 with
+# the standard error clustered by game, and it wins every stat separately —
+# strikeouts by 0.0057, hits by 0.0006, total bases by 0.0005, home runs by
+# 0.0001. The weight was chosen on the first half and is the boundary of its
+# own grid, which is to say the first half asked for the identity undiluted.
+# See docs/props-exam-2026.md.
+MATCHUP_DEFAULT = True
+MATCHUP_WEIGHT = 1.0
+
 PRICEABLE = ("hits", "hr", "tb", "k")
 UNPRICED = {"rbi": "needs lineup sequencing, not the batter's own rates",
             "sb": "no stolen-base rate in the component table",
@@ -244,6 +260,32 @@ def lineup_slots(lineups: pd.DataFrame) -> dict:
             for r in lineups.itertuples(index=False)}
 
 
+def lineup_sides(lineups: pd.DataFrame) -> dict:
+    """{(game_pk, batter): "home"|"away"} — which club a hitter started for.
+
+    The matchup term needs it to find the *other* club: the opposing probable
+    starter, and the pen behind him.
+    """
+    if lineups is None or len(lineups) == 0:
+        return {}
+    return {(int(r.game_pk), int(r.batter)): str(r.side)
+            for r in lineups.itertuples(index=False)}
+
+
+def lineup_cards(lineups: pd.DataFrame) -> dict:
+    """{(game_pk, side): [batter ids in batting order]} — the posted card.
+
+    The mirror of `lineup_slots` for the pitcher's side of the matchup: a
+    starter's strikeout price wants the nine hitters he is about to face.
+    """
+    if lineups is None or len(lineups) == 0:
+        return {}
+    out: dict = {}
+    for r in lineups.sort_values(["game_pk", "side", "slot"]).itertuples(index=False):
+        out.setdefault((int(r.game_pk), str(r.side)), []).append(int(r.batter))
+    return out
+
+
 def slot_pa(slot: int | None) -> float:
     return SLOT_PA.get(int(slot), DEFAULT_PA) if slot is not None else DEFAULT_PA
 
@@ -251,7 +293,8 @@ def slot_pa(slot: int | None) -> float:
 # ───────────────────────────── pricing a frame ─────────────────────────────
 
 def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
-          slots: dict, stats=PRICEABLE, pitcher_bf: str = "fixed") -> pd.DataFrame:
+          slots: dict, stats=PRICEABLE, pitcher_bf: str = "fixed",
+          matchup_ctx: dict | None = None) -> pd.DataFrame:
     """Our probability for every archived prop close we can price.
 
     One pass per game date so each date's rate tables are built once. Returns
@@ -263,13 +306,23 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                     the shape of the distribution
         `p_market`  the venue's close, copied over for the scoring join
 
+    and, when `matchup_ctx` is given, a fourth:
+
+        `p_matchup` the same contract with the opposing pitching folded in by
+                    log5 (`src/market/matchup.py`) — the probable starter over
+                    his own expected innings, the opposing pen over the rest,
+                    and for a pitcher's strikeout prop the opposing posted card
+
     `pitcher_bf` is "fixed" (every start faces `STARTER_BF`) or "own" (the
     pitcher's own batters faced per start to date, `starter_bf`).
     """
     wanted = closes[closes["prop_stat"].isin(list(stats))
                     & closes["player_id"].notna()].copy()
     if wanted.empty:
-        return wanted.assign(p_model=[], p_league=[], p_market=[], exp_pa=[])
+        cols = {"p_model": [], "p_league": [], "p_market": [], "exp_pa": []}
+        if matchup_ctx is not None:
+            cols["p_matchup"] = []
+        return wanted.assign(**cols)
     lg = batter_ctx["league"]
     lg_per_pa = pa_outcome_probs(
         {f"rate_{c}": lg[f"rate_{c}"] for c in lu_model.COMPONENTS}, lg)
@@ -280,9 +333,12 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
         b_rates = batter_rates(batter_ctx, as_of)
         p_rates = pitcher_rates(pitcher_ctx, as_of)
         bf_lookup = starter_bf(pitcher_ctx, as_of) if pitcher_bf == "own" else {}
+        mday = _matchup_day(matchup_ctx, as_of)
         per_pa_cache: dict[int, dict] = {}
+        matchup_cache: dict = {}
         for row in day.itertuples(index=False):
             pid = int(row.player_id)
+            extra = {}
             if row.prop_stat == "k":
                 if pid not in p_rates.index:
                     continue
@@ -290,6 +346,11 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                 pa = bf_lookup.get(pid, STARTER_BF)
                 p_model = pitcher_prop_prob("k", row.prop_line, rate, pa)
                 p_league = pitcher_prop_prob("k", row.prop_line, lg_k, pa)
+                if mday is not None:
+                    adj = _pitcher_matchup_rate(mday, row, rate, b_rates, lg,
+                                                matchup_cache)
+                    extra["p_matchup"] = pitcher_prop_prob("k", row.prop_line,
+                                                           adj, pa)
             else:
                 slot = slots.get((int(row.game_pk), pid))
                 if slot is None:            # not in the posted lineup
@@ -302,12 +363,94 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                                            per_pa_cache[pid], pa)
                 p_league = batter_prop_prob(row.prop_stat, row.prop_line,
                                             lg_per_pa, pa)
+                if mday is not None:
+                    per_pa = _batter_matchup_per_pa(mday, row, pid, b_rates, lg,
+                                                    matchup_cache)
+                    extra["p_matchup"] = batter_prop_prob(
+                        row.prop_stat, row.prop_line, per_pa, pa)
+            if mday is not None and "p_matchup" not in extra:
+                extra["p_matchup"] = p_model
             out.append({**row._asdict(), "exp_pa": pa,
                         "p_model": p_model, "p_league": p_league,
-                        "p_market": float(row.p_over_close)})
+                        "p_market": float(row.p_over_close), **extra})
     priced = pd.DataFrame(out)
     logger.info("priced %d/%d prop closes", len(priced), len(wanted))
     return priced
+
+
+# ───────────────────── the matchup arm, one slate at a time ─────────────────
+
+def _matchup_day(matchup_ctx: dict | None, as_of: str) -> dict | None:
+    """The per-date lookups the matchup price needs, or None when it is off.
+
+    Everything in here is cut strictly before `as_of` by `matchup.day_tables`,
+    and the starter is the club's *probable*, never the man who actually threw
+    the first pitch: a prop price is a pre-game price.
+    """
+    if matchup_ctx is None:
+        return None
+    from src.market import matchup as mu
+    # Memoised on the context object, because the weight grid prices the same
+    # slate several times and the tables do not depend on the weight.
+    cache = matchup_ctx.setdefault("_day_cache", {})
+    if as_of not in cache:
+        cache[as_of] = mu.day_tables(matchup_ctx["ctx"], as_of)
+    day = dict(matchup_ctx)
+    day["tables"] = cache[as_of]
+    day["as_of"] = as_of
+    return day
+
+
+def _batter_matchup_per_pa(mday: dict, row, pid: int, b_rates, lg: dict,
+                           cache: dict) -> dict:
+    """Per-PA outcome probabilities for one hitter against tonight's pitching."""
+    from src.market import matchup as mu
+    game_pk = int(row.game_pk)
+    side = mday["sides"].get((game_pk, pid))
+    opp = {"home": "away", "away": "home"}.get(side)
+    key = ("bat", game_pk, opp)
+    if key not in cache:
+        sp = mday["probables"].get((game_pk, opp)) if opp else None
+        team = mday["teams"].get((game_pk, opp)) if opp else None
+        cache[key] = mu.hitter_factors(mday["tables"], mday["ctx"]["league"],
+                                       sp, team)
+    factors = cache[key]
+    rates = b_rates.loc[pid] if pid in b_rates.index else \
+        {f"rate_{c}": lg[f"rate_{c}"] for c in lu_model.COMPONENTS}
+    return pa_outcome_probs(mu.matchup_rates(rates, factors, mday["weight"]), lg)
+
+
+def _pitcher_matchup_rate(mday: dict, row, rate_k: float, b_rates, lg: dict,
+                          cache: dict) -> float:
+    """A starter's K per batter faced against the card he is about to face.
+
+    The opposing club's posted card where one exists, its recent cards where
+    it does not, and the league — a factor of exactly 1.0 — where neither
+    does, which leaves the price where the current model put it.
+    """
+    from src.market import matchup as mu
+    game_pk = int(row.game_pk)
+    team = getattr(row, "team_id", None)
+    team = int(team) if team is not None and pd.notna(team) else None
+    # The club he pitches for is on the contract's ticker; the card he faces is
+    # the other one. With no club on the row, or a game whose two clubs are not
+    # both known, there is no way to tell the sides apart and the factor falls
+    # through to 1.0 below — the current price, unchanged.
+    sides = {s: mday["teams"].get((game_pk, s)) for s in ("home", "away")}
+    opp = None
+    if team is not None and all(v is not None for v in sides.values()):
+        opp = next((s for s, v in sides.items() if int(v) != team), None)
+    key = ("pit", game_pk, opp)
+    if key not in cache:
+        card = mday["cards"].get((game_pk, opp)) if opp else None
+        f = mu.card_k_factor(card, b_rates, lg["rate_k"], slot_pa)
+        if f is None:
+            opp_team = mday["teams"].get((game_pk, opp)) if opp else None
+            recent = mu.recent_card_ids(mday["club_cards"], opp_team,
+                                        mday["as_of"]) if opp_team else []
+            f = mu.card_k_factor(recent, b_rates, lg["rate_k"]) or 1.0
+        cache[key] = f
+    return float(mu.apply_factor(rate_k, cache[key], mday["weight"]))
 
 
 # ───────────────────────────── scoring ─────────────────────────────
@@ -340,6 +483,36 @@ def brier_table(priced: pd.DataFrame,
     return pd.DataFrame(rows + [total])
 
 
+def paired_brier(priced: pd.DataFrame, a: str, b: str,
+                 group_col: str = "game_pk") -> dict:
+    """Mean per-contract Brier difference `a − b`, with a clustered SE.
+
+    Two arms priced on the same contracts are paired by construction — the
+    same afternoon, the same hitter, the same line — so the difference of the
+    two Brier scores is a per-contract quantity and its mean is the honest
+    comparison. The standard error clusters on the game for the same reason
+    the money bootstrap does: a hitter's 1+, 2+ and 3+ hits are one
+    afternoon's at bats, and treating them as three independent observations
+    would report an error bar the data does not support.
+
+    Negative `diff` means `a` is the better price.
+    """
+    df = priced[priced["over_hit"].notna()]
+    if len(df) == 0:
+        return {"n": 0, "diff": float("nan"), "se": float("nan"),
+                "t": float("nan")}
+    y = df["over_hit"].astype(float).to_numpy()
+    d = (df[a].to_numpy(dtype=float) - y) ** 2 - (df[b].to_numpy(dtype=float) - y) ** 2
+    n = len(d)
+    mean = float(d.mean())
+    resid = d - mean
+    groups = df[group_col].to_numpy() if group_col in df else np.arange(n)
+    sums = pd.Series(resid).groupby(pd.Series(groups).to_numpy()).sum().to_numpy()
+    se = float(np.sqrt((sums ** 2).sum())) / n if n else float("nan")
+    return {"n": n, "diff": mean, "se": se,
+            "t": mean / se if se > 0 else float("nan")}
+
+
 def to_pnl_frame(priced: pd.DataFrame) -> pd.DataFrame:
     """Rename the prop columns onto the shapes `src/market/pnl.py` expects.
 
@@ -354,4 +527,24 @@ def to_pnl_frame(priced: pd.DataFrame) -> pd.DataFrame:
     df["home_win"] = df["over_hit"].astype(bool)
     df["model"] = df["p_model"]
     df["league"] = df["p_league"]
+    if "p_matchup" in df.columns:
+        df["matchup"] = df["p_matchup"]
     return df.sort_values(["date", "game_pk", "prop_stat", "prop_line"]).reset_index(drop=True)
+
+
+def to_maker_frame(priced: pd.DataFrame) -> pd.DataFrame:
+    """`to_pnl_frame` plus the two columns a resting order needs.
+
+    `market_id` says which market's hourly candles are this contract's price
+    path, and `first_pitch_ts` is when the order is cancelled. Both come off
+    the archive row rather than being inferred, so a contract with no game
+    start on file simply cannot be quoted and is dropped — an order that
+    cannot be cancelled at a known first pitch is not a pre-game order.
+    """
+    df = to_pnl_frame(priced)
+    if "market_id" not in df.columns or "game_start" not in df.columns:
+        raise ValueError("priced frame carries no market_id / game_start")
+    df = df[df["game_start"].notna()].copy()
+    df["first_pitch_ts"] = [int(pd.Timestamp(str(s)).timestamp())
+                            for s in df["game_start"]]
+    return df.reset_index(drop=True)

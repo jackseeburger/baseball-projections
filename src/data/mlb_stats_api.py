@@ -60,6 +60,13 @@ PITCHING_FIELDS = {
     "hits": "h",
     "atBats": "ab",
     "sacFlies": "sf",
+    # Doubles and triples allowed, for the same reason and at the same price
+    # (none — they are re-parsed from responses already cached).
+    # `src/market/matchup.py` needs them to build a pitcher's extra-base and
+    # BABIP rates *allowed* in exactly the columns the hitter side works in, so
+    # one estimator prices both ends of a plate appearance.
+    "doubles": "doubles",
+    "triples": "triples",
 }
 
 # Stats API field → our column

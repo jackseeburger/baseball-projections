@@ -511,7 +511,15 @@ def first_fill(candles, side: str, limit: float, first_pitch_ts: int | None = No
     """
     if candles is None:
         return None                 # market never archived: it cannot fill
-    if isinstance(candles, pd.DataFrame):
+    if isinstance(candles, dict):
+        # The packed form `candle_index` builds: one dict of numpy arrays per
+        # market. A prop book asks this question millions of times, so the
+        # arrays are sliced once at index time rather than re-extracted here.
+        ts = candles["end_period_ts"]
+        if len(ts) == 0:
+            return None
+        low, high, vol = candles["price_low"], candles["price_high"], candles["volume"]
+    elif isinstance(candles, pd.DataFrame):
         if candles.empty:
             return None
         ts = candles["end_period_ts"].to_numpy(dtype="int64")
@@ -550,13 +558,27 @@ CANDLE_FIELDS = ["end_period_ts", "price_low", "price_high", "price_close",
 
 
 def candle_index(candles: pd.DataFrame) -> dict:
-    """market_id → the arrays the maker exam needs, built once per exam."""
+    """market_id → {column: numpy array}, sorted by hour, built once per exam.
+
+    Packed as arrays rather than as one small DataFrame per market because a
+    prop book has a hundred thousand markets and asks about each of them once
+    per (model, margin, half): building 100k frames, and re-extracting their
+    columns on every question, dominated everything else in the exam. The
+    moneyline's 876 markets never noticed.
+    """
     out = {}
     if candles is None or len(candles) == 0:
         return out
     cols = [c for c in CANDLE_FIELDS if c in candles.columns]
-    for market_id, g in candles.sort_values("end_period_ts").groupby("market_id"):
-        out[str(market_id)] = g[cols].reset_index(drop=True)
+    df = candles.sort_values(["market_id", "end_period_ts"], kind="stable")
+    mids = df["market_id"].astype(str).to_numpy()
+    packed = {c: (df[c].to_numpy(dtype="int64") if c == "end_period_ts"
+                  else pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float))
+              for c in cols}
+    starts = np.flatnonzero(np.concatenate([[True], mids[1:] != mids[:-1]]))
+    ends = np.concatenate([starts[1:], [len(mids)]])
+    for lo, hi in zip(starts, ends):
+        out[mids[lo]] = {c: packed[c][lo:hi] for c in cols}
     return out
 
 
@@ -638,13 +660,15 @@ def maker_bet_frame(df: pd.DataFrame, model: str, candles: dict, margin: float,
 
 def _first_live(cd, start_ts: int, first_pitch_ts: int, column: str):
     """`column` in the first archived hour the order is live in, or None."""
-    if cd is None or len(cd) == 0 or column not in cd:
+    if cd is None or column not in cd:
         return None
-    ts = cd["end_period_ts"].to_numpy(dtype="int64")
+    ts = np.asarray(cd["end_period_ts"], dtype="int64")
+    if ts.size == 0:
+        return None
     keep = (ts > start_ts) & (ts <= first_pitch_ts)
     if not keep.any():
         return None
-    v = cd[column].to_numpy(dtype=float)[keep]
+    v = np.asarray(cd[column], dtype=float)[keep]
     good = np.isfinite(v)
     return float(v[good][0]) if good.any() else None
 
@@ -674,7 +698,7 @@ def _marketable(cd, start_ts: int, first_pitch_ts: int, side: str,
 
 
 def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRAWS,
-                    seed: int = 0) -> dict:
+                    seed: int = 0, group_col: str | None = None) -> dict:
     """Money metrics for one maker cell.
 
     Three denominators, because a maker has three honest ones. **Per posted
@@ -683,6 +707,12 @@ def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRA
     themselves were. **Per game** puts every model on the same 800-odd-game
     footing whether or not it wanted to quote. ROI (profit over capital at
     risk) is reported too, because it is the number the taker table is in.
+
+    `group_col` makes both bootstraps **clustered**, and props need it: one
+    game carries dozens of contracts on the same afternoon's at bats, and
+    resampling rows would report an interval far tighter than the data
+    supports. On moneylines there is one order per game and it changes
+    nothing.
     """
     empty = {"n_posted": 0, "n_filled": 0, "fill_rate": float("nan"),
              "marketable_rate": float("nan"),
@@ -701,8 +731,9 @@ def maker_summarize(bets: pd.DataFrame, n_games: int, draws: int = BOOTSTRAP_DRA
     # The denominator that counts is what we *quoted*, filled or not: an order
     # that never traded still represents capital the strategy asked to risk.
     quoted = bets["quoted"].to_numpy(dtype=float)
-    roi_lo, roi_hi = bootstrap_roi_ci(profit, stake, draws, seed)
-    pnl_lo, pnl_hi = bootstrap_roi_ci(profit, quoted, draws, seed)
+    groups = bets[group_col].to_numpy() if group_col and group_col in bets else None
+    roi_lo, roi_hi = bootstrap_roi_ci(profit, stake, draws, seed, groups=groups)
+    pnl_lo, pnl_hi = bootstrap_roi_ci(profit, quoted, draws, seed, groups=groups)
     total = float(profit.sum())
     return {
         "n_posted": int(len(bets)),
@@ -733,14 +764,16 @@ def maker_evaluate(df: pd.DataFrame, model: str, candles: dict, margin: float,
                    fraction: float = DEFAULT_KELLY_FRACTION,
                    cap: float = DEFAULT_KELLY_CAP, hours: int = MAKER_HOURS,
                    anchor: str = "close", maker_round_cents: bool = False,
-                   draws: int = BOOTSTRAP_DRAWS, seed: int = 0) -> dict:
+                   draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
+                   group_col: str | None = None) -> dict:
     """Metrics for one (model, margin, staking) maker cell."""
     bets = maker_bet_frame(df, model, candles, margin, venue, staking, fraction,
                            cap, hours=hours, anchor=anchor,
                            maker_round_cents=maker_round_cents)
     row = {"venue": venue.name, "model": model, "margin": margin,
            "staking": staking, "n_games": int(len(df))}
-    row.update(maker_summarize(bets, len(df), draws=draws, seed=seed))
+    row.update(maker_summarize(bets, len(df), draws=draws, seed=seed,
+                               group_col=group_col))
     return row
 
 
@@ -775,17 +808,24 @@ def add_maker_controls(df: pd.DataFrame, models: list[str], seed: int = 0) -> tu
     return out, names
 
 
-def split_halves(df: pd.DataFrame, date_col: str = "date") -> tuple:
+def split_halves(df: pd.DataFrame, date_col: str = "date",
+                 cut: str | None = None) -> tuple:
     """(first half, second half) of the game window by date.
 
     The margin is a free parameter and a free parameter chosen on the data it
     is scored on is not a result. It is chosen on the first half of the season
     and scored on the second, and both halves are reported so the reader can
     see whether the choice travelled.
+
+    `cut` pins the boundary date rather than taking this frame's own median,
+    so several tables over slightly different row sets — a Brier table, a
+    taker table, a maker grid — can be guaranteed to be split in the same
+    place.
     """
     d = df.sort_values(date_col).reset_index(drop=True)
-    dates = pd.Index(sorted(d[date_col].astype(str).unique()))
-    cut = dates[len(dates) // 2]
+    if cut is None:
+        dates = pd.Index(sorted(d[date_col].astype(str).unique()))
+        cut = dates[len(dates) // 2]
     first = d[d[date_col].astype(str) < cut].reset_index(drop=True)
     second = d[d[date_col].astype(str) >= cut].reset_index(drop=True)
     return first, second
@@ -808,25 +848,30 @@ def prepare_maker(preds: pd.DataFrame, closes: pd.DataFrame, venue: str = "kalsh
     return df
 
 
-def run_maker_exam(preds: pd.DataFrame, closes: pd.DataFrame, candles: pd.DataFrame,
-                   models: list[str], margins=MAKER_MARGINS, venue: Venue = KALSHI,
-                   stakings=("flat", "kelly"), fraction: float = DEFAULT_KELLY_FRACTION,
-                   cap: float = DEFAULT_KELLY_CAP, hours: int = MAKER_HOURS,
-                   anchor: str = "close", maker_round_cents: bool = False,
-                   draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
-                   split: bool = True) -> pd.DataFrame:
-    """Every model at every margin, on each half of the season, plus controls.
+def maker_grid(df: pd.DataFrame, candles: pd.DataFrame, models: list[str],
+               margins=MAKER_MARGINS, venue: Venue = KALSHI,
+               stakings=("flat", "kelly"), fraction: float = DEFAULT_KELLY_FRACTION,
+               cap: float = DEFAULT_KELLY_CAP, hours: int = MAKER_HOURS,
+               anchor: str = "close", maker_round_cents: bool = False,
+               draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
+               split: bool = True, group_col: str | None = None,
+               date_col: str = "date", cut: str | None = None) -> pd.DataFrame:
+    """Every model at every margin, on each half of the window, plus controls.
+
+    Takes an already-joined frame — one row per order the strategy could post,
+    carrying `date`, `game_pk`, `market_id`, `first_pitch_ts`, `p_home_close`
+    and `home_win` — so a moneyline (one order per game) and a player prop
+    (dozens per game) run the same grid rather than two copies of it.
 
     Rows carry a `half` label: `first` is where the margin may be chosen,
     `second` is where the number that counts is scored, and `all` is the whole
     window for reference.
     """
-    df = prepare_maker(preds, closes, venue.name, hours)
     df, control_names = add_maker_controls(df, models, seed=seed)
     index = candle_index(candles)
     halves = {"all": df}
     if split:
-        first, second = split_halves(df)
+        first, second = split_halves(df, date_col, cut)
         halves.update({"first": first, "second": second})
     rows = []
     for half, sub in halves.items():
@@ -837,12 +882,26 @@ def run_maker_exam(preds: pd.DataFrame, closes: pd.DataFrame, candles: pd.DataFr
                 for staking in stakings:
                     row = maker_evaluate(sub, model, index, margin, venue, staking,
                                          fraction, cap, hours, anchor,
-                                         maker_round_cents, draws, seed)
+                                         maker_round_cents, draws, seed,
+                                         group_col=group_col)
                     row["half"] = half
-                    row["first_date"] = str(sub["date"].min())
-                    row["last_date"] = str(sub["date"].max())
+                    row["first_date"] = str(sub[date_col].min())
+                    row["last_date"] = str(sub[date_col].max())
                     rows.append(row)
     return pd.DataFrame(rows)
+
+
+def run_maker_exam(preds: pd.DataFrame, closes: pd.DataFrame, candles: pd.DataFrame,
+                   models: list[str], margins=MAKER_MARGINS, venue: Venue = KALSHI,
+                   stakings=("flat", "kelly"), fraction: float = DEFAULT_KELLY_FRACTION,
+                   cap: float = DEFAULT_KELLY_CAP, hours: int = MAKER_HOURS,
+                   anchor: str = "close", maker_round_cents: bool = False,
+                   draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
+                   split: bool = True) -> pd.DataFrame:
+    """The moneyline maker exam: join the closes, then run the grid."""
+    df = prepare_maker(preds, closes, venue.name, hours)
+    return maker_grid(df, candles, models, margins, venue, stakings, fraction,
+                      cap, hours, anchor, maker_round_cents, draws, seed, split)
 
 
 def choose_margin(res: pd.DataFrame, model: str, staking: str = "flat",

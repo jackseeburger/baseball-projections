@@ -49,6 +49,19 @@ CLOSE_COLUMNS = [
 ]
 
 
+# The hourly price path, for the maker exam (see the candle section below).
+# One row per (market, hour) over the last `CANDLE_HOURS_BEFORE` hours before
+# first pitch — the window a pre-game limit order can plausibly rest for. The
+# same shape serves game markets and player props, so `src/market/pnl.py` reads
+# one format for both contracts.
+CANDLE_COLUMNS = [
+    "market_id", "game_pk", "end_period_ts",
+    "yes_bid_close", "yes_ask_close",
+    "price_open", "price_high", "price_low", "price_close", "volume",
+]
+CANDLE_HOURS_BEFORE = 24        # how long before first pitch the order can rest
+
+
 def _ts(iso: str) -> int:
     return int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp())
 
@@ -269,8 +282,30 @@ def _prop_row(market: dict, candles: list[dict]) -> dict | None:
     }
 
 
+def prop_candle_rows(market: dict, candles: list[dict],
+                     hours_before: int = CANDLE_HOURS_BEFORE) -> list[dict]:
+    """The last `hours_before` hours of one prop market's candles, before first pitch.
+
+    Same shape as the moneyline candle archive (`candle_rows`, CANDLE_COLUMNS)
+    so the maker exam reads one format for both contracts. `game_pk` is left at
+    0 here because a prop market's game is assigned later, by the same
+    schedule join the closes go through; `prop_candle_frame` fills it in.
+
+    Nothing at or after first pitch is kept: an in-game print is not a price a
+    pre-game resting order could ever have been filled at.
+    """
+    ev = kalshi.parse_event(market.get("event_ticker", ""))
+    if not ev.get("game_start"):
+        return []
+    fp = _ts(ev["game_start"])
+    rows = candle_rows(candles, market["ticker"], 0)
+    return [r for r in rows
+            if fp - hours_before * 3600 < r["end_period_ts"] <= fp]
+
+
 def kalshi_prop_closes(season: int, session=None, markets: list[dict] | None = None,
                        workers: int = 6, pace_seconds: float = 0.0,
+                       on_market=None, candle_hours: int = CANDLE_HOURS_BEFORE,
                        **kwargs) -> list[dict]:
     """Pre-first-pitch close for every settled prop market that traded.
 
@@ -281,12 +316,21 @@ def kalshi_prop_closes(season: int, session=None, markets: list[dict] | None = N
 
     YES on every prop series is "at least N", i.e. **over** `prop_line`, so
     `p_over_close` needs no orientation the way a moneyline does.
+
+    `on_market(market_id, row, candles)` is called once per fetched market, in
+    the main thread, with the close row (or None) and the market's pre-pitch
+    hourly candles. Two things ride on it. The **candles cannot be
+    reconstructed later** — Kalshi serves them only while the market is young
+    enough — and they are what the maker exam needs, so this pass keeps them
+    rather than throwing them away after reading their last point. And a run
+    of tens of thousands of requests that dies halfway should cost minutes,
+    not hours, so the caller checkpoints from the same callback.
     """
     markets = markets if markets is not None else kalshi_settled_props(
         season, session=session, **kwargs)
     local = threading.local()
 
-    def fetch(m: dict) -> dict | None:
+    def fetch(m: dict) -> tuple:
         sess = session
         if sess is None:
             if not hasattr(local, "session"):
@@ -299,20 +343,46 @@ def kalshi_prop_closes(season: int, session=None, markets: list[dict] | None = N
                 period_minutes=60, session=sess)
         except Exception as exc:       # one bad market must not sink the run
             logger.warning("candlesticks failed for %s: %s", m["ticker"], exc)
-            return None
+            return None, []
         if pace_seconds:
             time.sleep(pace_seconds)
-        return _prop_row(m, candles)
+        return _prop_row(m, candles), prop_candle_rows(m, candles, candle_hours)
 
     rows: list[dict] = []
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        for i, row in enumerate(pool.map(fetch, markets), 1):
+        for i, (m, (row, candles)) in enumerate(
+                zip(markets, pool.map(fetch, markets)), 1):
             if row is not None:
                 rows.append(row)
+            if on_market is not None:
+                on_market(m["ticker"], row, candles)
             if i % 2000 == 0:
                 logger.info("props: %d/%d markets, %d with a pre-pitch close",
                             i, len(markets), len(rows))
     return rows
+
+
+def prop_candle_frame(rows: list[dict], closes: pd.DataFrame) -> pd.DataFrame:
+    """Prop candle rows + the closes frame → CANDLE_COLUMNS with real `game_pk`.
+
+    The candles are collected market by market during the closes pass, before
+    any schedule join has happened, so the game is attached here from the
+    closes frame that pass produced. A market with no close row has no game
+    and is dropped — nothing can be scored against it.
+    """
+    if not rows:
+        return pd.DataFrame(columns=CANDLE_COLUMNS)
+    df = pd.DataFrame(rows)
+    if closes is None or len(closes) == 0:
+        return pd.DataFrame(columns=CANDLE_COLUMNS)
+    pk = dict(zip(closes["market_id"].astype(str),
+                  closes["game_pk"].astype("int64")))
+    df["game_pk"] = df["market_id"].astype(str).map(pk)
+    df = df[df["game_pk"].notna()].copy()
+    df["game_pk"] = df["game_pk"].astype("int64")
+    df = df[CANDLE_COLUMNS].drop_duplicates(
+        subset=["market_id", "end_period_ts"], keep="last")
+    return df.sort_values(["game_pk", "market_id", "end_period_ts"]).reset_index(drop=True)
 
 
 def prop_frame(rows: list[dict], schedule: pd.DataFrame, resolver=None) -> pd.DataFrame:
@@ -464,14 +534,6 @@ def to_frame(rows: list[dict], schedule: pd.DataFrame) -> pd.DataFrame:
 # path is reconstructable after the fact — but only until we need it, hence the
 # archive. One row per (market, hour) over the last 24 hours before first pitch,
 # which is the window a pre-game limit order can plausibly rest for.
-
-CANDLE_COLUMNS = [
-    "market_id", "game_pk", "end_period_ts",
-    "yes_bid_close", "yes_ask_close",
-    "price_open", "price_high", "price_low", "price_close", "volume",
-]
-CANDLE_HOURS_BEFORE = 24        # how long before first pitch the order can rest
-
 
 def _dollars(node, field: str):
     """`{"close_dollars": "0.5100"}` → 0.51; missing or unparseable → None."""
