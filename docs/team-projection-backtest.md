@@ -67,8 +67,19 @@ things:
    every remaining game's starter — the one leak here that would look like
    skill.
 
+**One bug the guard's third clause found.** The Stats API lists a game
+suspended on one night and finished on another under a single `game_pk` on
+*both* dates, each marked Final and each carrying the final score — four of
+them in 2025. Counted once each, four clubs finish the season with 163 to 165
+games, the as-of standings double-count those results and the Monte Carlo
+draws four remaining games twice. `regular_season_games` now keeps the later
+row, which is the date the result became known, and `season_outcomes`
+reconciles the wins counted off the schedule against the wins the API's own
+final table reports. All 300 club-seasons of 2015–2025 agree exactly; before
+the fix, four or five clubs a season did not.
+
 The guard is unit-tested by construction rather than by inspection
-(`tests/test_eval/test_team_season.py`, 37 tests). The central one builds the
+(`tests/test_eval/test_team_season.py`, 44 tests). The central one builds the
 same synthetic 30-club season twice — identical up to the cutoff, and 20-0
 blow-outs for the *other* side after it — and asserts the two projections are
 equal column for column, Monte Carlo output included. A second fixture makes
@@ -101,7 +112,7 @@ curve is read off it and off the Brier scores.
 | `chain` | the production projection |
 | `record_500` | the club's current record, .500 the rest of the way. In the Monte Carlo this is every club at .500, which is exactly the coin-flip control [playoff-odds-validation.md](playoff-odds-validation.md) has scored against since the first run |
 | `record_wpct` | the current record extrapolated at the club's own season-to-date win rate, capped at .250/.750 so a 2-1 start is not a 121-win club |
-| `preseason` | a projection made before the season and never updated: last season's run rates regressed 162 games toward the league. Same numbers at every cutoff, by construction |
+| `preseason` / `preseason_light` | a projection made before the season and never updated: last season's run rates regressed half way to the league (162 games of ballast) or a third of the way (81). Same numbers at every cutoff, by construction. Two shrinkages because which is the stronger preseason baseline is an empirical question, and the table below reports the one that beats us harder — a choice made in the baseline's favour, declared rather than quietly optimised |
 | `coin_flip` | no information at all: half of each club's schedule won, and the league's own base rates for the four probabilities (12/30 in October since 2022, 10/30 before it; 6/30, 2/30, 1/30) |
 
 Paired differences are computed on the same club, the same date and the same
