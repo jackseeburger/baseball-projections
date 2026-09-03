@@ -37,8 +37,12 @@ Arms at every as-of date:
     record_wpct        the club's current record, extrapolated at its own
                        season-to-date win rate.
     preseason          a projection made before the season and never updated:
-                       last season's run rates, regressed. Same numbers at
-                       every cutoff, by construction.
+                       last season's run rates, regressed half way to the
+                       league. Same numbers at every cutoff, by construction.
+    preseason_light    the same arm with a third of the way instead of half.
+                       Two shrinkages because which is the stronger preseason
+                       baseline is an empirical question, and the doc reports
+                       the better of them.
     coin_flip          no information at all: 81 wins for everybody and the
                        league base rate for every probability.
 
@@ -83,7 +87,17 @@ DEFAULT_SEASONS = tuple(y for y in range(2015, 2026) if y not in EXCLUDED_SEASON
 # the ball. Two, matching `scripts/run_playoff_odds.PRIOR_SEASONS`.
 PRIOR_SEASONS = 2
 PRIOR_HITTER_CACHE = OUT_DIR / "hitter_seasons_backtest.parquet"
-ARMS = ("chain", "record_500", "record_wpct", "preseason", "coin_flip")
+ARMS = ("chain", "record_500", "record_wpct", "preseason", "preseason_light",
+        "coin_flip")
+# The preseason arm is run at two shrinkages rather than one, and the *better*
+# of the two is what the doc reports as the preseason baseline. Half is the
+# textbook year-ahead regression for a club's run differential; a third is the
+# lighter version, and which one wins is an empirical question this backtest
+# happens to be able to answer. Picking the stronger of two is a choice made
+# in the baseline's favour, which is the safe direction for a claim about our
+# own model, and it is declared rather than quietly optimised.
+PRESEASON_BALLASTS = {"preseason": ts.PRESEASON_REGRESS_GAMES,
+                      "preseason_light": 81.0}
 
 
 # ─── fetch ───
@@ -260,10 +274,14 @@ def project_season(season: int, data: dict, *, n_sims: int, step_days: int,
     if data["prior_standings"] is None:
         raise FileNotFoundError(
             f"{season}: the preseason arm needs {season - 1} final standings")
-    pre_strength = ts.strength_preseason(data["prior_standings"],
-                                         pre_split.state.team_ids)
-    pre_frame = ts.project(pre_split, pre_strength, "preseason",
-                           n_sims=n_sims, seed=season)
+    pre_frames = {
+        arm: ts.project(
+            pre_split,
+            ts.strength_preseason(data["prior_standings"],
+                                  pre_split.state.team_ids,
+                                  regress_games=ballast),
+            arm, n_sims=n_sims, seed=season)
+        for arm, ballast in PRESEASON_BALLASTS.items()}
 
     frames = []
     for i, as_of in enumerate(cutoffs):
@@ -284,7 +302,8 @@ def project_season(season: int, data: dict, *, n_sims: int, step_days: int,
                                  n_sims=n_sims, seed=seed))
         frames.append(ts.project(split, ts.strength_own_rate(split),
                                  "record_wpct", n_sims=n_sims, seed=seed))
-        frames.append(rebase_preseason(pre_frame, split))
+        for pre_frame in pre_frames.values():
+            frames.append(rebase_preseason(pre_frame, split))
         frames.append(coin_flip_frame(split))
         if verbose:
             print(f"  {season} {as_of}: {split.games_played} played, "
@@ -420,7 +439,7 @@ def ascii_curve(scored: pd.DataFrame, metric: str = "brier_playoffs",
     lo, hi = float(np.nanmin(wide.to_numpy())), float(np.nanmax(wide.to_numpy()))
     span = max(hi - lo, 1e-9)
     marks = {"chain": "C", "record_500": "F", "record_wpct": "W",
-             "preseason": "P", "coin_flip": "X"}
+             "preseason": "P", "preseason_light": "L", "coin_flip": "X"}
     lines = [f"{metric}: {lo:.4f} (left) to {hi:.4f} (right)",
              "  " + " ".join(f"{marks[a]}={a}" for a in arms)]
     for bucket, row in wide.iterrows():
