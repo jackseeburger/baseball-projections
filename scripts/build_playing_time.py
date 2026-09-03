@@ -3,11 +3,14 @@
     # today's projection -> data/parquet/playing_time_ros.parquet
     python3 scripts/build_playing_time.py --cutoff 2026-09-02
 
-    # walk-forward score: four methods x two cutoffs vs realized PA
+    # walk-forward score: five methods x two cutoffs vs realized PA
     python3 scripts/build_playing_time.py --score
 
     # the 2025 selection curve the blend's parameters were chosen from
     python3 scripts/build_playing_time.py --sweep --season 2025
+
+    # the injured-list return-time distribution, fitted on 2023-2025
+    python3 scripts/build_playing_time.py --il-table
 
 The math lives in `src/projections/playing_time.py` (pure functions over
 DataFrames). This file is only the fetch/assemble layer: it pulls 40-man
@@ -37,12 +40,16 @@ from src.data.mlb_stats_api import (
     fetch_season_hitting,
     fetch_team_hitting_game_logs,
     fetch_teams,
+    fetch_transactions,
 )
+from src.projections import il_returns
 from src.projections.playing_time import (
     BLEND_ANCHOR_GAMES,
     BLEND_WEIGHT_LONG,
     BLEND_WEIGHT_SHORT,
     METHODS,
+    PRODUCTION_METHOD,
+    USE_IL_RETURNS,
     logistic_from_anchors,
     absolute_errors,
     horizon_weight,
@@ -87,7 +94,48 @@ SCORE_END = SCORE_SEASONS[SEASON]["score_end"]
 # Constant blend weights the sweep traces MAE against at each cutoff.
 SWEEP_WEIGHTS = tuple(i / 20 for i in range(21))
 
+# Last day of each regular season, from the schedule feed. A spell still open
+# on that day is where the return-time distribution censors: he did not come
+# back, but the season ran out before we could find out whether he would.
+REGULAR_SEASON_END = {
+    2022: "2022-10-05", 2023: "2023-10-02", 2024: "2024-09-30",
+    2025: "2025-09-28", 2026: "2026-09-27",
+}
+
+# The return-time distribution is estimated on the three seasons *before* the
+# one being projected and never on the season itself: 2023-2025 for the 2026
+# table, 2022-2024 for the 2025 one. Three seasons is about 3,000 injured-list
+# stints and 4,500 options, which is enough for a day-by-day curve per list
+# type and recent enough to reflect the current lists (the 15-day position-
+# player list became a 10-day list in 2020, and the 2023-2025 curves already
+# show that).
+IL_FIT_SEASONS = 3
+
 logger = logging.getLogger("build_playing_time")
+
+
+def il_fit_seasons(season: int = SEASON) -> tuple[int, ...]:
+    """The seasons the return-time distribution for `season` is fitted on."""
+    return tuple(range(season - IL_FIT_SEASONS, season))
+
+
+def il_survival(season: int = SEASON, refresh: bool = False) -> pd.DataFrame:
+    """The Kaplan-Meier return-time table for projecting `season`."""
+    seasons = il_fit_seasons(season)
+    tx = pd.concat([fetch_transactions(s, refresh=refresh) for s in seasons],
+                   ignore_index=True)
+    table = il_returns.fit(tx, REGULAR_SEASON_END)
+    logger.info(f"return-time distribution fitted on {seasons}: "
+                f"{table['type'].nunique()} spell types, {len(table)} rows")
+    return table
+
+
+def active_fractions(roster: pd.DataFrame, events: pd.DataFrame,
+                     table: pd.DataFrame, cutoff: str, horizon_end: str):
+    """Expected share of the horizon each unavailable hitter is back for."""
+    horizon_days = (pd.Timestamp(horizon_end) - pd.Timestamp(cutoff)).days
+    return il_returns.expected_active_fractions(roster, events, table, cutoff,
+                                                horizon_days)
 
 
 def games_remaining(schedule: pd.DataFrame, cutoff: str, end: str) -> pd.DataFrame:
@@ -138,8 +186,17 @@ def build(cutoff: str, refresh: bool = False) -> pd.DataFrame:
     schedule = fetch_schedule(cutoff, SEASON_END)
     remaining = games_remaining(schedule, cutoff, SEASON_END)
     roster = rosters[cutoff]
+    fractions = None
+    if USE_IL_RETURNS:
+        events = il_returns.parse_events(fetch_transactions(SEASON, refresh=refresh))
+        fractions = active_fractions(roster, events, il_survival(SEASON, refresh),
+                                     cutoff, SEASON_END)
+        logger.info(f"expected returns: {len(fractions)} unavailable hitters dated, "
+                    f"mean expected active fraction "
+                    f"{fractions['active_fraction'].mean():.3f}")
     proj = project_playing_time(roster, logs, remaining, cutoff,
-                                team_logs=team_logs, method="blend")
+                                team_logs=team_logs, method=PRODUCTION_METHOD,
+                                active_fractions=fractions)
 
     active = roster["status_code"].map(is_active)
     n_active, n_il = int(active.sum()), int(roster["status_code"].map(is_injured).sum())
@@ -180,35 +237,61 @@ def _frames_for(season: int, refresh: bool = False):
     # The scoring horizon is cutoff -> score_end, not cutoff -> end of season,
     # so projections and realizations cover the same games.
     remaining = {c: games_remaining(schedule, c, score_end) for c in cutoffs}
-    return {c: rosters[c] for c in cutoffs}, logs, team_logs, remaining, score_end
+    rosters = {c: rosters[c] for c in cutoffs}
+    # The expected-return fractions for `blend_il`, one frame per cutoff. The
+    # survival table comes from the seasons *before* this one and the spell
+    # dates from this season's transactions strictly before each cutoff, so
+    # nothing a projection could not have known enters here.
+    events = il_returns.parse_events(fetch_transactions(season, refresh=refresh))
+    table = il_survival(season, refresh=refresh)
+    fractions = {c: active_fractions(rosters[c], events, table, c, score_end)
+                 for c in cutoffs}
+    return rosters, logs, team_logs, remaining, score_end, fractions
 
 
 def score(season: int = SEASON, refresh: bool = False) -> pd.DataFrame:
     """The headline table: every method at every cutoff, plus the paired tests."""
-    rosters, logs, team_logs, remaining, score_end = _frames_for(season, refresh)
+    rosters, logs, team_logs, remaining, score_end, fractions = _frames_for(
+        season, refresh)
     table = walk_forward_scores(rosters, logs, team_logs, remaining, score_end,
-                                methods=METHODS)
+                                methods=METHODS,
+                                active_fractions_by_cutoff=fractions)
     print(f"\nWalk-forward: projected at each cutoff from data strictly before it, "
           f"scored on realized PA through {score_end}.")
     print(table.round(3).to_string(index=False))
+
+    print(f"\nExpected returns fitted on {il_fit_seasons(season)}, applied at each "
+          f"cutoff (blend_il):")
+    for cutoff in sorted(fractions):
+        f = fractions[cutoff]
+        by_type = (f.groupby("spell_type")
+                   .agg(n=("active_fraction", "size"),
+                        median_elapsed=("elapsed_days", "median"),
+                        mean_fraction=("active_fraction", "mean")))
+        n_out = int((rosters[cutoff]["status_code"] != "A").sum())
+        print(f"  {cutoff}: {len(f)} of {n_out} unavailable hitters dated")
+        print("    " + by_type.round(3).to_string().replace("\n", "\n    "))
 
     # MAE differences hitter by hitter. The methods saw the same players and
     # the same season, so the paired SE is the honest one — most of the
     # variance in either MAE is common and cancels.
     rows = []
     for cutoff, projections, real, universe in walk_forward_projections(
-            rosters, logs, team_logs, remaining, score_end, methods=METHODS):
+            rosters, logs, team_logs, remaining, score_end, methods=METHODS,
+            active_fractions_by_cutoff=fractions):
         errors = {m: absolute_errors(p, real, universe=universe)
                   for m, p in projections.items()}
         horizon = (pd.Timestamp(score_end) - pd.Timestamp(cutoff)).days
-        for other in ("last_30", "season_share", "uniform"):
-            d = paired_difference(errors["blend"], errors[other])
-            rows.append({"cutoff": str(cutoff), "horizon_days": horizon,
-                         "blend_vs": other, "n": d["n"],
-                         "mean_mae_diff": d["mean"], "se": d["se"], "t": d["t"]})
+        for focus, others in (("blend", ("last_30", "season_share", "uniform")),
+                              ("blend_il", ("blend", "last_30", "season_share"))):
+            for other in others:
+                d = paired_difference(errors[focus], errors[other])
+                rows.append({"cutoff": str(cutoff), "horizon_days": horizon,
+                             "method": focus, "vs": other, "n": d["n"],
+                             "mean_mae_diff": d["mean"], "se": d["se"], "t": d["t"]})
     paired = pd.DataFrame(rows)
-    print("\nPaired per-hitter MAE difference (blend minus the other method; "
-          "negative means the blend is better):")
+    print("\nPaired per-hitter MAE difference (the method minus the one it is "
+          "compared against; negative means the method is better):")
     print(paired.round(3).to_string(index=False))
     return table
 
@@ -224,7 +307,7 @@ def sweep(season: int = SEASON, refresh: bool = False) -> pd.DataFrame:
     swept grid points and `h` the club-median games remaining at that cutoff.
     Nothing about 2026 enters.
     """
-    rosters, logs, team_logs, remaining, score_end = _frames_for(season, refresh)
+    rosters, logs, team_logs, remaining, score_end, _ = _frames_for(season, refresh)
     rows, curves, horizons = [], {}, {}
     for cutoff, projections, real, universe in walk_forward_projections(
             rosters, logs, team_logs, remaining, score_end,
@@ -309,6 +392,45 @@ def _fit_logistic(curves: dict, horizons: dict):
     return best
 
 
+# Days the printed return-time table reports the survival curve at. The whole
+# curve is a few hundred rows per type; these are the ones worth reading.
+IL_TABLE_DAYS = (7, 10, 14, 21, 30, 45, 60, 90)
+
+
+def il_table(season: int = SEASON, refresh: bool = False) -> pd.DataFrame:
+    """Print the return-time distribution the projection reads.
+
+    `S(d)` is the probability a spell of that type is still running after `d`
+    days; `P(back within a month)` reads the same curve conditionally for a
+    hitter who went on the list today.
+    """
+    seasons = il_fit_seasons(season)
+    tx = pd.concat([fetch_transactions(s, refresh=refresh) for s in seasons],
+                   ignore_index=True)
+    spells = pd.concat(
+        [il_returns.build_spells(il_returns.parse_events(tx[tx["season"] == s]),
+                                 REGULAR_SEASON_END[s]) for s in seasons],
+        ignore_index=True)
+    table = il_returns.survival_table(spells)
+    counts = spells.groupby("type").agg(
+        spells=("returned", "size"), returns=("returned", "sum"),
+        median_days=("exit_day", "median"))
+    counts["censored"] = counts["spells"] - counts["returns"]
+    print(f"\nSpells from {seasons}, censored at the end of each regular season:")
+    print(counts.to_string())
+
+    curve = pd.DataFrame(
+        {f"S({d})": {t: float(il_returns.survival_at(table, t, d))
+                     for t in sorted(table["type"].unique())}
+         for d in IL_TABLE_DAYS})
+    curve["P(back <= 30d | out now)"] = [
+        1.0 - float(il_returns.survival_at(table, t, 30))
+        for t in curve.index]
+    print("\nSurvival S(d) — the chance a spell is still running after d days:")
+    print(curve.round(3).to_string())
+    return table
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -322,12 +444,17 @@ def main() -> None:
     parser.add_argument("--season", type=int, default=SEASON,
                         choices=sorted(SCORE_SEASONS),
                         help="season to score or sweep (default: %(default)s)")
+    parser.add_argument("--il-table", action="store_true",
+                        help="print the injured-list / option return-time "
+                             "distribution the projection reads")
     parser.add_argument("--refresh", action="store_true",
                         help="re-pull cached Stats API responses")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
-    if args.sweep:
+    if args.il_table:
+        il_table(season=args.season, refresh=args.refresh)
+    elif args.sweep:
         sweep(season=args.season, refresh=args.refresh)
     elif args.score:
         score(season=args.season, refresh=args.refresh)
