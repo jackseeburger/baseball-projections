@@ -106,7 +106,7 @@ def league_order(s: int, league_rows: list[int], ctx: TiebreakContext) -> list[i
 @dataclass
 class LeagueSeeds:
     division_winners: list[int]   # seeds 1-3 (row indices)
-    wild_cards: list[int]         # seeds 4-6
+    wild_cards: list[int]         # seeds 4 onward
     order: list[int]
 
     @property
@@ -114,7 +114,15 @@ class LeagueSeeds:
         return self.division_winners + self.wild_cards
 
 
-def seed_league(s: int, league_id: int, ctx: TiebreakContext) -> LeagueSeeds:
+def seed_league(s: int, league_id: int, ctx: TiebreakContext,
+                n_wild_cards: int = 3) -> LeagueSeeds:
+    """The league's playoff field for sim `s`, seeded best-first.
+
+    `n_wild_cards` is the size of the wild-card field per league: three since
+    2022, two from 2012 to 2021 (`bracket.PlayoffFormat`). It is a parameter
+    because the walk-forward team backtest scores seasons in both eras, and a
+    six-club field in a five-club season would be scoring a different outcome.
+    """
     teams = ctx.state.teams
     rows = [i for i, l in enumerate(teams["league_id"]) if l == league_id]
     order = league_order(s, rows, ctx)
@@ -124,5 +132,5 @@ def seed_league(s: int, league_id: int, ctx: TiebreakContext) -> LeagueSeeds:
         if div_of[t] not in seen:
             seen.add(div_of[t])
             winners.append(t)
-    wild = [t for t in order if t not in winners][:3]
+    wild = [t for t in order if t not in winners][:int(n_wild_cards)]
     return LeagueSeeds(winners, wild, order)
