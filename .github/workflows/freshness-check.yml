@@ -1,0 +1,145 @@
+name: Freshness check
+
+# The staleness alarm docs/automation.md promises. The Layer 1 jobs are
+# GitHub Actions cron, and GitHub cron drops scheduled runs silently: two of
+# the four workflows have fired exactly once in their lifetime, both hours
+# late, and the site served a stale board for a day with nothing to show for
+# it. Nothing turns red when a run is dropped, because nothing ran. So this
+# job runs on its own schedule, ages every production artifact against the
+# budget table in scripts/check_freshness.py, and opens a GitHub issue when
+# something is older than it should be.
+#
+# WHY THE CRON MINUTES LOOK LIKE THAT — do not "tidy" them to :00.
+# GitHub's docs say the start of an hour is the highest-load window and the
+# likeliest to have runs dropped, and every existing slot in this repo sits on
+# exactly such a minute (:00, :15, :30, :45) — that is our leading hypothesis
+# for the drops. These three are deliberately odd, off the quarter-hour and
+# off any multiple of five, so the watchdog is not queued behind the same
+# stampede as the jobs it is watching. An alarm that shares its failure mode
+# with the thing it watches is not an alarm.
+#
+# The slots are ~8h apart and each sits after something is due:
+#   05:53 — after the 23:00 market snapshot, and before the 09:15 nightly
+#           odds run, so a missed night surfaces before the next one hides it
+#   13:23 — after nightly odds (09:15 / 11:45 backup) and statcast (12:30)
+#   21:47 — after the 16:30 market snapshot
+on:
+  schedule:
+    - cron: "53 5 * * *"
+    - cron: "23 13 * * *"
+    - cron: "47 21 * * *"
+  workflow_dispatch:
+
+# Read the checkout, write the alarm issue. Nothing else.
+permissions:
+  contents: read
+  issues: write
+
+# Deliberately NOT in the `data-commits` concurrency group. This job commits
+# nothing, and an alarm that waits behind the job it is alarming about is
+# useless.
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # No pip install: check_freshness.py is stdlib only, so there is no
+      # dependency resolution step between a stale board and a human hearing
+      # about it.
+      - name: Check artifact freshness
+        id: check
+        run: |
+          if python scripts/check_freshness.py > freshness-report.txt 2>&1; then
+            echo "stale=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat freshness-report.txt
+          {
+            echo '```'
+            cat freshness-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One issue, reused forever: found by the marker in its body, updated in
+      # place while the problem lasts, closed when everything is fresh again.
+      # A new issue per run would be noise, and noise is how the last alarm
+      # got ignored.
+      - name: Open, update or close the alarm issue
+        uses: actions/github-script@v7
+        env:
+          STALE: ${{ steps.check.outputs.stale }}
+        with:
+          script: |
+            const fs = require('fs');
+            const MARKER = '<!-- freshness-watchdog -->';
+            const TITLE = 'Stale production data (freshness watchdog)';
+            const stale = process.env.STALE === 'true';
+            const report = fs.readFileSync('freshness-report.txt', 'utf8');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+                           `/actions/runs/${context.runId}`;
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find(i => !i.pull_request && (i.body || '').includes(MARKER));
+
+            if (stale) {
+              const body = [
+                MARKER,
+                'A Layer 1 production artifact is older than its staleness budget.',
+                '',
+                '```',
+                report.trim(),
+                '```',
+                '',
+                `Checked at ${new Date().toISOString()} by [this run](${runUrl}).`,
+                '',
+                'Budgets live in `scripts/check_freshness.py`. GitHub drops scheduled',
+                'runs without a trace, so start with the producing workflow\'s run',
+                'history: a missing run is the common cause, a failed one is rarer.',
+                'This issue is updated in place on every check and closed',
+                'automatically once everything is back within budget.',
+              ].join('\n');
+
+              if (existing) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, body,
+                });
+                core.notice(`Updated stale-data issue #${existing.number}`);
+              } else {
+                const created = await github.rest.issues.create({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  title: TITLE, body, labels: ['factory:incident'],
+                });
+                core.notice(`Opened stale-data issue #${created.data.number}`);
+              }
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Everything is back within budget as of ${new Date().toISOString()} ` +
+                      `([run](${runUrl})). Closing.\n\n\`\`\`\n${report.trim()}\n\`\`\``,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, state: 'closed',
+              });
+              core.notice(`Closed stale-data issue #${existing.number}`);
+            }
+
+      # Fail the run too, so the workflow's own history shows the outage and a
+      # watcher on this repo gets the usual failure notification.
+      - name: Fail if stale
+        if: steps.check.outputs.stale == 'true'
+        run: |
+          echo "::error::Production data is stale — see the report above and the open issue."
+          exit 1
