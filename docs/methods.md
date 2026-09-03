@@ -125,28 +125,39 @@ each doing what it is good at.
 
 Prefer this over either extreme when the data supports it. See BAS-60.
 
-**We have now tried it, and on this problem it lost** (BAS-58,
-[contact-quality.md](contact-quality.md)). The HSGP over (EV, LA) was built
-exactly as described — refitted at every walk-forward fold, r-hat 1.01, stable
-length scales, a surface that is recognizably expected wOBA on contact — and
-the covariate it produces is *significantly worse* than six hand-chosen
-aggregates of the same two coordinates, on every component of both sides of the
-ball. Six plain numbers beat the flexible model by more than the flexible model
-beat the baseline.
+**One version of it has now been tried and lost — but read carefully which
+version** (BAS-58, [contact-quality.md](contact-quality.md), §7).
 
-The reason is specific and worth carrying forward, because it is a property of
-the *pattern* and not of the GP. The surface maps a batted ball to what it was
-worth, so averaging it over a player's batted balls returns approximately what
-those balls were worth — which is approximately what his realized outcome rate
-says, and the hierarchical model downstream already reads his realized outcome
-rate. **A learned measurement that is trained to predict the same outcome the
-second stage is fitted on will tend to collapse onto that outcome.** The hand-
-chosen aggregates survive because they keep the *inputs* (how hard, at what
-angle) separate from the *value*, and the information the outcome does not
-already carry lives in that separation. So the question to ask before reaching
-for stage one is not "can a flexible model learn this surface" — it can — but
-"is the thing it learns a different quantity from the one stage two already
-has?"
+The GP itself worked. An HSGP over (EV, LA) refitted at every walk-forward fold
+— r-hat 1.01, zero divergences, stable length scales — produced a surface that
+is recognizably expected wOBA on contact, learned rather than asserted, and it
+still clears the gate against the baseline on some components. What lost is the
+*covariate built from it*: collapsed to one number per player, it is
+significantly worse than six hand-chosen aggregates of the same two coordinates.
+
+**What we tested is not the construction described above.** The tutorial puts
+the GP *inside* the hierarchical model that does the pooling. Ours sat in
+**front** of a Marcel that pools with a fixed ballast, as a pre-computed
+per-player average — a measurement device feeding a separate estimator, not a
+term in a joint model. The two-stage pattern as the tutorial performs it remains
+**untested here**. Do not cite this result as evidence against it.
+
+The lesson that does generalize is narrower and worth carrying: **a learned
+measurement trained to predict the same outcome the second stage is fitted on
+will tend to collapse onto that outcome** when it is summarized per entity. The
+surface maps a batted ball to what it was worth, so averaging it over a player's
+batted balls returns roughly what those balls were worth — roughly what his
+realized outcome rate already says. The hand-chosen aggregates survive precisely
+because they keep the *inputs* (how hard, at what angle) separate from the
+*value*, and the information the outcome does not already carry lives in that
+separation.
+
+So the question before reaching for stage one is not "can a flexible model learn
+this surface" — it can — but **"is the thing it learns a different quantity from
+the one stage two already has, and am I keeping it separate or averaging it
+away?"** Two follow-ups name the untested versions: a surface predicting *next*
+season's outcome rather than this one's, and the GP placed inside the pooling
+model as the tutorial does it.
 
 ## 4. Neither — and this is the category people forget
 
