@@ -13,6 +13,11 @@ actually good at.
 It exists because "we should do more hierarchical Bayes and more ML" is not a
 plan. Both sentences are true and neither tells you what to build on Monday.
 
+For the finished picture — every layer marked model or arithmetic, and where
+each one stands today — see [target-system.md](target-system.md). That doc
+answers "what does this look like when it is done"; this one answers "what do
+we build next, and in what order".
+
 ## A calibration, before anything else
 
 The public evidence is worth knowing, because it sets expectations that are
