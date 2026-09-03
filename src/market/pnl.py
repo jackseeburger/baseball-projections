@@ -233,12 +233,18 @@ def max_drawdown(profit) -> float:
 
 
 def bootstrap_roi_ci(profit, stake, draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
-                     alpha: float = 0.05) -> tuple[float, float]:
+                     alpha: float = 0.05, groups=None) -> tuple[float, float]:
     """Percentile CI on ROI, resampling *games* with replacement.
 
     Bets are one per game and settle independently, so the game is the
     resampling unit. The ratio ΣP/ΣS is re-formed inside each draw, which is
     what makes this a CI on ROI rather than on mean profit.
+
+    `groups` makes that a **cluster** bootstrap: pass a per-bet label (the
+    game) when several bets settle on the same event, as they do for player
+    props — a hitter's 1+, 2+ and 3+ hits are one afternoon's at-bats, and a
+    row-wise bootstrap would treat them as three independent observations and
+    report a CI far tighter than the data supports.
     """
     profit = np.asarray(profit, dtype=float)
     stake = np.asarray(stake, dtype=float)
@@ -246,15 +252,26 @@ def bootstrap_roi_ci(profit, stake, draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
     if n == 0 or stake.sum() <= 0:
         return (0.0, 0.0)
     rng = np.random.default_rng(seed)
-    idx = rng.integers(0, n, size=(draws, n))
-    tot_p = profit[idx].sum(axis=1)
-    tot_s = stake[idx].sum(axis=1)
+    if groups is None:
+        idx = rng.integers(0, n, size=(draws, n))
+        tot_p = profit[idx].sum(axis=1)
+        tot_s = stake[idx].sum(axis=1)
+    else:
+        labels, codes = np.unique(np.asarray(groups), return_inverse=True)
+        order = np.argsort(codes, kind="stable")
+        starts = np.searchsorted(codes[order], np.arange(labels.size))
+        members = np.split(order, starts[1:])
+        sum_p = np.array([profit[m].sum() for m in members])
+        sum_s = np.array([stake[m].sum() for m in members])
+        pick = rng.integers(0, labels.size, size=(draws, labels.size))
+        tot_p = sum_p[pick].sum(axis=1)
+        tot_s = sum_s[pick].sum(axis=1)
     roi = np.divide(tot_p, tot_s, out=np.zeros_like(tot_p), where=tot_s > 0)
     return (float(np.quantile(roi, alpha / 2)), float(np.quantile(roi, 1 - alpha / 2)))
 
 
 def summarize(bets: pd.DataFrame, draws: int = BOOTSTRAP_DRAWS,
-              seed: int = 0) -> dict:
+              seed: int = 0, group_col: str | None = None) -> dict:
     """Money metrics for one model at one venue and one threshold.
 
     ROI is total profit over total stake. `clv` is the closing-line-value
@@ -271,7 +288,8 @@ def summarize(bets: pd.DataFrame, draws: int = BOOTSTRAP_DRAWS,
                 "max_drawdown": 0.0, "total_fees": 0.0}
     profit = bets["profit"].to_numpy(dtype=float)
     stake = bets["stake"].to_numpy(dtype=float)
-    lo, hi = bootstrap_roi_ci(profit, stake, draws, seed)
+    groups = bets[group_col].to_numpy() if group_col and group_col in bets else None
+    lo, hi = bootstrap_roi_ci(profit, stake, draws, seed, groups=groups)
     return {
         "n_bets": int(len(bets)),
         "hit_rate": float(bets["won"].mean()),
@@ -366,12 +384,12 @@ def bet_frame(df: pd.DataFrame, model: str, venue: Venue, threshold: float = 0.0
 def evaluate(df: pd.DataFrame, model: str, venue: Venue, threshold: float = 0.0,
              staking: str = "flat", fraction: float = DEFAULT_KELLY_FRACTION,
              cap: float = DEFAULT_KELLY_CAP, draws: int = BOOTSTRAP_DRAWS,
-             seed: int = 0) -> dict:
+             seed: int = 0, group_col: str | None = None) -> dict:
     """Metrics for one (model, venue, threshold, staking) cell."""
     bets = bet_frame(df, model, venue, threshold, staking, fraction, cap)
     row = {"venue": venue.name, "model": model, "threshold": threshold,
            "staking": staking, "n_games": int(len(df))}
-    row.update(summarize(bets, draws=draws, seed=seed))
+    row.update(summarize(bets, draws=draws, seed=seed, group_col=group_col))
     return row
 
 
