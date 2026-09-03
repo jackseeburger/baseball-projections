@@ -31,6 +31,19 @@ no card posted the delta is exactly zero, because the club's own recent cards
 are what it is measured against, and the served probability is the scored one
 to the last bit.
 
+Two further terms are assembled here and **not** served, because neither beat
+that model out of sample (docs/market-benchmark-2026.md):
+
+    park     both rates × the venue's run factor, with the park divided out of
+             the top-down half first                                ← park.py
+    defence  C's bottom-up runs allowed + the club's BABIP-allowed
+             residual against the league                         ← defence.py
+
+An infinite ballast on either one (`ChainConfig.park_ballast`,
+`ChainConfig.def_ballast`) returns the chain without it to the last bit, which
+is how the nightly asks for the gated model and how the sweeps stay clean
+nestings.
+
 Two objects and two functions:
 
     ChainInputs.from_logs()  season-long frames (pitching logs, hitting logs,
