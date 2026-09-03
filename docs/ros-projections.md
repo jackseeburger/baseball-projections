@@ -55,28 +55,38 @@ ballast for every component, one age curve. `marcel_tuned`
 is the same estimator with those made per-component parameters, fitted
 walk-forward on **2020–2024 only** and frozen in `src/eval/marcel_params.json`.
 Scored on the holdout — season-level 2025 and 2026 plus the three 2026
-cutoffs — it wins 15 of 25 component × cell cells at a pooled **−1.10% ±
-0.36** of stock Marcel's MAE, so the gate rule swaps it in.
+cutoffs — it wins 17 of 25 component × cell cells at a pooled **−1.10% ±
+0.30** of stock Marcel's MAE with no component worse than stock, so the gate
+rule swaps it in. (Those are the Sept 3
+[constrained refit](backtest-baselines.md#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate);
+the first fit was 15/25 at −1.10% ± 0.36 and left ISO at +0.02%.)
 
-Tuned minus stock on the three cutoffs the page shows, on the two components
-the tuning actually moved:
+Tuned minus stock on the three cutoffs the page shows, scored on the page's
+own arm set:
 
 | Component | May 1 | Jul 1 | Aug 1 |
 |---|---|---|---|
-| **k_rate** tuned | **.0267** | **.0292** | .0346 |
-| k_rate stock | .0278 | .0296 | **.0343** |
-| | −3.9% | −1.4% | +0.8% |
-| **babip** tuned | **.0267** | **.0340** | **.0415** |
-| babip stock | .0269 | .0350 | .0424 |
-| | −0.7% | −2.8% | −2.1% |
+| **k_rate** tuned | **.02739** | **.03031** | .03441 |
+| k_rate stock | .02825 | .03072 | **.03436** |
+| | −3.1% | −1.3% | +0.2% |
+| **babip** tuned | **.02674** | **.03469** | .04247 |
+| babip stock | .02702 | .03554 | **.04243** |
+| | −1.0% | −2.4% | +0.1% |
+| **iso** tuned | .03550 | **.04100** | **.05477** |
+| iso stock | **.03490** | .04121 | .05559 |
+| | +1.7% | −0.5% | −1.5% |
+| **hr_rate** tuned | .01004 | **.01160** | **.01472** |
+| hr_rate stock | **.00989** | .01170 | .01508 |
+| | +1.6% | −0.9% | −2.4% |
 
-K% wants half stock's ballast (100 PA) and much sharper recency (1 / 0.4 /
-0.2 against 5/4/3); BABIP wants triple it (600 BIP) and flat recency — the
+K% wants half stock's ballast (100 PA) and sharper recency (1 / 0.4 / 0.4
+against 5/4/3); BABIP wants triple it (600 BIP) and flat recency — the
 ballast moving toward each component's stabilization point in both
 directions at once. **BB% keeps Tango's constants exactly**: an inner
 validation inside the tuning window said a BB% fit would not travel, and the
 holdout agreed, so the frozen file ships stock for it and the live BB%
-column is byte-identical to what it was. HR/PA and ISO come out even.
+column is byte-identical to what it was. HR/PA and ISO used to come out even
+and now go the right way, which is what the constrained age curve bought.
 
 The four components the accuracy page scores exclude BABIP (its 100-trial
 floor leaves four players at Aug 1), so on *that* table the tuned arm beats
