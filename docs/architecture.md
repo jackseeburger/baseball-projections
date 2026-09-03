@@ -150,6 +150,10 @@ Consequences:
   September playoff odds can't distinguish models; use per-game Brier and
   component MAE.
 
+Which *method* a station reaches for — hierarchical Bayes, machine learning,
+or neither — is a separate question from the bar it has to clear, and is
+answered in [methods.md](methods.md).
+
 ## 4. Edge thesis — where we expect to win, and how we'd know
 
 Ordered by (expected payoff × how soon we can test it).
