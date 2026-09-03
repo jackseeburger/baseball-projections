@@ -270,7 +270,7 @@ def score(season: int = SEASON, refresh: bool = False) -> pd.DataFrame:
                         mean_fraction=("active_fraction", "mean")))
         n_out = int((rosters[cutoff]["status_code"] != "A").sum())
         print(f"  {cutoff}: {len(f)} of {n_out} unavailable hitters dated")
-        print(by_type.round(3).to_string().replace("\n", "\n    ").rjust(4))
+        print("    " + by_type.round(3).to_string().replace("\n", "\n    "))
 
     # MAE differences hitter by hitter. The methods saw the same players and
     # the same season, so the paired SE is the honest one — most of the
