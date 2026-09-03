@@ -88,14 +88,21 @@ ARMS = ("chain", "record_500", "record_wpct", "preseason", "coin_flip")
 
 # ─── fetch ───
 
-def season_paths(season: int, out_dir: Path) -> dict[str, Path]:
+def season_paths(season: int, out_dir: Path, tag: str = "") -> dict[str, Path]:
+    """Where one season's fetched inputs and its projections live.
+
+    `tag` names a projection *variant* — the sensitivity runs write
+    `projections_2024_w0.parquet` beside `projections_2024.parquet` and share
+    every fetched input, so a second pass over the same seasons costs no
+    requests.
+    """
     return {
         "schedule": out_dir / f"schedule_{season}.parquet",
         "standings": out_dir / f"standings_{season}.parquet",
         "teams": out_dir / f"teams_{season}.parquet",
         "pitching": out_dir / f"pitching_logs_{season}.parquet",
         "hitting": out_dir / f"hitting_logs_{season}.parquet",
-        "projections": out_dir / f"projections_{season}.parquet",
+        "projections": out_dir / f"projections_{season}{tag}.parquet",
     }
 
 
@@ -291,10 +298,10 @@ def project_season(season: int, data: dict, *, n_sims: int, step_days: int,
 
 # ─── score ───
 
-def load_projections(seasons, out_dir: Path) -> pd.DataFrame:
+def load_projections(seasons, out_dir: Path, tag: str = "") -> pd.DataFrame:
     frames = []
     for season in seasons:
-        p = season_paths(season, out_dir)["projections"]
+        p = season_paths(season, out_dir, tag)["projections"]
         if p.exists():
             frames.append(pd.read_parquet(p))
     if not frames:
@@ -476,13 +483,20 @@ def main() -> None:
                         help="spacing of the as-of dates")
     parser.add_argument("--window-days", type=int, default=ts.STARTER_WINDOW_DAYS,
                         help="how far ahead posted probables are allowed to "
-                             "reach, matching the nightly job. 0 switches the "
-                             "per-game starter term off entirely, which is the "
-                             "sensitivity check on that window")
+                             "reach, matching the nightly job's 7. 0 lets the "
+                             "starter term reach only the games on the as-of "
+                             "date itself, which is strictly less than a live "
+                             "run sees and is the sensitivity check on a "
+                             "window that, in a season already played, is fed "
+                             "by who actually started")
     parser.add_argument("--rotation-size", type=int, default=DEFAULT_ROTATION_SIZE)
     parser.add_argument("--workers", type=int, default=8,
                         help="parallel game-log fetches")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
+    parser.add_argument("--tag", default="",
+                        help="suffix for the projection checkpoints, so a "
+                             "sensitivity run (e.g. --window-days 0 --tag _w0) "
+                             "sits beside the main one and shares every fetch")
     parser.add_argument("--force", action="store_true",
                         help="re-fetch and re-project seasons already on disk")
     parser.add_argument("--markdown", action="store_true")
@@ -501,7 +515,7 @@ def main() -> None:
 
     if args.stage in ("project", "all"):
         for season in seasons:
-            path = season_paths(season, args.out_dir)["projections"]
+            path = season_paths(season, args.out_dir, args.tag)["projections"]
             if path.exists() and not args.force:
                 print(f"{season}: projections on disk, skipping", flush=True)
                 continue
@@ -514,7 +528,7 @@ def main() -> None:
             print(f"  wrote {path} ({len(frame)} rows)", flush=True)
 
     if args.stage in ("score", "all"):
-        projections = load_projections(seasons, args.out_dir)
+        projections = load_projections(seasons, args.out_dir, args.tag)
         outcomes = load_outcomes(seasons, args.out_dir)
         scored = tb.attach_outcomes(projections, outcomes)
         n_dates = int(scored.groupby("season")["as_of"].nunique().sum())
