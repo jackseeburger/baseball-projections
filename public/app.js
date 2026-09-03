@@ -1729,7 +1729,8 @@ function renderBracket(teams) {
 // scripts/build_accuracy_json.py generates from the scoring scripts.
 // Nothing here is hard-coded: this renderer only formats and labels.
 // ══════════════════════════════════════════════════════════════════
-const ACCURACY_ORDER = ["ros_backtest", "components", "game_odds", "playoff_odds_control"];
+const ACCURACY_ORDER = ["ros_backtest", "pitcher_ros_backtest", "components",
+                        "game_odds", "playoff_odds_control"];
 
 function esc(v) {
   return String(v == null ? "" : v)

@@ -7,8 +7,10 @@ only number this site used to show — are still there, labelled, one column
 to the right.
 
 Shipped Sept 2, 2026 · engine switched from stock to tuned Marcel the same
-day · built by `scripts/build_ros_projections.py` · math in
-`src/projections/ros.py` · constants in `src/eval/marcel_params.json` ·
+day · **pitchers added Sept 3, 2026** ([below](#pitchers-sept-3-2026)) ·
+built by `scripts/build_ros_projections.py` · math in
+`src/projections/ros.py` and `src/projections/pitcher_ros.py` · constants in
+`src/eval/marcel_params.json` and `src/eval/marcel_pitcher_params.json` ·
 data at `public/data/projections/{latest,YYYY-MM-DD}.json`.
 
 ## Why the model changed
@@ -220,6 +222,69 @@ so `woba_ros` is a per-PA rate. Fed the 2026 league line (K% .2207, BB%
 the league wOBA computed from the raw 2026 counts — the sanity test in
 `tests/test_projections/test_ros.py`.
 
+## Pitchers (Sept 3, 2026)
+
+The same file now carries a `pitchers` array beside `players`, and the
+leaderboard and player pages have a hitters/pitchers toggle. Nothing in the
+hitter half of the contract moved: `players`, `n_hitters`, `engine`, `arms`,
+`components` and the wOBA block are exactly what they were, which is why the
+page's hitter views needed no changes at all.
+
+**The two halves of a pitcher's line are held to different standards, and the
+document says which is which in a field rather than only in prose.**
+
+| Half | What it is | Gated? |
+|---|---|---|
+| the **rates** | `marcel_pitcher_tuned` fed the harness's own training frame at the cutoff — K%, BB%, HR/BF, BABIP against. `pitcher_engine` names it. | **yes** — each beat league average, the previous season *and* season to date out of sample on five cells ([backtest-baselines.md](backtest-baselines.md#the-pitcher-side-of-station-a--sept-3-2026)) |
+| the **batters faced** | a projected workload. `batters_faced_method` reads `"structural"`. | **no** — there is no station B for pitchers, and this does not pretend there is |
+
+The rates are the same estimator the hitter side runs, with pitcher constants;
+the components register into the harness under a `p_` prefix and the
+projection the page shows is bit-for-bit the arm that was scored. Four of the
+five are columns. The fifth, the walks-plus-hit-batsmen rate, is what station
+E's FIP term consumes: it is scored in the same run and it feeds the odds, but
+a column labelled BB% has to mean walks, so it is not on the page.
+
+The workload is arithmetic on the pitcher's own recent usage:
+
+    projected BF = club games remaining
+                 x appearance rate per club game   (trailing 30 days and
+                   season blended half and half, each regressed toward the
+                   pitcher's role's rate with 10 club games of ballast)
+                 x batters faced per appearance    (regressed toward the
+                   role's average with 5 appearances of ballast)
+                 x station B's expected active fraction, for a pitcher who is
+                   hurt or optioned
+
+Role is read off the workload itself, not a depth chart: a pitcher averaging
+at least 12 batters an outing is being used as a starter this month, whatever
+he was in April, and an opener is correctly a reliever. That is crude. It is a
+denominator, it is labelled as one, and the gated half does not depend on it.
+A pitcher with no 2026 appearances is not projected at all — there is no usage
+to extrapolate, and inventing one would be a depth chart rather than a
+projection.
+
+`fip_ros` is the same FIP arithmetic station E's starter term runs, on the
+same coefficients, re-centred so a league-average line comes back at the
+league's own runs allowed per nine. Innings come from the league's batters
+faced per inning; projecting a pitcher's own would be another ungated
+structural choice for no gain.
+
+The pitcher block also fails on its own. If the pitcher season table or the
+Stats API roster call is missing, `pitchers` comes back empty and the hitter
+projection is still fresh — the site's established product does not go stale
+because a newer block could not be built.
+
+**On the 2026-09-03 board** (`python scripts/build_ros_projections.py`, the
+nightly's exact invocation): 599 hitters and **676 pitchers**, 249 used as
+starters and 427 as relievers, 21,830 projected batters faced in total.
+Skubal 29.8% K / 5.2% BB, Skenes 28.1% / 6.9%, Wheeler 27.6% / 7.2%, Webb
+21.2% / 6.3%, Mason Miller 40.3% / 9.5%. The dated snapshot for that day had
+already been written that morning by the previous build and is not
+overwritten — the archive records what was served — so `2026-09-03.json`
+carries no pitcher block and `latest.json` does, exactly as happened with the
+engine switch a day earlier.
+
 ## The file
 
 `public/data/projections/latest.json` is rewritten every night;
@@ -230,10 +295,20 @@ discipline as the playoff odds and the accuracy page. Per hitter:
     {k,bb,hr,babip,iso}_rate_{marcel,marcel_preseason,bayes},
     k_ros, bb_ros, hr_ros, woba_ros
 
+Per pitcher:
+
+    pitcher, name, team_id, team_abbrev, as_of, role, appearances,
+    bf_to_date, bf_ros,
+    {k,bb,hr,babip}_rate_{marcel,marcel_preseason},
+    k_ros, bb_ros, hr_ros, fip_ros
+
 Document level: `as_of`, `through`, `n_hitters`, `engine`,
 `playing_time_method`, `method`, `framing`, `stale`, `stale_reason`, the arm
 labels the page renders, and the wOBA weights, so the file says which wOBA it
-means rather than the page assuming.
+means rather than the page assuming. The pitcher block adds `n_pitchers`,
+`pitcher_engine`, `batters_faced_method`, `pitcher_method`, `pitcher_arms`
+and `pitcher_components` — all additive, all prefixed, so a reader that has
+never heard of pitchers still finds everything it looks for.
 
 **Two models fill this file, so it names both.** `engine` says which Marcel
 filled the rate columns and `playing_time_method` says which station B filled
@@ -265,6 +340,7 @@ tells them apart. From Sept 3 the two agree again.
 | MLB Stats API unreachable | Same — station B cannot be rebuilt, so the previous day's projection carries. |
 | `latest.json` absent entirely | The player and leaderboard pages render as before and say the projection has not been built in this checkout. |
 | A hitter's preseason Bayesian file has no row for him | That comparison cell is a dash. 434 of 599 hitters had one on 2026-09-03. |
+| `pitcher_seasons_api.parquet` absent, or the roster call fails | `pitchers` is empty and `n_pitchers` is 0; the hitter projection is still fresh, and both toggles disable themselves. |
 
 The nightly workflow runs the build before the accuracy page and commits
 `public/data/projections/` alongside the other snapshots.
@@ -303,5 +379,14 @@ The nightly workflow runs the build before the accuracy page and commits
   ([backtest-baselines.md](backtest-baselines.md#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate)).
   What remains is that a multiplier pinned to 1.0 at the peak still shifts the
   population mean; renormalizing it to mean 1 is the next thing to try.
+- **A pitcher's projected batters faced is the weakest number on the page.**
+  It has never been scored against a baseline, because no baseline for it
+  exists in this repository yet. The obvious one — season-to-date appearance
+  share, the pitcher twin of what station B is scored against — is a day's
+  work and would turn `batters_faced_method` from a label into a gate. Until
+  then, read the rate columns and treat the counting columns as scaling.
 - **This is not station C.** Nothing here feeds the run environment or the
-  playoff odds; it is the site's player-level number only.
+  playoff odds; it is the site's player-level number only. The pitcher rates
+  *are* the same estimator station E's starter term runs, but station E keeps
+  stock's constants deliberately, so a refit here cannot move a game price
+  without the game price being re-scored.
