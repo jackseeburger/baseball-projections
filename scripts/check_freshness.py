@@ -4,8 +4,18 @@ docs/automation.md promises a staleness alarm for the nightly jobs. This is it.
 The jobs themselves are GitHub Actions cron, and GitHub cron is best-effort —
 it drops scheduled runs silently and starts the ones it keeps late. When that
 happens nothing in the repo changes, no workflow turns red, and the site keeps
-serving yesterday's board. The only way to notice is to check the *age of the
-output* on a separate schedule and shout.
+serving yesterday's board. So this script checks the *age of the output* on a
+separate schedule and shouts.
+
+It has a faster sibling. `scripts/check_schedules.py` asks the Actions API
+whether each workflow has run since its last cron slot, which catches a dropped
+run the same afternoon instead of a day later. Both ship, because they answer
+different questions: the API knows whether the job RAN, and this file knows
+whether it PRODUCED. A job that runs green and writes nothing — a bad input, a
+silent exception in a `try`, a builder falling back to yesterday's data — is
+invisible to the API check and obvious here. Aim the two at their strengths:
+this table is the correctness backstop, not the outage alarm, and its budgets
+are loose on purpose.
 
 Design notes, in the order they matter:
 
@@ -33,8 +43,9 @@ Design notes, in the order they matter:
   volume; `modal-refit.yml` writes to Modal and W&B. Neither leaves anything in
   the repo, so this script cannot see them, and reaching into R2 would give the
   alarm credentials and a network dependency of its own — the alarm must be the
-  most reliable thing in the system, not the least. They stay uncovered here
-  and want their own check against R2 object timestamps.
+  most reliable thing in the system, not the least. They stay uncovered here.
+  `scripts/check_schedules.py` covers both of them for *did it run*; whether
+  what they wrote is any good still wants a check against R2 object timestamps.
 
 Stdlib only, on purpose: the watchdog workflow installs nothing, so there is no
 dependency resolution step between a stale board and a human finding out.
@@ -90,21 +101,30 @@ class Artifact:
 # late start), and is kept under 24h wherever the job is more frequent than
 # daily so that a whole missed day is always caught.
 #
-# nightly-odds.yml  — 09:15 and 11:45 UTC daily. Worst legitimate gap is 24h
-#   (09:15 to 09:15, with the backup slot only 2h30m behind the first). Budget
-#   36h: a day and a half, so a single missed day shows up as ~48h and trips it
-#   while a 4h-late run — which has already happened once — does not. All three
+# nightly-odds.yml  — 09:23, 12:07 and 14:53 UTC daily. Worst legitimate gap
+#   between good runs is 29h30m: the day's first slot (09:23) followed by only
+#   the next day's last (14:53). Budget 36h leaves 6h30m on top of that, and a
+#   whole missed day is at least 42h30m, so every missed day trips it while a
+#   4h25m-late run — which has already happened once — does not. All three
 #   files below come from that one workflow and each re-stamps `generated_at`
 #   every run, including the paths where the builder falls back to the last
 #   committed data and marks it stale. That is the right signal here: this
 #   script asks "did the job run", not "is the data any good".
 #
-# market-snapshot.yml — 10:00, 16:30 and 23:00 UTC. Worst legitimate gap is 11h
-#   (23:00 to 10:00). One dropped slot stretches that to 17h30m. Budget 20h:
-#   tolerates a single dropped slot plus a 2h30m late start, trips on two
-#   consecutive dropped slots (24h) and on a whole missed day. Tighter than 20h
-#   would cry wolf on the routine single drop; looser would let a missed day
-#   through.
+# market-snapshot.yml — 10:41, 16:37 and 23:11 UTC. Worst legitimate gap is
+#   11h30m (23:11 to 10:41); one dropped slot stretches that to 18h04m. Budget
+#   22h: tolerates a single dropped slot plus a ~4h late start, trips on two
+#   consecutive dropped slots (24h) and on a whole missed day (35h30m). The
+#   20h this table shipped with was computed against the old round-minute slots
+#   and left only 1h56m of slack over a single drop — less than the 1h58m delay
+#   we have actually observed, i.e. tuned to cry wolf.
+#
+# Both budgets stay deliberately loose, because since 2026-09 they are no
+# longer the thing that catches a dropped run: scripts/check_schedules.py asks
+# the Actions API directly and answers the same afternoon. What is left for
+# this table is the question the API cannot answer — did the job that ran
+# actually produce output — so it is allowed to be slow, and it is not allowed
+# to cry wolf.
 # ---------------------------------------------------------------------------
 ARTIFACTS: tuple[Artifact, ...] = (
     Artifact(
@@ -140,7 +160,7 @@ ARTIFACTS: tuple[Artifact, ...] = (
         kind="newest_filename",
         pattern="*.jsonl.gz",
         ts_format="%Y-%m-%dT%H%MZ",
-        budget_hours=20,
+        budget_hours=22,
         required=True,
         workflow="market-snapshot.yml",
     ),
@@ -149,7 +169,7 @@ ARTIFACTS: tuple[Artifact, ...] = (
         path="public/data/market/latest.json",
         kind="json_field",
         field="as_of",
-        budget_hours=20,
+        budget_hours=22,
         required=True,
         workflow="market-snapshot.yml",
     ),
