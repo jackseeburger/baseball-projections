@@ -23,7 +23,7 @@ from src.eval import backtest, frame_provider, score
 from src.eval.baselines import BASELINES
 
 ROOT = Path(__file__).resolve().parent.parent
-COMPONENTS = ["k_rate", "bb_rate", "hr_rate", "iso", "babip"]
+HITTER_COMPONENTS = ["k_rate", "bb_rate", "hr_rate", "iso", "babip"]
 
 
 def main() -> None:
@@ -36,7 +36,7 @@ def main() -> None:
     seasons = pd.read_parquet(ROOT / "data/parquet/hitter_seasons_api.parquet")
     public = pd.read_parquet(ROOT / "data/projections/comparison_2026.parquet")
     tables = []
-    for c in COMPONENTS:
+    for c in HITTER_COMPONENTS:
         ours = pd.read_parquet(ROOT / f"data/projections/{c}_projections_2026.parquet")
         providers = {
             "bayes_preseason": frame_provider(ours, pred_col=f"projected_{c}"),
@@ -66,7 +66,7 @@ def main() -> None:
             "generated_at": datetime.now(timezone.utc).isoformat(),
             "season": 2026,
             "min_trials": args.min_trials,
-            "components": COMPONENTS,
+            "components": HITTER_COMPONENTS,
             "scores": json.loads(out.to_json(orient="records")),
             "mae_rank": json.loads(ranked.reset_index().to_json(orient="records")),
         }

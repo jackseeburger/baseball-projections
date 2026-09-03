@@ -22,8 +22,11 @@ LOCAL_DIR = Path("data/parquet")
 
 # Columns the intra-season aggregation actually needs. Reading only these
 # keeps a 157k-row season under a few MB in memory.
+# `pitcher` rides along because the pitcher side of station A
+# (`src/eval/pitchers.py`) aggregates the very same rows by the other id on
+# them — a batter faced is a plate appearance seen from the mound.
 REQUIRED_COLUMNS = [
-    "batter", "game_pk", "game_date", "game_year", "event",
+    "batter", "pitcher", "game_pk", "game_date", "game_year", "event",
     "is_k", "is_bb", "is_hbp", "is_hit", "is_hr", "is_single",
     "is_double", "is_triple",
 ]

@@ -17,7 +17,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.eval import score, tuning
-from src.eval.backtest import COMPONENTS, backtest
+from src.eval.backtest import COMPONENTS, HITTER_COMPONENTS, backtest
 from src.eval.baselines import (
     MARCEL_BALLAST,
     STOCK_PARAMS,
@@ -74,7 +74,7 @@ class TestReducesToMarcel:
         # Bitwise, not approx: same arithmetic in the same order.
         assert (a["predicted"].to_numpy() == b["predicted"].to_numpy()).all()
 
-    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    @pytest.mark.parametrize("component", sorted(HITTER_COMPONENTS))
     def test_every_component_reduces(self, seasons, component):
         """Same check on all five components, with each one's own columns."""
         s = seasons.assign(ab=550, bip=400, hits_in_play=120, xb_points=180)
@@ -85,7 +85,7 @@ class TestReducesToMarcel:
                          params=STOCK_PARAMS[component])["predicted"].to_numpy()
         assert (a == b).all()
 
-    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    @pytest.mark.parametrize("component", sorted(HITTER_COMPONENTS))
     @pytest.mark.parametrize("age", list(range(19, 43)))
     def test_age_curve_matches_the_stock_one(self, component, age):
         stock = age_adjustment(age, component)
@@ -307,7 +307,7 @@ class TestAgeConstraint:
     correction. These are the rules that make that shape unreachable.
     """
 
-    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    @pytest.mark.parametrize("component", sorted(HITTER_COMPONENTS))
     def test_every_candidate_the_search_can_propose_is_inside(self, component):
         start = tuning.constrain(STOCK_PARAMS[component], component)
         for axis in tuning.AXES:
@@ -315,7 +315,7 @@ class TestAgeConstraint:
                                            constrained=True):
                 assert tuning.age_curve_ok(cand, component), (axis, cand)
 
-    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    @pytest.mark.parametrize("component", sorted(HITTER_COMPONENTS))
     def test_a_fit_lands_inside_the_window(self, component):
         """The real search on real-shaped noise, from a start outside the
         family, still returns something inside it."""
@@ -349,7 +349,7 @@ class TestAgeConstraint:
         """Inside the family the multiplier has a genuine extremum at the peak
         — it cannot be monotone across the age range, which is the shape that
         doubles as a level."""
-        for component in COMPONENTS:
+        for component in HITTER_COMPONENTS:
             for young in tuning.constrained_slope_grid(component, "young"):
                 for old in tuning.constrained_slope_grid(component, "old"):
                     p = MarcelParams(peak_age=28.0, age_slope_young=young,
@@ -493,8 +493,11 @@ class TestParamsFile:
             load_marcel_params(tmp_path / "absent.json", strict=True)
 
     def test_the_committed_file_has_every_component(self):
+        # HITTER_COMPONENTS, not COMPONENTS: importing src.eval.pitchers adds
+        # the pitcher components to the shared registry, and they are fitted
+        # and frozen separately (src/eval/marcel_pitcher_params.json).
         params = load_marcel_params(strict=True)
-        for component in COMPONENTS:
+        for component in HITTER_COMPONENTS:
             assert component in params
             p = params[component]
             assert p.ballast > 0
@@ -503,7 +506,7 @@ class TestParamsFile:
         blob = json.loads(
             (Path(__file__).parent.parent.parent
              / "src/eval/marcel_params.json").read_text())
-        assert set(blob["components"]) == set(COMPONENTS)
+        assert set(blob["components"]) == set(HITTER_COMPONENTS)
         assert blob["in_sample"].keys() == blob["components"].keys()
 
     def test_default_params_come_from_the_committed_file(self, seasons, spec):

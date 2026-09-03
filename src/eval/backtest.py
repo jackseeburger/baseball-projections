@@ -49,7 +49,7 @@ class ComponentSpec:
     id_col: str = "batter"
 
 
-COMPONENTS = {
+HITTER_COMPONENTS = {
     "k_rate": ComponentSpec("k_rate", "k", "pa", binomial=True),
     "bb_rate": ComponentSpec("bb_rate", "bb", "pa", binomial=True),
     "hr_rate": ComponentSpec("hr_rate", "hr", "pa", binomial=True),
@@ -59,10 +59,13 @@ COMPONENTS = {
     "iso": ComponentSpec("iso", "xb_points", "ab", binomial=False),
 }
 
-# The pitcher components register themselves into COMPONENTS under a `p_`
-# prefix when `src.eval.pitchers` is imported, so `backtest("p_k_rate", ...)`
-# and `score()` work with no other change. The import lives at the bottom of
-# this module to avoid a cycle.
+# The registry every caller looks a component up in. It starts as the hitter
+# five; importing `src.eval.pitchers` adds five more under a `p_` prefix, so
+# `backtest("p_k_rate", ...)` and `score()` need no other change. Anything that
+# means specifically *the hitter components* — the hitter params file, the
+# hitter doc tables — should say `HITTER_COMPONENTS` rather than assume this
+# dict has five entries.
+COMPONENTS = dict(HITTER_COMPONENTS)
 
 Provider = Callable[[pd.DataFrame, ComponentSpec, int], pd.DataFrame]
 

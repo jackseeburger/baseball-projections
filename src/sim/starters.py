@@ -9,7 +9,9 @@ The chain, all pure functions over DataFrames so it unit-tests without a
 network:
 
     season/game-log counts ─► marcel_rates()  Marcel-weighted, league-regressed
-                                              K, BB+HBP, HR per batter faced
+                                              K, BB+HBP, HR per batter faced —
+                                              computed by station A's pitcher
+                                              provider, `src/eval/pitchers.py`
                              ─► fip_ra9()     FIP coefficients → runs per 9,
                                               re-centred so a league-average
                                               pitcher gives league RA/9
@@ -27,6 +29,14 @@ fetch (`rate_inputs`) and are shared by both callers of the term —
 `scripts/backtest_game_odds.py` walking a whole season and
 `scripts/run_playoff_odds.py` pricing tonight's slate — so the live odds and
 the scored backtest run the same chain by construction.
+
+**One rate table.** The Marcel-weighted pitcher rates this module runs on are
+not computed here. `marcel_rates` calls `src.eval.pitchers.pitcher_rates`, the
+station A provider, with station E's own constants; the pre-provider arithmetic
+survives as `_marcel_rates_legacy` and `legacy=True` only so the two can be
+pinned together in the tests. That is what keeps station A's site number and
+station E's odds from drifting apart: there is one estimator, and changing it
+moves both, visibly.
 
 Every constant below comes from outside the test set: Marcel's published
 recency weights, the standard FIP coefficients, published rate-stabilization
@@ -87,6 +97,12 @@ MIN_STARTER_IP = 3.0
 
 COMPONENTS = ("k", "bbhbp", "hr")
 RATE_COLS = [f"rate_{c}" for c in COMPONENTS]
+# Short name here -> the station A component that projects it. The rates below
+# are computed by that provider (`src/eval/pitchers.py`), so the two stations
+# share one estimator and one set of constants by construction rather than by
+# two files agreeing for now.
+PITCHER_COMPONENTS = {"k": "p_k_rate", "bbhbp": "p_bbhbp_rate",
+                      "hr": "p_hr_rate"}
 
 
 def normalize_counts(df: pd.DataFrame) -> pd.DataFrame:
@@ -150,9 +166,30 @@ def _ballast_map(ballast) -> dict:
     return {c: float(ballast) for c in COMPONENTS}
 
 
+def marcel_params(weights: tuple = MARCEL_WEIGHTS, ballast=BALLAST_BF) -> dict:
+    """Station E's constants as the harness's `MarcelParams`, one per component.
+
+    The only translation needed is the ballast unit. Here (and in every
+    published stabilization table) a ballast is real batters faced, which land
+    on the *most recent* season's weight; `MarcelParams.ballast` is denominated
+    at the *average* year weight, because that is what makes the estimator
+    scale-free in the weights. The two differ by `w0 / mean(w)`, which is 1.25
+    for 5/4/3.
+    """
+    from src.eval.baselines import MarcelParams
+
+    bal = _ballast_map(ballast)
+    scale = float(weights[0]) / float(np.mean(weights))
+    return {component: MarcelParams(ballast=bal[c] * scale,
+                                    weights=tuple(float(x) for x in weights),
+                                    peak_age=27.0, age_slope_young=0.0,
+                                    age_slope_old=0.0)
+            for c, component in PITCHER_COMPONENTS.items()}
+
+
 def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
                  weights: tuple = MARCEL_WEIGHTS,
-                 ballast=BALLAST_BF) -> pd.DataFrame:
+                 ballast=BALLAST_BF, legacy: bool = False) -> pd.DataFrame:
     """Per-pitcher K, BB+HBP and HR rates per batter faced.
 
     `counts` holds one row per pitcher-season (normalize_counts schema) and may
@@ -165,7 +202,30 @@ def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
     Returns a frame indexed by pitcher with rate_k, rate_bbhbp, rate_hr and
     `bf_weighted` (the effective sample behind those rates). A pitcher with no
     history is simply absent — `starter_ra9_lookup` gives those league average.
+
+    **This is now a call into station A's pitcher provider**
+    (`src/eval/pitchers.pitcher_rates`), not a second implementation of it.
+    Station E and the site therefore cannot drift: the same estimator, the same
+    ballasts and the same recency weights answer both. `legacy=True` runs the
+    original in-module arithmetic instead, kept so the equivalence is testable
+    and so a regression here could never be silent;
+    `tests/test_sim/test_starters.py` pins the two together on a fixed
+    pitcher-season.
     """
+    if legacy:
+        return _marcel_rates_legacy(counts, as_of_season, lg, weights, ballast)
+    from src.eval.pitchers import pitcher_rates
+
+    return pitcher_rates(counts, as_of_season, lg,
+                         params=marcel_params(weights, ballast),
+                         components=PITCHER_COMPONENTS)
+
+
+def _marcel_rates_legacy(counts: pd.DataFrame, as_of_season: int, lg: dict,
+                         weights: tuple = MARCEL_WEIGHTS,
+                         ballast=BALLAST_BF) -> pd.DataFrame:
+    """The pre-provider arithmetic, kept as the reference the provider is
+    pinned against. Nothing in production calls it."""
     w = {as_of_season - i: weights[i] / weights[0] for i in range(len(weights))}
     used = counts[counts["season"].isin(w)].copy()
     if used.empty:
@@ -336,7 +396,7 @@ def rate_inputs(season: int, pitcher_ids, prior_seasons: int = 2,
 
 
 def rate_table(inputs: dict, as_of: str, lg_ra9: float,
-               ballast=BALLAST_BF) -> dict:
+               ballast=BALLAST_BF, legacy: bool = False) -> dict:
     """{pitcher_id: FIP runs/9} using only appearances *strictly before* `as_of`.
 
     Pure — `inputs` is what `rate_inputs` returns. For the nightly job `as_of`
@@ -344,16 +404,21 @@ def rate_table(inputs: dict, as_of: str, lg_ra9: float,
     the log posts) is still excluded, exactly as in the walk-forward backtest.
     `lg_ra9` anchors the FIP constant to the season's run environment, so a
     league-average arm returns the team's own runs-allowed rate unchanged.
+
+    The rates themselves come from station A's pitcher provider; `legacy=True`
+    routes them through the pre-provider arithmetic instead, which exists so
+    the equivalence is testable rather than assumed.
     """
     current = appearances_before(inputs["game_logs"], as_of)
     counts = pd.concat([inputs["prior_counts"], current], ignore_index=True)
-    rates = marcel_rates(counts, inputs["season"], inputs["league"], ballast=ballast)
+    rates = marcel_rates(counts, inputs["season"], inputs["league"],
+                         ballast=ballast, legacy=legacy)
     return starter_ra9_lookup(rates, inputs["league"], lg_ra9)
 
 
 def build_rate_table(as_of: str, pitcher_ids, season: int, lg_ra9: float,
                      ballast=BALLAST_BF, prior_seasons: int = 2,
-                     refresh: bool = False) -> dict:
+                     refresh: bool = False, legacy: bool = False) -> dict:
     """`rate_inputs` + `rate_table` for a single date (the nightly job's case).
 
     The backtest wants the two halves apart — it fetches once and re-slices for
@@ -362,7 +427,7 @@ def build_rate_table(as_of: str, pitcher_ids, season: int, lg_ra9: float,
     """
     inputs = rate_inputs(season, pitcher_ids, prior_seasons=prior_seasons,
                          refresh=refresh)
-    return rate_table(inputs, as_of, lg_ra9, ballast=ballast)
+    return rate_table(inputs, as_of, lg_ra9, ballast=ballast, legacy=legacy)
 
 
 def game_home_prob(team_rates: pd.DataFrame, home_id, away_id, sp_ids,

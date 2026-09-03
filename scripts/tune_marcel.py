@@ -65,7 +65,8 @@ ARM_ORDER = ["marcel_tuned", "marcel_tuned_noage", "marcel", "marcel_preseason",
 def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
                 min_trials: int, passes: int, n_validate: int = 2,
                 constrained: bool = True,
-                league: tuple[str, float] = ("last", 0.0)) -> dict:
+                league: tuple[str, float] = ("last", 0.0),
+                stock_params: dict | None = None) -> dict:
     """Fit inside the tuning window and validate inside it too.
 
     Splits the tuning years into fit years and the last `n_validate` of them,
@@ -79,7 +80,7 @@ def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
     fit_years, val_years = years[:-n_validate], years[-n_validate:]
     fit_splits = tuning.make_splits(seasons, component, fit_years, min_trials)
     val_splits = tuning.make_splits(seasons, component, val_years, min_trials)
-    stock = STOCK_PARAMS[component]
+    stock = (stock_params or STOCK_PARAMS)[component]
     start = stock.replace(league_mode=league[0], league_damp=league[1])
     axes = [a for a in tuning.AXES if a != "league"]
     full, _ = tuning.coordinate_search(fit_splits, spec, start=start,
@@ -108,7 +109,8 @@ def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
 
 def league_mode_choice(seasons: pd.DataFrame, components: list[str],
                        years: list[int], min_trials: int, passes: int,
-                       n_validate: int = 2, constrained: bool = True
+                       n_validate: int = 2, constrained: bool = True,
+                       stock_params: dict | None = None
                        ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Pick "regress toward what?" on the inner validation, never the holdout.
 
@@ -127,7 +129,7 @@ def league_mode_choice(seasons: pd.DataFrame, components: list[str],
         fit_splits = tuning.make_splits(seasons, component, fit_years, min_trials)
         val_splits = tuning.make_splits(seasons, component, val_years, min_trials)
         all_splits = tuning.make_splits(seasons, component, years, min_trials)
-        stock = STOCK_PARAMS[component]
+        stock = (stock_params or STOCK_PARAMS)[component]
         base = tuning.evaluate(val_splits, spec, stock)["mae"]
         for mode, damp in tuning.LEAGUE_GRID:
             start = stock.replace(league_mode=mode, league_damp=damp)
@@ -173,7 +175,8 @@ def league_picks(scores: pd.DataFrame) -> dict[str, tuple[str, float]]:
 def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
          min_trials: int, passes: int, verbose: bool,
          guard: bool = True, constrained: bool = True,
-         picks: dict[str, tuple[str, float]] | None = None
+         picks: dict[str, tuple[str, float]] | None = None,
+         stock_params: dict | None = None,
          ) -> tuple[dict, dict, dict]:
     """Coordinate search per component.
 
@@ -195,6 +198,11 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
     straight line; the restricted arm stays as the control that says whether
     the constrained age term is worth anything at all.
 
+    `stock_params` is the unfitted starting point and the thing the fit is
+    measured against — `STOCK_PARAMS` for hitters, `pitchers.PITCHER_STOCK_PARAMS`
+    for the pitcher components, which is the only difference between the two
+    tuning runs.
+
     `picks` is the per-component projected-league-rate option, already chosen
     on the inner validation by `league_picks`. It is *pinned*, not searched:
     on the full tuning window the in-sample optimum prefers `weighted3` for
@@ -203,11 +211,12 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
     honestly for itself.
     """
     picks = picks or {}
+    stock_params = stock_params or STOCK_PARAMS
     params, restricted, summary = {}, {}, {}
     for component in components:
         spec = COMPONENTS[component]
         splits = tuning.make_splits(seasons, component, years, min_trials)
-        stock = STOCK_PARAMS[component]
+        stock = stock_params[component]
         league = picks.get(component, ("last", 0.0))
         start = stock.replace(league_mode=league[0], league_damp=league[1])
         base = tuning.evaluate(splits, spec, stock)
@@ -241,7 +250,8 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
         print(f"      {bw.to_dict()}")
 
         inner = inner_check(seasons, component, years, min_trials, passes,
-                            constrained=constrained, league=league)
+                            constrained=constrained, league=league,
+                            stock_params=stock_params)
         print(f"    inner validation (fit {inner['fit_years'][0]}-"
               f"{inner['fit_years'][1]}, score {inner['validate_years'][0]}-"
               f"{inner['validate_years'][1]}): tuned {inner['tuned_pct']:+.2f}%, "
@@ -419,14 +429,17 @@ def inner_validation(seasons: pd.DataFrame, components: list[str],
 # --- markdown ----------------------------------------------------------------
 
 def mae_markdown(scores: pd.DataFrame, components: list[str],
-                 cells: list[str]) -> str:
+                 cells: list[str], arm_order: list[str] | None = None) -> str:
+    """`arm_order` names the arms and their row order; the pitcher tuner passes
+    its own, since its arms are not called `marcel_tuned`."""
+    order = arm_order or ARM_ORDER
     lines = ["| Component | Arm | " + " | ".join(cells) + " |",
              "|---|---|" + "---|" * len(cells)]
     for component in components:
         g = scores[scores["component"] == component]
         wide = g.pivot(index="model", columns="cell", values="mae")
         first = True
-        for model in [m for m in ARM_ORDER if m in wide.index]:
+        for model in [m for m in order if m in wide.index]:
             label = f"**{component}**" if first else ""
             first = False
             out = []

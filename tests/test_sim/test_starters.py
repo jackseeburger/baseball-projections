@@ -27,6 +27,68 @@ def frame(rows):
     return pd.DataFrame(rows)
 
 
+# ─── one rate table: station E reads station A's pitcher provider ───
+
+def test_the_rates_are_the_pitcher_providers_rates_on_a_fixed_pitcher_season():
+    """A fixed pitcher-season, pinned three ways.
+
+    `marcel_rates` is now a call into `src/eval/pitchers.pitcher_rates`, so
+    this asserts (a) it equals the pre-provider arithmetic kept as `legacy`,
+    (b) it equals the provider called directly with station E's constants, and
+    (c) it equals the closed form written out by hand. If station A's estimator
+    ever changes under station E, one of these fails instead of the Brier
+    score moving quietly.
+    """
+    from src.eval.pitchers import pitcher_rates
+
+    fixed = frame([counts(543037, 2026, 480, 129, 41, 17, outs=1080),
+                   counts(543037, 2025, 620, 174, 52, 22, outs=1400),
+                   counts(543037, 2024, 590, 152, 60, 24, outs=1310)])
+
+    provider = st.marcel_rates(fixed, 2026, LEAGUE)
+    legacy = st.marcel_rates(fixed, 2026, LEAGUE, legacy=True)
+    direct = pitcher_rates(fixed, 2026, LEAGUE,
+                           params=st.marcel_params(),
+                           components=st.PITCHER_COMPONENTS)
+
+    assert list(provider.columns) == ["bf_weighted", *st.RATE_COLS]
+    for column in provider.columns:
+        assert provider[column].to_numpy() == pytest.approx(
+            legacy[column].to_numpy())
+        assert provider[column].to_numpy() == pytest.approx(
+            direct[column].to_numpy())
+
+    w = [1.0, 0.8, 0.6]
+    bf = 480 * w[0] + 620 * w[1] + 590 * w[2]
+    k = 129 * w[0] + 174 * w[1] + 152 * w[2]
+    ballast = st.BALLAST_BF["k"]
+    assert provider.loc[543037, "bf_weighted"] == pytest.approx(bf)
+    assert provider.loc[543037, "rate_k"] == pytest.approx(
+        (k + ballast * LEAGUE["rate_k"]) / (bf + ballast))
+
+
+def test_the_provider_and_the_legacy_path_agree_on_a_whole_rate_table():
+    """The same equality at the level `backtest_game_odds.py` consumes: a
+    {pitcher: FIP runs/9} dict for a date, both ways."""
+    inputs = sp_inputs()
+    new = st.rate_table(inputs, "2026-04-15", LG_RA9)
+    old = st.rate_table(inputs, "2026-04-15", LG_RA9, legacy=True)
+    assert set(new) == set(old)
+    for pid, value in new.items():
+        assert value == pytest.approx(old[pid])
+
+
+def test_station_e_ballasts_survive_the_units_change():
+    """Station E denominates a ballast in real batters faced; the harness's
+    MarcelParams denominates it at the average year weight. The translation
+    has to be exactly w0/mean(w)."""
+    params = st.marcel_params()
+    for short, component in st.PITCHER_COMPONENTS.items():
+        p = params[component]
+        real = p.ballast * float(np.mean(p.weights)) / p.weights[0]
+        assert real == pytest.approx(st.BALLAST_BF[short])
+
+
 # ─── normalize_counts ───
 
 def test_normalize_counts_folds_walks_and_hbp():

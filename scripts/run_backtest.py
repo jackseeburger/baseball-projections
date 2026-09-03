@@ -22,13 +22,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from src.eval import COMPONENTS, backtest, calibration, score
+from src.eval import HITTER_COMPONENTS, backtest, calibration, score
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seasons", type=Path, required=True)
-    parser.add_argument("--component", choices=sorted(COMPONENTS), required=True)
+    parser.add_argument("--component", choices=sorted(HITTER_COMPONENTS),
+                        required=True)
     parser.add_argument("--train-through", type=int, default=None)
     parser.add_argument("--sweep", action="store_true",
                         help="run all splits 2019→2020 through 2024→2025")
