@@ -20,6 +20,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "tests/fixtures/accuracy"
 SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+            "team_backtest",
             "playoff_odds_control")
 
 

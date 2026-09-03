@@ -12,6 +12,7 @@ Sections:
     ros_backtest          scripts/run_intraseason_backtest.py (needs the PA parquet)
     pitcher_ros_backtest  scripts/run_pitcher_backtest.py     (needs the PA parquet)
     game_odds             scripts/backtest_game_odds.py      (MLB Stats API + R2 market closes)
+    team_backtest         scripts/run_team_backtest.py       (committed 2015-2025 run)
     playoff_odds_control  docs/accuracy-2026.md §2b          (the coin-flip control run)
 
 A section that cannot be regenerated falls back to the newest committed dated
@@ -52,8 +53,10 @@ MARKET_R2_KEY = "market/market_closes_2026.parquet"
 PLAYOFF_ODDS_DIR = ROOT / "public/data/playoff_odds"
 PA_PARQUET = ROOT / "data/parquet/pa_outcomes_2026.parquet"
 PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
+TEAM_BACKTEST_JSON = ROOT / "public/data/team_backtest/2015-2025.json"
 
 SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+            "team_backtest",
             "playoff_odds_control")
 
 # The rest-of-season section: four components (BABIP is 4 players at the Aug 1
@@ -616,6 +619,101 @@ def section_game_odds(payload: dict, market_note: str | None) -> dict:
     }
 
 
+TEAM_ARM_LABELS = {
+    "chain": "Our projection (the served chain)",
+    "record_500": "Current record, .500 the rest of the way",
+    "record_wpct": "Current record, own win rate the rest of the way",
+    "preseason": "Preseason only, never updated",
+    "preseason_light": "Preseason only, lighter regression",
+    "coin_flip": "No information (81 wins, league base rates)",
+}
+# The buckets the through-season rows are cut into, in order.
+TEAM_BUCKETS = ("0-15%", "15-30%", "30-45%", "45-60%", "60-75%", "75-90%",
+                "90-100%")
+
+
+def section_team_backtest(payload: dict) -> dict:
+    """Station G scored: the rest-of-season team projection, walk-forward.
+
+    Read from a committed JSON rather than regenerated, because rebuilding it
+    means ~16,000 Stats API game logs and about an hour of simulation — this
+    is a decade-long backtest, not a nightly job. It is marked stale for that
+    reason, with the run's own date.
+    """
+    by_arm = {r["arm"]: r for r in payload["headline"]}
+    order = [a for a in payload["arms"] if a in by_arm]
+    rows = []
+    for i, arm in enumerate(sorted(order, key=lambda a: by_arm[a]["wins_mae"]),
+                            start=1):
+        r = by_arm[arm]
+        rows.append({
+            "model": arm,
+            "label": TEAM_ARM_LABELS.get(arm, arm),
+            "rank": i,
+            "is_ours": arm == "chain",
+            "is_production": arm == "chain",
+            "is_control": arm in ("coin_flip", "record_500"),
+            "is_market": False,
+            "metrics": {"wins_mae": num(r["wins_mae"]),
+                        "wins_rmse": num(r["wins_rmse"]),
+                        "brier_playoffs": num(r["brier_playoffs"]),
+                        "logloss_playoffs": num(r["logloss_playoffs"]),
+                        "brier_division": num(r["brier_division"])},
+        })
+
+    # The honest half: where the edge goes. One paired difference per bucket,
+    # ours minus the .500-extrapolation control, on playoff Brier.
+    curve = [r for r in payload.get("curve_paired", [])
+             if r.get("against") == "record_500"
+             and r.get("metric") == "brier_playoffs"]
+    curve.sort(key=lambda r: TEAM_BUCKETS.index(r["bucket"])
+               if r.get("bucket") in TEAM_BUCKETS else 99)
+    crossing = next((r["bucket"] for r in curve if (r.get("diff") or 0) >= 0), None)
+    notes = [
+        "Every projection is built from games strictly before its as-of date, "
+        "through the same function the nightly job calls.",
+        f"{payload['n_scored_projections']:,} club-projections per arm over "
+        f"{payload['seasons'] if isinstance(payload['seasons'], int) else len(payload['seasons'])}"
+        f" seasons and {payload['n_as_of_dates']} weekly as-of dates. Standard "
+        f"errors are clustered by season.",
+        "2020 is excluded: a 60-game season with an eight-club-per-league "
+        "bracket is a different question.",
+    ]
+    if crossing:
+        first = curve[0]
+        notes.append(
+            f"The edge is front-loaded. On playoff probability our projection "
+            f"beats the .500 extrapolation by {abs(first['diff']):.4f} of Brier "
+            f"in the first {first['bucket']} of the season and stops beating it "
+            f"at {crossing} — after which it is nominally behind, though never "
+            f"significantly. Projected *wins* stay better all season.")
+    return {
+        "title": "Rest-of-season team projection, walk-forward (2015–2025)",
+        "framing": ("Lower is better in every column. This is the first score of "
+                    "the projection behind the playoff odds, against the naive "
+                    "extrapolations it has to beat."),
+        "source": "scripts/run_team_backtest.py (docs/team-projection-backtest.md)",
+        "as_of": payload.get("generated_at", "")[:10] or None,
+        "n": int(payload["n_scored_projections"]),
+        "n_label": "club-projections per arm",
+        "columns": [{"key": "rank", "label": "#", "type": "rank"},
+                    {"key": "label", "label": "Projection", "type": "text"},
+                    {"key": "wins_mae", "label": "Wins MAE", "type": "rank_value"},
+                    {"key": "wins_rmse", "label": "Wins RMSE", "type": "rank_value"},
+                    {"key": "brier_playoffs", "label": "Brier playoffs", "type": "score"},
+                    {"key": "logloss_playoffs", "label": "Log loss", "type": "score"},
+                    {"key": "brier_division", "label": "Brier division", "type": "score"}],
+        "rows": rows,
+        "notes": notes,
+        "stale": True,
+        "stale_reason": (
+            "A ten-season backtest, not a nightly job: rebuilding it needs about "
+            "16,000 cached Stats API game logs and an hour of simulation, so the "
+            "page reads the committed run "
+            "(public/data/team_backtest/2015-2025.json)."),
+    }
+
+
 def section_control(accuracy_md: str, n_teams: int | None,
                     validation_md: str | None = None) -> dict:
     """The coin-flip control: our playoff odds vs FanGraphs vs no model at all."""
@@ -858,6 +956,22 @@ def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
             sections["game_odds"] = fallback(
                 "game_odds", err or f"could not backtest game odds: {type(exc).__name__}: {exc}",
                 previous, previous_name)
+
+    # 2b. the team projection behind the playoff odds, scored 2015-2025. A
+    # decade-long backtest is not a nightly job; the committed run is read.
+    if "team_backtest" in skip:
+        sections["team_backtest"] = fallback(
+            "team_backtest", "skipped by --skip team_backtest", previous,
+            previous_name)
+    else:
+        try:
+            sections["team_backtest"] = section_team_backtest(
+                json.loads(TEAM_BACKTEST_JSON.read_text()))
+        except Exception as exc:                              # noqa: BLE001
+            sections["team_backtest"] = fallback(
+                "team_backtest",
+                f"could not read {TEAM_BACKTEST_JSON.name}: "
+                f"{type(exc).__name__}: {exc}", previous, previous_name)
 
     # 3. playoff-odds control — recorded in the scoreboard doc.
     if "playoff_odds_control" in skip:
