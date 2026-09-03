@@ -84,7 +84,9 @@ is GitHub's own advice, but we cannot prove it from outside, and five slots is a
 sample. The mitigations are worth taking either way:
 
 1. **Every cron minute is now odd and non-round** (`:07`, `:11`, `:19`, `:23`, `:29`,
-   `:37`, `:41`, `:53`). Costs nothing, and is the documented remedy.
+   `:37`, `:41`, `:43`, `:47`, `:53`). Costs nothing, and is the documented remedy.
+   `tests/test_scripts/test_check_schedules.py` asserts it for every slot in the
+   repo, so it cannot quietly regress.
 2. **The nightly job has three slots instead of two.** The script never overwrites a
    dated snapshot, so a redundant run only refreshes `latest.json`.
 3. **Slots are spaced at least an hour apart across all four workflows.** They share
@@ -96,26 +98,83 @@ sample. The mitigations are worth taking either way:
    group. It reads timestamps from *inside* the data rather than file mtimes (a fresh
    clone gives every file the same mtime) and opens a single GitHub issue when
    anything is past its budget.
+5. **And it has a faster sibling** — `scripts/check_schedules.py` and
+   `schedule-watchdog.yml`, which ask the Actions API directly instead of inferring
+   from artifact age. See "Two alarms, two questions" below.
 
 The alarm is the part that matters. The cron minutes are a guess at a cause; the
 watchdog is what makes the next silent failure loud, whatever causes it. Nothing
 caught this one on its own — it was found by hand, a day late, because the promised
 alarm had been written down and never built.
 
-**What the alarm does not do.** It infers a dropped run from the *age of the
-output*, which means it is slow by construction. Run the numbers on the outage it
-was built for: the last good board was written 09-02 13:41Z, so a 36-hour budget
-would not have fired until 09-04 01:41Z — roughly sixteen hours after the board
-actually went stale on the morning of the 3rd. The budget cannot simply be
-tightened to close that gap: the nightly's three slots span 09:23 to 14:53, so the
-worst *legitimate* gap between successful runs is about 29h30m, and a budget much
-under 36h starts crying wolf on a schedule that is merely late rather than broken.
+#### Two alarms, two questions
 
-The direct fix is to stop inferring. `GITHUB_TOKEN` can read the Actions API, so a
-check can ask "did this workflow run since its last due slot?" and answer in
-minutes instead of hours, with no external credentials and no guessing at budgets.
-That is the better alarm and it is filed as follow-up work; the age check ships
-first because it is stdlib-only and cannot itself fail for want of a dependency.
+The age check was slow by construction. It infers a dropped run from the *age of
+the output*: on the outage it was built for, the last good board was written
+09-02 13:41Z, so a 36-hour budget would not have fired until 09-04 01:41Z —
+roughly sixteen hours after the board actually went stale on the morning of the
+3rd. The budget cannot simply be tightened to close that gap: the nightly's three
+slots span 09:23 to 14:53, so the worst *legitimate* gap between successful runs
+is about 29h30m, and a budget much under 36h cries wolf on a schedule that is
+merely late.
+
+So we stopped inferring. `scripts/check_schedules.py` + `schedule-watchdog.yml`
+ask the Actions API the question directly, per workflow: **given this workflow's
+own cron slots, has a run actually started since the last one came due?**
+
+- **The slots come out of the workflow YAML**, never restated in the checker. A
+  second copy would drift the first time someone edits a schedule, and a watchdog
+  watching last month's schedule is worse than none. Every workflow with a
+  `schedule:` block is discovered and watched, which is how `statcast-ingest.yml`
+  and `modal-refit.yml` — invisible to the age check, because they write to R2,
+  Modal and W&B rather than to the repo — are covered for the first time.
+- **"Never due" is not "dropped."** A slot only counts if it came due *after* the
+  workflow's `created_at`. That is the mistake we nearly made by hand: two of the
+  four workflows had never had a slot come due, and their `run_number: 1` was not
+  evidence of anything. The check calls that `PENDING` and does not fail.
+- **Grace: 6 hours**, before a slot counts as due. The floor is the worst delay we
+  have measured — 4h25m — because anything at or under that would have paged on a
+  run that did arrive, on the very sample we are calibrating against; 6h is ~35%
+  headroom over it. The ceiling is detection latency, and nothing else: the check
+  asks whether *anything* has run since the last due slot, so a later slot firing
+  clears an earlier one, and the arithmetic lands the alarm the same day anyway.
+  A nightly that loses 09:23 and everything after it is reported at 16:43 UTC,
+  against 01:41 the *next* day for the age check. Both fixtures in
+  `tests/fixtures/actions/` pin this down: the real outage fires, and a 4h25m-late
+  run does not. `--grace-hours` replays either at a different setting.
+- **It also sees two things the age check never could.** A run that started and
+  failed (or was cancelled by the `data-commits` group) is reported instead of
+  being left to email; and a *disabled* workflow is reported loudly, which matters
+  because GitHub disables scheduled workflows in public repos after 60 days
+  without repository activity, silently.
+
+**Both alarms ship, and neither is redundant.** The API check knows whether the
+job RAN. The age check knows whether it PRODUCED. A job that runs green and writes
+nothing — a bad input, a swallowed exception, the builder falling back to
+yesterday's data — is invisible to the API check and obvious to the age check.
+They also fail in different ways: the API check needs a token, network and a
+correct cron parser, while the age check needs a checkout and nothing else. What
+did change is their division of labour: the age check is no longer the thing that
+catches a dropped run, so its budgets are deliberately loose (36h nightly, 22h
+market) and tuned only to never cry wolf.
+
+The market budget was 20h and is now 22h. The original was computed against the
+old round-minute slots; with 10:41/16:37/23:11 a single dropped slot already opens
+an 18h04m gap, and 20h left less slack than the 1h58m late start we have actually
+observed.
+
+**What neither alarm can see.** Whether the numbers are *right* — both check that
+work happened, not that it was correct; that is the backtest harness's job. Nor
+does anything yet age the R2 and Modal outputs of `statcast-ingest.yml` and
+`modal-refit.yml`: those two are now watched for *did it run*, but a refit that
+runs and writes a garbage posterior is still invisible. And the watchdogs are not
+symmetric: `schedule-watchdog.yml` watches `freshness-check.yml` like any other
+scheduled workflow, so if the age check goes quiet we hear about it — but nothing
+watches the schedule watchdog itself, since the run doing the asking is itself a
+run since the last slot. That is why it has twelve slots a day rather than one:
+losing all of them to dropped `schedule` events is the failure mode it cannot
+report, and the only remaining backstop is a human noticing the issue tracker has
+gone silent.
 
 ### Layer 2 — Development factory (Claude Code cloud)
 
@@ -181,10 +240,19 @@ Two GitHub Actions jobs commit data to `main` today, serialized by a shared
 
 | Workflow | Schedule (UTC) | Writes |
 |---|---|---|
-| `nightly-odds.yml` | 09:15, backup 11:45 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
-| `market-snapshot.yml` | 10:00, 16:30, 23:00 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
-| `statcast-ingest.yml` | 12:30 | `statcast/statcast_<year>.parquet` and `pa_outcomes/pa_outcomes_<year>.parquet` in R2, then the Modal volume |
-| `modal-refit.yml` | Mondays 07:00 | Modal training runs; diagnostics to W&B |
+| `nightly-odds.yml` | 09:23, 12:07, 14:53 | `public/data/playoff_odds/YYYY-MM-DD.json` + `latest.json` |
+| `market-snapshot.yml` | 10:41, 16:37, 23:11 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
+| `statcast-ingest.yml` | 13:19 | `statcast/statcast_<year>.parquet` and `pa_outcomes/pa_outcomes_<year>.parquet` in R2, then the Modal volume |
+| `modal-refit.yml` | Mondays 07:29 | Modal training runs; diagnostics to W&B |
+
+Every minute above is odd and non-round on purpose, and no two production slots
+are within an hour of each other; see the failure write-up above. Two watchdogs
+run outside the `data-commits` group and commit nothing:
+
+| Workflow | Schedule (UTC) | Asks |
+|---|---|---|
+| `schedule-watchdog.yml` | every 2h at :43 | did each workflow run since its last due cron slot (Actions API) |
+| `freshness-check.yml` | 05:53, 13:23, 21:47 | is any committed artifact older than its budget (timestamps inside the data) |
 
 **Keep the current season flowing.** The Statcast archive in R2 ran 2015–2025
 and was uploaded before the 2026 season began, so every refit trained on a

@@ -94,9 +94,11 @@ def test_missed_day_of_nightly_odds_is_stale(tmp_path):
 
 
 def test_one_dropped_market_slot_does_not_cry_wolf(tmp_path):
-    # 23:00 dropped, so the newest snapshot is the 16:30 one and the gap to
-    # the next 10:00 slot is 17h30m — routine, not an outage.
-    write_tree(tmp_path, {**ALL_FRESH, "market snapshot archive": 17.5})
+    # 23:11 dropped, so the newest snapshot is the 16:37 one and the gap to the
+    # next 10:41 slot is 18h04m — routine, not an outage. Add the 1h58m late
+    # start we have actually seen and it is 20h02m, which is why the budget is
+    # 22h and not the 20h this table shipped with.
+    write_tree(tmp_path, {**ALL_FRESH, "market snapshot archive": 20.04})
     assert status_by_name(fresh.check_all(tmp_path, NOW))["market snapshot archive"] == "OK"
 
 

@@ -1,0 +1,101 @@
+{
+  "_comment": [
+    "The 2026-09-03 outage. Not a reconstruction: every id, timestamp and sha",
+    "below was read back out of the Actions API for this repo, and the two runs",
+    "are the only two that had ever happened — the nightly odds run of",
+    "09-02 13:40:56Z (4h25m after its 09:15 slot) and the market snapshot of",
+    "09-03 00:58:32Z (1h58m after its 23:00 slot).",
+    "",
+    "Note the workflow `created_at` values: the API answers in the repo owner's",
+    "offset (-04:00), not in Z. Reading those as UTC would move every 'live",
+    "since' four hours and invent or hide a due slot, so this fixture keeps the",
+    "form the API actually sends. The doc's 'live since' column is these times",
+    "converted: 14:51:11-04:00 is 18:51:11Z.",
+    "",
+    "The crons are the ones live at the time — round minutes, before the",
+    "odd-minute change shipped with the fix — so this fixture keeps testing the",
+    "arithmetic of that morning even after the real schedules move again.",
+    "",
+    "`now` is 16:43Z, the first watchdog slot at which the dropped 09-03 09:15",
+    "nightly slot has cleared a 6h grace. statcast-ingest and modal-refit had",
+    "not had a single slot come due, which is why `run_number: 1` on all four",
+    "workflows was not the total failure it looked like."
+  ],
+  "now": "2026-09-03T16:43:00+00:00",
+  "workflows": [
+    {
+      "id": 347787557,
+      "name": "Nightly playoff odds",
+      "path": ".github/workflows/nightly-odds.yml",
+      "state": "active",
+      "created_at": "2026-09-01T14:51:11-04:00",
+      "updated_at": "2026-09-01T14:51:11-04:00",
+      "crons": ["15 9 * * *", "45 11 * * *"],
+      "runs": [
+        {
+          "id": 33637215707,
+          "name": "Nightly playoff odds",
+          "workflow_id": 347787557,
+          "run_number": 1,
+          "run_attempt": 1,
+          "event": "schedule",
+          "status": "completed",
+          "conclusion": "success",
+          "head_branch": "main",
+          "head_sha": "096f65e70d0ed079deb0ac0e869b8ea63508ed06",
+          "created_at": "2026-09-02T13:40:56Z",
+          "run_started_at": "2026-09-02T13:40:56Z",
+          "updated_at": "2026-09-02T13:41:39Z",
+          "html_url": "https://github.com/jackseeburger/baseball-projections/actions/runs/33637215707"
+        }
+      ]
+    },
+    {
+      "id": 348721739,
+      "name": "Market snapshot",
+      "path": ".github/workflows/market-snapshot.yml",
+      "state": "active",
+      "created_at": "2026-09-02T15:27:40-04:00",
+      "updated_at": "2026-09-02T15:27:40-04:00",
+      "crons": ["0 10 * * *", "30 16 * * *", "0 23 * * *"],
+      "runs": [
+        {
+          "id": 33701739590,
+          "name": "Market snapshot",
+          "workflow_id": 348721739,
+          "run_number": 1,
+          "run_attempt": 1,
+          "event": "schedule",
+          "status": "completed",
+          "conclusion": "success",
+          "head_branch": "main",
+          "head_sha": "dae4a2c9f3de50f47d02b757f719b64d4fa8144a",
+          "created_at": "2026-09-03T00:58:32Z",
+          "run_started_at": "2026-09-03T00:58:32Z",
+          "updated_at": "2026-09-03T00:59:06Z",
+          "html_url": "https://github.com/jackseeburger/baseball-projections/actions/runs/33701739590"
+        }
+      ]
+    },
+    {
+      "id": 348763438,
+      "name": "Statcast ingest",
+      "path": ".github/workflows/statcast-ingest.yml",
+      "state": "active",
+      "created_at": "2026-09-02T16:26:13-04:00",
+      "updated_at": "2026-09-02T16:26:13-04:00",
+      "crons": ["30 12 * * *"],
+      "runs": []
+    },
+    {
+      "id": 348732449,
+      "name": "Modal refit",
+      "path": ".github/workflows/modal-refit.yml",
+      "state": "active",
+      "created_at": "2026-09-02T15:43:20-04:00",
+      "updated_at": "2026-09-02T15:43:20-04:00",
+      "crons": ["0 7 * * 1"],
+      "runs": []
+    }
+  ]
+}

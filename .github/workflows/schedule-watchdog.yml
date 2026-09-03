@@ -1,0 +1,169 @@
+name: Schedule watchdog
+
+# The second half of the alarm docs/automation.md promises, and the fast half.
+#
+# freshness-check.yml infers a dropped run from the AGE of the output, which is
+# slow by construction: on the 2026-09-03 outage its 36h budget would not have
+# fired until 09-04 01:41Z, about sixteen hours after the board went stale, and
+# the budget cannot be tightened because the nightly's three slots span
+# 09:23–14:53 and the worst *legitimate* gap between good runs is ~29h30m.
+#
+# This job stops inferring. GITHUB_TOKEN can read the Actions API, so
+# scripts/check_schedules.py asks the question directly, per workflow: given
+# this workflow's own cron slots, has a run actually started since the last one
+# came due? Same outage, caught the same afternoon, and it covers
+# statcast-ingest.yml and modal-refit.yml, which the age check cannot see at
+# all because they write to R2, Modal and W&B rather than to the repo.
+#
+# Both alarms ship. They answer different questions: the API check knows
+# whether the job RAN, the age check knows whether it PRODUCED. A job that runs
+# green and writes nothing is invisible to this one.
+#
+# WHY THE CRON LOOKS LIKE THAT — do not "tidy" it to :00.
+# GitHub's docs say the top of the hour is the highest-load window and the
+# likeliest to have schedule events dropped, and every slot this repo lost was
+# on :00/:15/:30/:45. :43 is odd, off the quarter-hour, off any multiple of
+# five, and shared with no other workflow here. Every two hours because
+# detection latency is (grace + this interval): with the 6h default grace, a
+# nightly job that loses its 09:23 slot and every slot after it is reported by
+# 16:43 the same day.
+on:
+  schedule:
+    - cron: "43 */2 * * *"
+  workflow_dispatch:
+    inputs:
+      grace_hours:
+        description: Hours a slot may be late before it counts as dropped
+        default: ""
+
+# Read the workflow files and the run history, write the alarm issue.
+permissions:
+  contents: read
+  actions: read
+  issues: write
+
+# Deliberately NOT in the `data-commits` concurrency group, for the same reason
+# as freshness-check.yml: this job commits nothing, and an alarm that queues
+# behind the job it is alarming about is not an alarm.
+concurrency:
+  group: schedule-watchdog
+  cancel-in-progress: false
+
+jobs:
+  schedules:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      # No pip install: check_schedules.py is stdlib only (urllib, not
+      # requests; a hand-rolled cron scan, not PyYAML), so there is no
+      # dependency resolution step between a dropped run and a human hearing
+      # about it.
+      - name: Check scheduled workflow delivery
+        id: check
+        env:
+          # The workflow's own token; `actions: read` above is all it needs.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GRACE: ${{ inputs.grace_hours }}
+        run: |
+          args=""
+          if [ -n "$GRACE" ]; then args="--grace-hours $GRACE"; fi
+          if python scripts/check_schedules.py $args > schedule-report.txt 2>&1; then
+            echo "dropped=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "dropped=true" >> "$GITHUB_OUTPUT"
+          fi
+          cat schedule-report.txt
+          {
+            echo '```'
+            cat schedule-report.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # One issue, reused forever: found by the marker in its body, updated in
+      # place while the problem lasts, closed when the schedules are delivering
+      # again. Same mechanics as freshness-check.yml, and a separate marker so
+      # the two alarms never fight over one issue. A new issue per run would be
+      # noise, and noise is how the last alarm got ignored.
+      - name: Open, update or close the alarm issue
+        uses: actions/github-script@v7
+        env:
+          DROPPED: ${{ steps.check.outputs.dropped }}
+        with:
+          script: |
+            const fs = require('fs');
+            const MARKER = '<!-- schedule-watchdog -->';
+            const TITLE = 'Scheduled runs are not being delivered (schedule watchdog)';
+            const dropped = process.env.DROPPED === 'true';
+            const report = fs.readFileSync('schedule-report.txt', 'utf8');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}` +
+                           `/actions/runs/${context.runId}`;
+
+            const open = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100,
+            });
+            const existing = open.find(i => !i.pull_request && (i.body || '').includes(MARKER));
+
+            if (dropped) {
+              const body = [
+                MARKER,
+                'A scheduled workflow has had a slot come due with no run since,',
+                'or is disabled, or its last run failed.',
+                '',
+                '```',
+                report.trim(),
+                '```',
+                '',
+                `Checked at ${new Date().toISOString()} by [this run](${runUrl}).`,
+                '',
+                'The slots come from the workflows\' own `cron:` lines; the grace',
+                'period lives in `scripts/check_schedules.py`. Re-run the affected',
+                'workflow by hand to recover the data, then look at whether the same',
+                'slot keeps being dropped — GitHub delivers `schedule` on best',
+                'effort. A `DISABLED` row is different and worse: GitHub disables',
+                'scheduled workflows in public repos after 60 days without',
+                'repository activity, and it must be re-enabled by hand.',
+                'This issue is updated in place on every check and closed',
+                'automatically once every schedule is delivering again.',
+              ].join('\n');
+
+              if (existing) {
+                await github.rest.issues.update({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  issue_number: existing.number, body,
+                });
+                core.notice(`Updated dropped-run issue #${existing.number}`);
+              } else {
+                const created = await github.rest.issues.create({
+                  owner: context.repo.owner, repo: context.repo.repo,
+                  title: TITLE, body, labels: ['factory:incident'],
+                });
+                core.notice(`Opened dropped-run issue #${created.data.number}`);
+              }
+            } else if (existing) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number,
+                body: `Every schedule is delivering again as of ${new Date().toISOString()} ` +
+                      `([run](${runUrl})). Closing.\n\n\`\`\`\n${report.trim()}\n\`\`\``,
+              });
+              await github.rest.issues.update({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: existing.number, state: 'closed',
+              });
+              core.notice(`Closed dropped-run issue #${existing.number}`);
+            }
+
+      # Fail the run too, so the workflow's own history shows the outage and a
+      # watcher on this repo gets the usual failure notification.
+      - name: Fail if a schedule is not delivering
+        if: steps.check.outputs.dropped == 'true'
+        run: |
+          echo "::error::A scheduled workflow is not delivering — see the report above and the open issue."
+          exit 1
