@@ -10,7 +10,8 @@ name: Modal refit
 # supported path, plus a laptop.
 on:
   schedule:
-    - cron: "0 7 * * 1"      # Mondays 07:00 UTC — weekly refit
+    # Odd minute on purpose — see nightly-odds.yml.
+    - cron: "29 7 * * 1"     # Mondays 07:29 UTC — weekly refit
   workflow_dispatch:
     inputs:
       component:

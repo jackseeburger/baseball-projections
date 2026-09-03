@@ -9,9 +9,12 @@ name: Market snapshot
 # each pull costs 4 of a 500/month quota, so two a day is ~240/month.
 on:
   schedule:
-    - cron: "0 10 * * *"     # 10:00 UTC — morning
-    - cron: "30 16 * * *"    # 16:30 UTC — before the 1pm ET slate
-    - cron: "0 23 * * *"     # 23:00 UTC — before the 7pm ET slate
+    # Odd minutes on purpose — see nightly-odds.yml for why, and note the
+    # slots across all four production workflows are spaced at least an
+    # hour apart so two can never pile up in the data-commits group below.
+    - cron: "41 10 * * *"    # 10:41 UTC — morning
+    - cron: "37 16 * * *"    # 16:37 UTC — before the 1pm ET slate
+    - cron: "11 23 * * *"    # 23:11 UTC — before the 7pm ET slate
   workflow_dispatch:
 
 permissions:

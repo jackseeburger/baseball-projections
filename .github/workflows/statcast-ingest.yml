@@ -7,7 +7,8 @@ name: Statcast ingest
 # season that had already ended. This job closes that gap nightly.
 on:
   schedule:
-    - cron: "30 12 * * *"    # 12:30 UTC — after the market snapshot, all games final
+    # Odd minute on purpose — see nightly-odds.yml.
+    - cron: "19 13 * * *"    # 13:19 UTC — after the market snapshot, all games final
   workflow_dispatch:
     inputs:
       season:
