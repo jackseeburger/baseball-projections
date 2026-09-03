@@ -85,9 +85,12 @@ leaves and carrying the variance.
 ┌─ LAYER 6 · SIMULATION ──────────────── NOT A MODEL. COUNTING. ─┐
 │  20,000 seasons, real tiebreakers, real bracket                 │
 │  ──► standings, playoff, pennant, World Series                  │
-│  What CHANGES: draw a PARAMETER SET per simulated season, not    │
-│  just game outcomes, so the intervals are honest.                │
-│  STATUS: live on a fixed strength vector. Under test now.        │
+│  Drawing a PARAMETER SET per simulated season was built, scored   │
+│  and FAILED: playoff Brier +.00015 (t +0.11), projected wins      │
+│  worse, crossover unmoved. The board was never over-confident —   │
+│  best-fitting shrinkage 0.968 playoffs / 1.031 pennants, above    │
+│  1.0 walk-forward every season, i.e. it wanted SHARPENING.        │
+│  STATUS: live on a fixed strength vector, on purpose.             │
 └─────────────────────────────────────────────────────────────────┘
                               │
 ┌─ LAYER 7 · DECISION ─────────────── WHAT THE POSTERIOR UNLOCKS ─┐

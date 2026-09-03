@@ -43,6 +43,17 @@ Arms at every as-of date:
                        Two shrinkages because which is the stronger preseason
                        baseline is an empirical question, and the doc reports
                        the better of them.
+    chain_pu           the same chain, but the Monte Carlo draws a fresh team
+                       strength vector for every simulated season instead of
+                       reusing one point estimate — parameter uncertainty and
+                       game-outcome noise composed rather than the second one
+                       counted alone. The width is the normal-normal posterior
+                       the chain's own 60-game ballast implies
+                       (`src/sim/strength.StrengthDistribution`); no constant is
+                       fitted. `chain_pu_half` and `chain_pu_double` are the
+                       same thing at half and twice that width, and
+                       `chain_pu_boot` uses the naive bootstrap width instead.
+                       See docs/parameter-uncertainty.md.
     coin_flip          no information at all: 81 wins for everybody and the
                        league base rate for every probability.
 
@@ -87,8 +98,22 @@ DEFAULT_SEASONS = tuple(y for y in range(2015, 2026) if y not in EXCLUDED_SEASON
 # the ball. Two, matching `scripts/run_playoff_odds.PRIOR_SEASONS`.
 PRIOR_SEASONS = 2
 PRIOR_HITTER_CACHE = OUT_DIR / "hitter_seasons_backtest.parquet"
-ARMS = ("chain", "record_500", "record_wpct", "preseason", "preseason_light",
-        "coin_flip")
+ARMS = ("chain", "chain_pu", "chain_pu_half", "chain_pu_double",
+        "chain_pu_boot", "record_500", "record_wpct", "preseason",
+        "preseason_light", "coin_flip")
+# The parameter-uncertainty arms: (width scale, which width). Scale 1.0 with
+# the posterior width is *the* proposal and is not a fitted constant — it is
+# the spread the chain's own 60-game ballast already implies. The other three
+# exist so the doc can answer two questions the headline cannot: whether the
+# result is a knife-edge in the width (the half and double arms), and whether
+# the shape of the width matters or only its size (the bootstrap arm, which is
+# narrower everywhere and, wrongly, narrowest in April).
+PU_ARMS = {
+    "chain_pu": (1.0, "posterior"),
+    "chain_pu_half": (0.5, "posterior"),
+    "chain_pu_double": (2.0, "posterior"),
+    "chain_pu_boot": (1.0, "bootstrap"),
+}
 # The preseason arm is run at two shrinkages rather than one, and the *better*
 # of the two is what the doc reports as the preseason baseline. Half is the
 # textbook year-ahead regression for a club's run differential; a third is the
@@ -260,8 +285,9 @@ def rebase_preseason(frame: pd.DataFrame, split: ts.TeamSplit) -> pd.DataFrame:
 
 def project_season(season: int, data: dict, *, n_sims: int, step_days: int,
                    window_days: int, rotation_size: int,
-                   verbose: bool = True) -> pd.DataFrame:
+                   arms=ARMS, verbose: bool = True) -> pd.DataFrame:
     """Every arm at every weekly cutoff of one season."""
+    arms = set(arms)
     teams, sched = data["teams"], data["schedule"]
     cutoffs = ts.weekly_cutoffs(sched, teams, step_days=step_days)
     if not cutoffs:
@@ -294,10 +320,24 @@ def project_season(season: int, data: dict, *, n_sims: int, step_days: int,
         ts.assert_team_split_clean(split, inputs=inputs, probables=probables,
                                    window_days=window_days)
 
-        chain, diag = ts.project_chain(
-            split, inputs, probables, sched, n_sims=n_sims, seed=seed,
-            window_days=window_days, rotation_size=rotation_size)
-        frames.append(chain)
+        # One build of the chain feeds the point-estimate arm and every width
+        # of the uncertainty arm, so the arms differ in the width and in
+        # nothing else — not even in a rebuilt rate table.
+        overrides, rotations, strength, diag = ts.chain_strength(
+            split, inputs, probables, sched, window_days=window_days,
+            rotation_size=rotation_size)
+        ov = overrides or None
+        rot = rotations if rotations.by_team else None
+        frames.append(ts.project(split, strength, "chain", n_sims=n_sims,
+                                 seed=seed, p_home_overrides=ov, rotations=rot))
+        for arm, (scale, sampling) in PU_ARMS.items():
+            if arm not in arms:
+                continue
+            dist = ts.with_uncertainty(split, strength, scale=scale,
+                                       sampling=sampling)
+            frames.append(ts.project(split, dist, arm, n_sims=n_sims,
+                                     seed=seed, p_home_overrides=ov,
+                                     rotations=rot))
         frames.append(ts.project(split, ts.strength_even(split), "record_500",
                                  n_sims=n_sims, seed=seed))
         frames.append(ts.project(split, ts.strength_own_rate(split),
@@ -511,6 +551,11 @@ def main() -> None:
                              "window that, in a season already played, is fed "
                              "by who actually started")
     parser.add_argument("--rotation-size", type=int, default=DEFAULT_ROTATION_SIZE)
+    parser.add_argument("--arms", default=",".join(ARMS),
+                        help="comma-separated arms to project. The chain and "
+                             "the record baselines always run; this only picks "
+                             "which parameter-uncertainty widths are added, "
+                             "since each one is another Monte Carlo")
     parser.add_argument("--workers", type=int, default=8,
                         help="parallel game-log fetches")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
@@ -544,7 +589,8 @@ def main() -> None:
             frame = project_season(
                 season, load_season(season, args.out_dir), n_sims=args.sims,
                 step_days=args.step_days, window_days=args.window_days,
-                rotation_size=args.rotation_size)
+                rotation_size=args.rotation_size,
+                arms=[a.strip() for a in args.arms.split(",") if a.strip()])
             frame.to_parquet(path, index=False)
             print(f"  wrote {path} ({len(frame)} rows)", flush=True)
 

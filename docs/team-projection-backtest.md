@@ -436,6 +436,31 @@ python scripts/run_team_backtest.py --stage project --seasons 2022-2025 \
     --sims 2000 --window-days 0 --tag _w0
 ```
 
+## 10b. One explanation of §8's crossover has been tested and ruled out
+
+The obvious reading of "our playoff odds stop beating the standings in August,
+and almost all our advantage is resolution rather than calibration" is that
+the board is over-confident — that it treats one point estimate of team
+strength as if it were certain, which it does. That was tested directly by
+giving the season Monte Carlo a *distribution* over team strength and
+re-running this whole harness, same 249 dates, same arms, same scoring:
+[parameter-uncertainty.md](parameter-uncertainty.md).
+
+**It is not the explanation.** The width the model's own 60-game ballast
+implies (.0505 of talent win% in April, .0313 in the last fortnight) leaves
+playoff Brier at +.00015 (t +0.11) and costs .0104 of projected-wins MAE
+(t +4.18), and **the crossover stays at 70–75% of the season, to the week**.
+The reason is in §7 of this document already: reliability .00055 is a board
+that is *not* over-confident. The best-fitting linear shrinkage of these
+playoff probabilities is 0.968, and of the pennant probabilities **1.031** —
+the tails want to be *sharper*, not blunter. The one real defect, decile 8,
+is a single bin, and a width applied to every club at every date closes it
+only by opening deciles 4 and 5.
+
+So §8's crossover is what it looked like: from August on, the remaining
+schedule is short enough that a talent estimate adds very little to the
+banked record. That is a shortage of *signal*, not a mis-shaped distribution.
+
 ## 11. What this does not settle
 
 1. **Ten seasons is ten clusters.** Every standard error here has 9 degrees

@@ -197,15 +197,32 @@ Three consumers, verified in the code:
 | `src/market/pnl.py` | `kelly_stake(p_win, ...)` — a **scalar** | Kelly under parameter uncertainty is provably not Kelly at the mean; the correct stake shades down. We are systematically overbetting by an amount nobody has measured. |
 | `src/sim/season.py` | `simulate_remaining(state, strength: pd.Series, ...)` — **one number per team** | The Monte Carlo samples game outcomes but not parameter uncertainty. Every published playoff probability is conditional on the point estimate being exactly right. |
 
-The third is the most interesting and the cheapest. We already run a Monte Carlo
-over 20,000 seasons; feeding it posterior draws of team strength instead of a
-fixed `Series` is close to free. And there is a specific unexplained result
-waiting for it: station G's backtest found our playoff probabilities stop
-beating record extrapolation in the last week of July, and that almost all our
-advantage is resolution rather than calibration. Understated parameter
-uncertainty is a live candidate explanation for exactly that shape. **This is a
-Bayesian change with a pre-registered question attached, which is the only kind
-worth making first.**
+The third **has now been built and scored, and it failed.** It is left in the
+table because the gap is real — the simulator still takes one number per team —
+but the reasoning that put it first was wrong, and the correction matters more
+than the original argument did.
+
+The prediction was that understated parameter uncertainty explained station G's
+shape: playoff probabilities that stop beating record extrapolation in the last
+week of July, with almost all our advantage in resolution rather than
+calibration. Drawing a fresh strength vector per simulated season leaves playoff
+Brier at **+.00015 (t +0.11)**, makes projected-wins MAE **worse** by .0104
+(t +4.18), and does not move the crossover at all — both arms turn positive in
+the same 70–75% bucket.
+
+**There was no over-confidence to fix.** Reliability was already .00055, the
+best-fitting shrinkage is 0.968 on playoffs and **1.031 on pennants**, and
+walk-forward it is above 1.0 in every season: the board wanted to be *sharper*,
+not blurrier. August is short of **signal in the remaining schedule**, not of a
+better-shaped distribution over the mean. See
+[parameter-uncertainty.md](parameter-uncertainty.md).
+
+So this ordering was wrong, and §5's first failure condition has fired. What
+survives is the *principle* — a Bayesian change with a pre-registered question
+attached is still the only kind worth making first — and the lesson that
+"carry the uncertainty" is a claim to be tested per consumer, not a general
+improvement. The remaining two consumers are untested and are now the ones that
+matter.
 
 The first two are where money is the exam. If a posterior changes P&L, that is
 the strongest possible evidence for the Bayesian track — far stronger than a
@@ -275,9 +292,17 @@ hierarchical experiment a week and one an hour.
 
 Stated in advance, so we notice:
 
-- If the posterior lands in the simulator and playoff-probability calibration
+- ~~If the posterior lands in the simulator and playoff-probability calibration
   does not improve, then parameter uncertainty was not the story behind the
-  station G result, and §1's ordering is wrong.
+  station G result, and §1's ordering is wrong.~~ **This fired (Sept 3).**
+  Calibration did not improve (+.00015, t +0.11), projected wins got worse, and
+  the crossover did not move. Parameter uncertainty is not what the station G
+  shape is made of, and §1 has been rewritten to say so. The sharper finding:
+  the board was never over-confident — best-fitting shrinkage is 0.968 on
+  playoffs and 1.031 on pennants, above 1.0 walk-forward in every season, so it
+  wanted sharpening. Recorded rather than quietly dropped, because a prediction
+  written down in advance is only worth anything if it is scored when it comes
+  due.
 - If Statcast contact quality turns out to only restate the realized outcome
   rate with less noise, then the "new information" premise of §2 is weaker than
   claimed and the pitch-level work should be re-argued before it is built.

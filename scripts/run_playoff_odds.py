@@ -69,7 +69,7 @@ from src.sim.odds import run_playoff_odds
 from src.sim.season import SeasonState, from_schedule
 from src.sim.strength import (
     estimate_hfa, home_win_prob, league_ra_per_game, regressed_run_rates,
-    regressed_strength,
+    regressed_strength, strength_distribution,
 )
 from src.sim.teams import DIVISION_NAMES, fetch_teams
 
@@ -594,6 +594,26 @@ def compare(base: pd.DataFrame, sp: pd.DataFrame) -> pd.DataFrame:
     return cmp.sort_values("p_ws_sp", ascending=False).reset_index(drop=True)
 
 
+def played_games_with_scores(schedule: pd.DataFrame,
+                             teams: pd.DataFrame) -> pd.DataFrame:
+    """Completed regular-season games with their scores still attached.
+
+    `from_schedule` keeps only who won, because that is all the Monte Carlo
+    needs. The strength distribution needs the runs, and it has to select the
+    *same* games the standings are built from — same game type, same clubs,
+    same Final-with-a-score-and-no-tie rule — or the width would be measured on
+    a different sample than the estimate it belongs to.
+    """
+    valid = set(teams["team_id"].astype(int))
+    reg = schedule[schedule["game_type"] == "R"]
+    reg = reg[reg["home_id"].astype(int).isin(valid)
+              & reg["away_id"].astype(int).isin(valid)]
+    scored = reg["home_score"].notna() & reg["away_score"].notna()
+    reg = reg[(reg["status"] == "Final") & scored
+              & (reg["home_score"] != reg["away_score"])]
+    return reg.reset_index(drop=True)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=date.today().year)
@@ -619,6 +639,19 @@ def main() -> None:
                              ".500 coin flip, so the board is pure standings "
                              "arithmetic. Implies --no-starters and never "
                              "writes a snapshot")
+    parser.add_argument("--strength-uncertainty", type=float, default=0.0,
+                        metavar="SCALE",
+                        help="draw a fresh team-strength vector for every "
+                             "simulated season instead of reusing the point "
+                             "estimate, at SCALE times the width the 60-game "
+                             "ballast implies (1.0 = that width; 0 = off, the "
+                             "default and what is served). NOT wired: the "
+                             "walk-forward backtest scores it in "
+                             "docs/parameter-uncertainty.md and it does not "
+                             "clear station G's gate, so per architecture.md "
+                             "§3 the point estimate runs. Kept so the number "
+                             "can be reproduced and so a better width has "
+                             "somewhere to land")
     parser.add_argument("--no-lineups", action="store_true",
                         help="skip the posted-card term. It is a no-op at the "
                              "nightly job's hour (no lineup is up at 5am) and "
@@ -729,6 +762,23 @@ def main() -> None:
 
     moved_strength = not served.equals(strength)
 
+    # Parameter uncertainty, off by default (see the flag's help and
+    # docs/parameter-uncertainty.md). The width reads the same completed games
+    # the standings were built from, which is what makes it the uncertainty of
+    # *this* estimate rather than a number bolted on beside it.
+    served_point = served
+    if args.strength_uncertainty:
+        played = played_games_with_scores(schedule, teams)
+        served = strength_distribution(served_point, played, standings,
+                                       regress_games=args.regress_games,
+                                       scale=args.strength_uncertainty)
+        moved_strength = True
+        sd = served.talent_sd()
+        print(f"strength uncertainty: scale {args.strength_uncertainty}, "
+              f"implied talent SD {sd.mean():.4f} "
+              f"({sd.min():.4f}–{sd.max():.4f}) on {len(played)} played games "
+              f"— NOT the served model, see docs/parameter-uncertainty.md")
+
     # Same seed everywhere, so the draw is identical on every game and every
     # series the terms do not touch and the whole difference in the tables
     # below is the term.
@@ -792,7 +842,7 @@ def main() -> None:
         # difference is smaller than the sim noise. This part is exact. The
         # baseline is the strength the same run draws the *other* games with,
         # so this isolates the per-game terms from the strength change.
-        effect = override_effect(state, served, hfa, overrides)
+        effect = override_effect(state, served_point, hfa, overrides)
         print(f"\n─── the per-game terms themselves, against the strength the "
               f"unannounced games are drawn with, in closed form (no "
               f"sampling) ───")
