@@ -12,7 +12,7 @@ division winners in that order, wild cards are the next three.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 import pandas as pd
@@ -28,6 +28,12 @@ class TiebreakContext:
     h2h_base: np.ndarray                      # (n_teams, n_teams) completed wins of i over j
     pair_games: dict[tuple[int, int], list]   # (i, j) → [(game_idx, i_is_home)]
     rng: np.random.Generator
+    # Row indices per league and each row's division, extracted once. Both are
+    # constants of the season, and `seed_league` runs twice per simulation:
+    # pulling them off the teams frame inside that loop was a fifth of a
+    # 20,000-sim job, all of it pandas column access.
+    league_rows: dict[int, list[int]] = field(default_factory=dict)
+    div_of: np.ndarray | None = None
 
     @classmethod
     def build(cls, state: SeasonState, records: SimRecords,
@@ -46,7 +52,13 @@ class TiebreakContext:
             h, a = idx[int(g.home_id)], idx[int(g.away_id)]
             pairs.setdefault((h, a), []).append((gi, True))
             pairs.setdefault((a, h), []).append((gi, False))
-        return cls(state, records, home_wins, h2h, pairs, rng)
+        leagues = np.asarray(state.teams["league_id"])
+        by_league: dict[int, list[int]] = {}
+        for i, lg in enumerate(leagues):
+            by_league.setdefault(int(lg), []).append(i)
+        return cls(state, records, home_wins, h2h, pairs, rng,
+                   league_rows=by_league,
+                   div_of=np.asarray(state.teams["division_id"]))
 
     def h2h_wins(self, i: int, j: int, s: int) -> float:
         w = self.h2h_base[i, j]
@@ -123,10 +135,13 @@ def seed_league(s: int, league_id: int, ctx: TiebreakContext,
     because the walk-forward team backtest scores seasons in both eras, and a
     six-club field in a five-club season would be scoring a different outcome.
     """
-    teams = ctx.state.teams
-    rows = [i for i, l in enumerate(teams["league_id"]) if l == league_id]
+    rows = ctx.league_rows.get(int(league_id))
+    if rows is None:
+        rows = [i for i, l in enumerate(ctx.state.teams["league_id"])
+                if l == league_id]
     order = league_order(s, rows, ctx)
-    div_of = teams["division_id"].to_numpy()
+    div_of = (ctx.div_of if ctx.div_of is not None
+              else ctx.state.teams["division_id"].to_numpy())
     winners, seen = [], set()
     for t in order:
         if div_of[t] not in seen:
