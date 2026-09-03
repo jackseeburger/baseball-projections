@@ -597,6 +597,312 @@ same cut catches the second game of a doubleheader reading the first.
 pitch counts or a pen, and the two appearances a season that carry no
 `numberOfPitches` are estimated from batters faced.
 
+## Sept 3, 2026 — park and team defence: both measured, neither one clears
+
+The chain the nightly serves prices runs two ways and neither of them knows
+what ballpark a game is in. Station D's half is a record of what happened *in
+the parks the club has played in*; station C's half is FIP and linear weights,
+which are park- and defence-blind by construction. The validation doc's table
+is what that looks like from outside: Atlanta allows 4.02 runs a game against a
+bottom-up 4.38, Milwaukee scores 4.84 against a component 4.61, Los Angeles
+bats project 5.19 against 4.78 scored
+([playoff-odds-validation.md](playoff-odds-validation.md#sept-3-2026--the-full-chain-is-wired)),
+and the w = 0.5 blend absorbs every one of those gaps as one unattributed lump.
+
+Two terms were built to take that lump apart. **Neither clears its gate**, and
+the two failures have different and instructive shapes: the park factors are
+right and the model cannot use them, while the defence estimate is usable and
+the model already had it.
+
+```
+park     factor(v) = runs per game at v ÷ runs per game in the road games of
+                     the clubs who host there, pooled over the two *prior*
+                     seasons, regressed toward 1 with `park_ballast` games and
+                     renormalised so the league mean factor is exactly 1
+                     → the top-down half is divided by each club's own
+                       games-weighted exposure *before* it is regressed, and
+                       both clubs' rates are multiplied by tonight's venue
+                       factor before Pythagenpat
+
+defence  ΔRA/9 = (club BABIP allowed on the road − league BABIP) · BIP per 9
+                 · 0.75 runs a hit, with the club's BABIP regressed toward the
+                 league with `def_ballast` balls in play
+                 → added to station C's *bottom-up* runs allowed, which is
+                   where FIP's blind spot is
+```
+
+Produced by:
+
+```
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+    --market data/parquet/market_closes_2026.parquet \
+    --park-ballast 200 --def-ballast 4000
+python scripts/backtest_game_odds.py --season 2025 --min-games 20 \
+    --park-ballast 200 --def-ballast 4000
+python scripts/attribute_run_environment.py --season 2026 --as-of 2026-09-03
+```
+
+`--park-ballast inf` and `--def-ballast inf` switch the respective term off and
+reproduce `pythag_C_sp_bpa_ip` to the last bit, so both sweeps are clean
+nestings and the gate comparison is exact.
+
+### The park factors themselves are fine
+
+Before asking whether the term helps, ask whether the numbers are right. The
+2026 factors are built from 2024 and 2025 alone; measured against what actually
+happened in 2026 they correlate **0.44** across the 30 parks with 30+ games, at
+a regression slope of **1.23** — the regressed factors are, if anything, a
+little timid. Coors comes out at 1.126 (raw 1.28) and the flattest park at
+0.910; the whole spread is 0.91 to 1.13 after regression.
+
+So the ballpark is being measured. What follows is not a failure of the
+estimate.
+
+### Scoreboard — the same 756 games, 2026-07-04 → 09-02
+
+| Model | Brier | Log loss | Mean P(home) |
+|---|---|---|---|
+| **Kalshi close** | **0.24156** | **0.6759** | 0.537 |
+| **Polymarket close** | **0.24165** | **0.6761** | 0.531 |
+| `pythag_C_sp_bpa_ip_pk` (+ park) | **0.24382** | 0.68062 | 0.532 |
+| **`pythag_C_sp_bpa_ip`** (the gate — what the nightly serves) | **0.24388** | 0.68074 | 0.532 |
+| `pythag_C_sp_bpa_ip_pk_def` (+ park + defence) | 0.24389 | 0.68075 | 0.532 |
+| `pythag_C_sp_bpa_ip_def` (+ defence) | 0.24395 | 0.68088 | 0.532 |
+
+Paired against the gate on the three sets, park at a 200-game ballast and
+defence at a 4,000-BIP ballast:
+
+| | 756 market games | all 1,781 of 2026 | all 2,105 of 2025 |
+|---|---|---|---|
+| `_pk` − gate | **−0.00006** (se 0.00003, t −2.32) | **−0.00004** (se 0.00002, t −1.98) | **+0.00002** (se 0.00002, t +0.75) |
+| `_def` − gate | +0.00007 (se 0.00019, t +0.34) | +0.00010 (se 0.00011, t +0.98) | +0.00003 (se 0.00009, t +0.36) |
+| `_pk_def` − gate | +0.00001 (se 0.00020, t +0.03) | +0.00007 (se 0.00011, t +0.63) | +0.00005 (se 0.00009, t +0.51) |
+
+The park term is the only one that is better anywhere, and it is better by
+0.00006 of Brier — a fifth of what the smallest term already on the board is
+worth. Its t of −2.3 on the market set is real and it is also beside the point,
+for two reasons.
+
+**First, the walk-forward constant is "no term".** A term is scored at the
+setting its own sweep chose on a prior season, and the 2025 sweep's answer at
+every ballast is to use less of the park; extrapolated to the boundary the grid
+runs to, that is a park factor of exactly 1.0 for every venue, which is the
+gated model. The −0.00006 above is what the term is worth at a constant 2025
+rejects. Reading the 2026 grid to pick the ballast is the thing the whole
+protocol exists to prevent.
+
+**Second, the sign does not replicate.** The standard every term above the
+starter has been held to is that the sign is the same on all three sets,
+because none of them is more than a standard error from zero on any one of
+them. Park is negative on both 2026 sets (t −2.3 on the 756, −2.0 on all
+1,781) and positive on 2025; defence is positive — worse than not having it —
+on all three. Neither meets the standard. They do not ship.
+
+### The grids — and the two seasons disagree about the sign
+
+Both ballasts were swept walk-forward on **2025 only**, which is where the
+constants have to be chosen. The same grids on the 756 market-priced 2026 games
+are shown beside them; those were run after the fact and chose nothing.
+
+**Park**, paired Brier against the gate:
+
+| ballast (games) | 0 | 100 | 200 | 400 | 800 | inf |
+|---|---|---|---|---|---|---|
+| 2025 (n = 2,105) | +0.00004 | +0.00002 | +0.00002 | +0.00001 | +0.00001 | 0.00000 |
+| t | +0.80 | +0.78 | +0.75 | +0.72 | +0.70 | — |
+| 2026 (n = 756) | **−0.00013** | −0.00008 | −0.00006 | −0.00004 | −0.00002 | 0.00000 |
+| t | −2.34 | −2.31 | −2.32 | −2.33 | −2.34 | — |
+
+**Defence**, the same:
+
+| ballast (BIP) | 0 | 1,000 | 2,000 | 4,000 | 8,000 | inf |
+|---|---|---|---|---|---|---|
+| 2025 (n = 2,105) | +0.00056 | +0.00013 | +0.00007 | +0.00003 | +0.00001 | 0.00000 |
+| t | +1.04 | +0.60 | +0.47 | +0.36 | +0.28 | — |
+| 2026 (n = 756) | +0.00060 | +0.00023 | +0.00013 | +0.00007 | +0.00003 | 0.00000 |
+| t | +0.80 | +0.53 | +0.43 | +0.34 | +0.27 | — |
+
+Read the park rows together and the verdict writes itself: **each season's grid
+is monotone, and they point in opposite directions.** 2025 says use none of the
+term and 2026 says use all of it, at every ballast, with the same |t| ≈ 2.3 on
+2026 at every point — which is what happens when a term nudges every game in a
+consistent direction by an amount too small to be worth anything. Even at its
+own best point on 2026, the unregressed factors, the term is worth 0.00013 of
+Brier against a market gap of 0.0023. The defence grids at least agree
+with each other on the sign, and the sign is that the term is worse than not
+having it.
+
+Neither surface has an interior optimum. That is the same shape the
+bullpen-availability sweep produced a station ago, and it means the same thing:
+the sweep's own answer to "how much of this should we use" is "none". The 200
+and 4,000 the scoreboard above uses are the middle of each grid — where the
+term is most visible, not where either season would put it.
+
+### Why park cannot pay, even though the factors are right
+
+**A park is symmetric and a win probability is a ratio.** A park factor
+multiplies both clubs' runs scored *and* runs allowed by the same number.
+Pythagenpat reads `rs^x / (rs^x + ra^x)` with `x = (rs + ra)^0.287`: scaling
+both by k leaves the ratio untouched and moves only the exponent. So the whole
+park term reaches the answer through a second-order channel, and it shows up in
+the size of the move — against the gate the park term shifts a game's
+probability by a mean of **0.00048** (sd 0.00059, max 0.0061). The pen term,
+the smallest thing on the board before today, moves 0.0061; the starter moves
+about 0.04. Park is an order of magnitude below the smallest term we have.
+
+The same symmetry is visible in the attribution table below: for every club the
+park moves runs scored and runs allowed by almost exactly the same amount
+(Colorado −0.188 and −0.229, Seattle +0.134 and +0.149), so it barely touches
+the run *differential* that talent win% is made of. And that is the honest
+answer to the question the residual posed: **park is a two-sided correction and
+Atlanta's residual is one-sided.** Atlanta's runs scored agree between the two
+halves to 0.06 of a run and its runs allowed disagree by 0.35; no symmetric
+multiplier can explain a gap of that shape. Park was never the candidate.
+
+### Why defence does not pay, even though it moves plenty
+
+The defence term is not small: it shifts a game's probability by a mean of
+**0.00442** (sd 0.0032, max 0.015), comparable to the pen term, and it closes
+**16%** of the mean absolute top-down/bottom-up gap on the runs-allowed side.
+It scores worse anyway, and the mechanism is the one `lineups.py` recorded a
+station ago: **the top-down half already contains the club's defence**, because
+it is the club's actual runs allowed. Adding the residual to the bottom-up half
+takes the blend from carrying defence at half weight to carrying it at close to
+full weight, and the sweep's verdict — the more of it you use the worse it gets
+— says half was already the right amount. What the term supplies is not new
+information; it is a second copy of information the blend was deliberately
+holding at arm's length.
+
+That also explains why the ballast grid is monotone rather than U-shaped. A
+term that carried something new would be worth *something* at some weight.
+
+### The blend weight does not move
+
+The blend weight `w` was chosen walk-forward on 2025 when station C shipped —
+an inverted U with an interior minimum at 0.5 — and the obvious worry about
+adding terms to the bottom-up half is that the half is now better and deserves
+more weight. Swept again on 2025 with both terms in (n = 2,105, Brier):
+
+| w | 0 | 0.25 | **0.5** | 0.75 | 1.0 |
+|---|---|---|---|---|---|
+| the chain as served | 0.24433 | 0.24383 | **0.24360** | 0.24363 | 0.24395 |
+| + park + defence | 0.24435 | 0.24388 | **0.24364** | 0.24365 | 0.24391 |
+
+**The optimum does not move.** It is 0.5 with the terms and 0.5 without, with
+the same flat floor out to 0.75, and at every weight below 1 the terms cost a
+little.
+
+The one cell where they pay is `w = 1`: a *pure* bottom-up run environment is
+better with park and defence in it (0.24391) than without (0.24395). That is
+the whole finding in one number. The two terms really do carry information the
+components lack — they are worth something exactly where nothing else is
+supplying it — and the moment the top-down half is mixed back in at any weight,
+that information is already in the room.
+
+### Attribution — every club's gap, before and after
+
+`scripts/attribute_run_environment.py --season 2026 --as-of 2026-09-03`, the
+day the chain was wired, 2,094 games played. `gap` is bottom-up minus top-down
+runs per game; `park` is what neutralising the top-down half moves it; `defence`
+is what the BABIP residual moves the bottom-up half; `left` is what neither
+term explains.
+
+| Club | RA top-down | RA bottom-up | RA gap | park | defence | left | RS gap | park | left |
+|---|---|---|---|---|---|---|---|---|---|
+| **MIL** | 4.00 | 4.37 | **+0.374** | +0.040 | −0.100 | **+0.234** | −0.236 | +0.053 | −0.289 |
+| **ATL** | 4.03 | 4.39 | **+0.353** | +0.022 | −0.084 | **+0.247** | +0.058 | +0.026 | +0.032 |
+| DET | 4.17 | 4.58 | +0.405 | −0.016 | −0.064 | +0.357 | +0.218 | −0.017 | +0.236 |
+| NYY | 3.95 | 4.28 | +0.322 | +0.033 | −0.109 | +0.181 | +0.283 | +0.040 | +0.244 |
+| MIA | 4.31 | 4.56 | +0.251 | −0.043 | −0.034 | +0.260 | +0.174 | −0.044 | +0.219 |
+| SD | 4.26 | 4.51 | +0.249 | +0.031 | +0.077 | +0.295 | +0.331 | +0.031 | +0.300 |
+| LAD | 4.03 | 4.11 | +0.073 | −0.023 | −0.148 | −0.052 | +0.408 | −0.030 | +0.438 |
+| CWS | 4.46 | 4.56 | +0.094 | +0.033 | +0.039 | +0.100 | −0.034 | +0.035 | −0.070 |
+| SEA | 4.44 | 4.26 | −0.188 | +0.149 | +0.134 | −0.203 | +0.559 | +0.134 | +0.426 |
+| PHI | 4.32 | 4.10 | −0.214 | −0.051 | +0.080 | −0.084 | +0.267 | −0.054 | +0.321 |
+| COL | 5.32 | 4.74 | −0.576 | −0.229 | +0.162 | −0.185 | −0.094 | −0.188 | +0.095 |
+| ATH | 5.37 | 4.62 | −0.747 | −0.048 | +0.026 | −0.673 | +0.225 | −0.036 | +0.261 |
+
+(Twelve of the thirty; the full table is what the script prints.) Colorado is
+the one club park moves by more than a tenth of a run, and it moves its runs
+scored by −0.188 and its runs allowed by −0.229 — the same correction twice,
+which is exactly why it does not help a win probability.
+
+Across the league the two terms close **16% of the mean |gap| on runs
+allowed** (0.213 → 0.178 runs a game) and **nothing at all on runs scored**
+(0.243 → 0.251 — park's neutralisation moves the runs-scored gap the wrong way
+about as often as the right way, which is what a symmetric correction on a
+one-sided residual does).
+
+### What ships
+
+Nothing, in the model. The two modules (`src/sim/park.py`,
+`src/sim/defence.py`) ship, are unit-tested, are scored in the harness as three
+new columns, and are wired through the same `game_model.home_win_probability`
+both callers use, so the day one of them clears there is one line to change —
+`NOT_SERVED` in `scripts/run_playoff_odds.py`. The gate rule
+([architecture.md](architecture.md#3-the-gate-rule)) says the baseline runs
+until a model beats it out of sample, and the nightly therefore asks the chain
+for both terms switched off, which the agreement test pins bit for bit.
+
+### Against the market
+
+The other diagnostic every term on this board gets: regress the market's
+deviation from the gate model on ours, over the 756 games.
+
+| term | correlation | slope |
+|---|---|---|
+| park | 0.14 | **7.05** |
+| defence | −0.02 | −0.13 |
+
+The park term points where the market points and is **a seventh of the size** —
+the largest under-reaction any term here has recorded (the pen term, the
+previous record holder, was a factor of two). That is not evidence that a
+bigger version of *this* term would work: a symmetric multiplier is bounded by
+what Pythagenpat's exponent will do with it, and scaling it up is scaling up
+the wrong channel. It is evidence that the market prices parks through
+something our multiplier does not have — which is the component-factor
+argument below.
+
+The defence term has no relationship with the market's deviation at all
+(correlation −0.02), which is what a term carries when the information in it is
+already priced on both sides.
+
+### What this measurement does not cover
+
+- **Component park factors — home runs and balls in play — were not built.**
+  The run factor comes from the schedule, which is one request per prior season
+  and carries the score of every game; a home-run or BABIP factor needs every
+  pitcher's game log for two completed seasons, ~1,700 player-season fetches
+  that nothing else in the repository wants. That would have been worth paying
+  if the run factor had shown the channel was live, and it did not — but the
+  case for it is *not* dead, because a component factor enters differently: a
+  home-run park makes a fly-ball pitcher worse and a ground-ball pitcher fine,
+  which is asymmetric between the two clubs in a way a run multiplier never is.
+  That asymmetry is the only version of park with a mechanism left.
+- **Defence was only ever *added* to the bottom-up half.** The mirror
+  construction — take the club's measured BABIP luck *out* of the top-down half
+  and put the regressed estimate back in both — is the one the sweeps argue for
+  (the model behaves as though it is carrying too much of this signal, not too
+  little) and it is untested. It is a bigger change than this ticket's, because
+  it edits the half of the blend that is a record of what happened.
+- **Weather, travel and rest.** Still not in the model, and still inside the
+  0.0023 the market holds.
+- **The defence estimate is road-only by construction**, which halves the
+  sample to keep the park out of it. A park-adjusted all-games BABIP would be
+  the sharper estimator and needs the component factors above.
+
+### Leakage
+
+Stronger than the rest of the chain's, on the park side. A season's park
+factors are built from the *completed prior seasons only* — no game of the
+season being scored is in the pool at all, and
+`tests/test_sim/test_park.py::TestLeakage` asserts the fetch asks for exactly
+those years. A club's park exposure and its balls-in-play counts are cut
+strictly before the date being predicted, the same cut every other frame gets,
+with synthetic cases pinning that a game on the date itself, a game tomorrow,
+and the first game of a doubleheader all leave the estimate identical
+(`tests/test_sim/test_defence.py::TestLeakage`).
+
 ## What this does not yet show
 
 - Sportsbook closes (Pinnacle) — the archive started 2026-09-02, so a
@@ -610,8 +916,12 @@ pitch counts or a pen, and the two appearances a season that carry no
   median Kalshi close is 15 minutes before first pitch — so the comparison is
   fair. It is not a simulation of predicting at 9am, where late scratches would
   cost a little.
-- **Park, weather, rest and travel** — none of them are in the model, and the
-  0.0023 the market still holds is where what is left of it lives. Lineups and
+- **Weather, rest and travel** — none of them are in the model, and the
+  0.0023 the market still holds is where what is left of it lives. **Park is no
+  longer on that list**: it was built and scored on Sept 3 and it is worth
+  0.00006 of Brier on the 756 with the wrong sign on 2025, because a park
+  multiplies both clubs' runs and a win probability is a ratio (the section
+  above). Team defence, measured the same day, is worth less than nothing. Lineups and
   bullpen state *are* now in, and between them they were worth 0.0003 of the
   0.0033: most of the gap was never in either of them. Station C — the run
   environment rebuilt from the roster — took another 0.0003, the
