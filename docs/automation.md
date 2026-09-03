@@ -46,6 +46,77 @@ paying attention, cost cents, and fail loudly.
   prominently, and the Layer-2 watchdog (below) alerts when it goes stale. This is the
   "nightly job fails silently during October" risk from the roadmap.
 
+#### Where this actually runs, and how it failed
+
+The plan above says `modal.Cron`. What shipped is GitHub Actions — `nightly-odds.yml`,
+`market-snapshot.yml`, `statcast-ingest.yml` and `modal-refit.yml` — because the
+simulator is cheap CPU that needs no credentials, and only the Bayesian refit needs
+Modal at all (the refit workflow is a trigger: the runner authenticates and starts the
+job, and the sampling happens on Modal's hardware).
+
+On 2026-09-03 we went looking for why the site was serving a board from the previous
+day and found that the schedules were not running. The evidence, counting only slots
+that came due *after* each workflow reached `main`:
+
+| Workflow | Live since | Slots due | Runs | Lateness |
+|---|---|---|---|---|
+| Nightly playoff odds | 09-01 18:51Z | 3 | 1 | 4h25m |
+| Market snapshot | 09-02 19:27Z | 2 | 1 | 1h58m |
+| Statcast ingest | 09-02 20:26Z | 0 | 0 | — |
+| Modal refit | 09-02 19:43Z | 0 | 0 | — |
+
+Two runs out of five due slots, and both of those hours late. The last two rows are
+not evidence of anything — their first slot had not come due yet — and it is worth
+saying so, because `run_number: 1` on every workflow looks like total failure until
+you check which slots were actually live.
+
+Two hypotheses were ruled out. The repository is public, so Actions minutes are free
+and unlimited — this is not an exhausted quota. And the one delayed run's `created_at`
+equals its `run_started_at`, with a `head_sha` committed 25 minutes earlier, so the run
+was *created* 4h25m late rather than sitting in a queue from its nominal slot: GitHub
+delivered the schedule event late, it did not hold a job.
+
+That points at GitHub's documented behaviour — the `schedule` event is best effort and
+is delayed or dropped under load, with the start of an hour being the worst window.
+Every slot this repo had was on `:00`, `:15`, `:30` or `:45`, which is exactly where
+the load is. **This remains a hypothesis.** It is consistent with the evidence and it
+is GitHub's own advice, but we cannot prove it from outside, and five slots is a small
+sample. The mitigations are worth taking either way:
+
+1. **Every cron minute is now odd and non-round** (`:07`, `:11`, `:19`, `:23`, `:29`,
+   `:37`, `:41`, `:53`). Costs nothing, and is the documented remedy.
+2. **The nightly job has three slots instead of two.** The script never overwrites a
+   dated snapshot, so a redundant run only refreshes `latest.json`.
+3. **Slots are spaced at least an hour apart across all four workflows.** They share
+   the `data-commits` concurrency group, and a group with `cancel-in-progress: false`
+   cancels a *pending* run when a third one arrives. Nothing has been lost this way
+   yet, but two jobs on adjacent round minutes would have made it possible.
+4. **The staleness alarm above finally exists** — `scripts/check_freshness.py` and
+   `freshness-check.yml`, on its own odd-minute schedule, outside the `data-commits`
+   group. It reads timestamps from *inside* the data rather than file mtimes (a fresh
+   clone gives every file the same mtime) and opens a single GitHub issue when
+   anything is past its budget.
+
+The alarm is the part that matters. The cron minutes are a guess at a cause; the
+watchdog is what makes the next silent failure loud, whatever causes it. Nothing
+caught this one on its own — it was found by hand, a day late, because the promised
+alarm had been written down and never built.
+
+**What the alarm does not do.** It infers a dropped run from the *age of the
+output*, which means it is slow by construction. Run the numbers on the outage it
+was built for: the last good board was written 09-02 13:41Z, so a 36-hour budget
+would not have fired until 09-04 01:41Z — roughly sixteen hours after the board
+actually went stale on the morning of the 3rd. The budget cannot simply be
+tightened to close that gap: the nightly's three slots span 09:23 to 14:53, so the
+worst *legitimate* gap between successful runs is about 29h30m, and a budget much
+under 36h starts crying wolf on a schedule that is merely late rather than broken.
+
+The direct fix is to stop inferring. `GITHUB_TOKEN` can read the Actions API, so a
+check can ask "did this workflow run since its last due slot?" and answer in
+minutes instead of hours, with no external credentials and no guessing at budgets.
+That is the better alarm and it is filed as follow-up work; the age check ships
+first because it is stdlib-only and cannot itself fail for want of a dependency.
+
 ### Layer 2 — Development factory (Claude Code cloud)
 
 Agentic sessions do what cron cannot: implement roadmap items, diagnose why last

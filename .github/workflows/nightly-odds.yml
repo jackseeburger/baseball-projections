@@ -6,11 +6,19 @@ name: Nightly playoff odds
 # Bayesian refits.
 on:
   schedule:
-    # GitHub cron is best-effort: the first run fired 4h25m late. Two
-    # slots give redundancy — the script never overwrites a dated
-    # snapshot, so a second run only refreshes latest.json.
-    - cron: "15 9 * * *"     # 09:15 UTC ≈ 5:15am ET, after West Coast finals
-    - cron: "45 11 * * *"    # 11:45 UTC backup
+    # Minutes are deliberately odd. GitHub delivers the schedule event on
+    # best effort and drops it under load; the start of an hour is the
+    # worst window, and :00/:15/:30/:45 are where everyone else is. Of the
+    # five slots this repo had due on round minutes, two fired and both
+    # were hours late (see docs/automation.md). Do not tidy these back to
+    # round numbers.
+    #
+    # Three slots because the event is unreliable, and redundancy is free:
+    # the script never overwrites a dated snapshot, so a later run of the
+    # same day only refreshes latest.json.
+    - cron: "23 9 * * *"     # 09:23 UTC ≈ 5:23am ET, after West Coast finals
+    - cron: "7 12 * * *"     # 12:07 UTC backup
+    - cron: "53 14 * * *"    # 14:53 UTC last chance
   workflow_dispatch:
 
 permissions:
