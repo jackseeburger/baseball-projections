@@ -29,14 +29,22 @@ substantial academic literature doing the same for
 [fielding](https://arxiv.org/pdf/0802.4317) and
 [team strength](https://arxiv.org/pdf/1712.05879).
 
-**And the frontier is closer to Marcel than its reputation suggests.** ZiPS,
-Steamer and PECOTA layer in pitch-level data, minor-league translations and
-machine learning, and
-[only marginally outperform Marcel on aggregate accuracy](https://www.beyondtheboxscore.com/2016/2/22/11079186/projections-marcel-pecota-zips-steamer-explained-guide-math-is-fun).
-The system that has separated itself — THE BAT X, most accurate for four
-straight years — did it by
-[layering Statcast on top of an already solid foundation](https://www.fantasypros.com/2024/01/most-accurate-fantasy-baseball-projections-2023/),
+**And on the tasks Marcel actually performs, the frontier is closer to it than
+its reputation suggests.** FanGraphs' 2024 projection review put Marcel's RMSE
+on batter plate appearances at **142.2, ahead of THE BAT X (156.2), ZiPS (155.0)
+and Steamer (169.5)** —
+[Marcel won that test outright](https://fantasy.fangraphs.com/2024-projection-review-batter-playing-time/).
+Among the modern systems on adjusted RMSE the spread was 146.7 / 149.1 / 150.8,
+a few points apart. The system that has separated itself — THE BAT X, most
+accurate for four straight years — did it by
+[layering Statcast on an already solid foundation](https://www.fantasypros.com/2024/01/most-accurate-fantasy-baseball-projections-2023/),
 not by changing estimator family.
+
+That playing-time result is worth pausing on, because it matches our own: the
+largest gain in this repo also came from playing time, and it came from a
+survival curve rather than a projection system. Marcel beating three
+industrial systems on PA is a strong hint that the *question* was mis-posed for
+all four of them.
 
 Two conclusions follow, and they pull in opposite directions on purpose:
 
@@ -82,6 +90,53 @@ survival curve on a transaction feed nobody had read.
 So the expansion is not "the same questions with fancier machinery." It is:
 **where does a non-Marcel model buy something Marcel structurally cannot?**
 There are exactly three such places.
+
+## The bigger target: the problems that have no Marcel
+
+The first draft of this doc framed everything as "replace Marcel," and that
+turned out to be aiming at the smaller half of the opportunity.
+
+Look at what the hierarchical Bayesian literature in baseball is actually
+about: [pitch framing](https://arxiv.org/abs/1704.00823),
+[fielding](https://arxiv.org/pdf/0802.4317),
+[plate discipline](https://arxiv.org/pdf/2305.05752),
+[hitting with shrinkage across time and players](https://projecteuclid.org/journals/bayesian-analysis/volume-4/issue-4/Hierarchical-Bayesian-modeling-of-hitting-performance-in-baseball/10.1214/09-BA424.pdf).
+Three of those four are problems **Marcel does not attempt and could not
+attempt.** There is no hand-computable baseline for a catcher's framing runs,
+because the quantity only exists once you have adjusted for pitch location,
+count, umpire, pitcher and batter simultaneously — which is precisely a
+hierarchical model with partially pooled random effects.
+
+That is the shape of the real opportunity. Front offices are not mainly running
+hierarchical Bayes to beat Marcel at projecting next year's home run total.
+They are running it on **valuation problems that have no simple estimator at
+all**, where many entities have small and wildly unequal exposure and the
+effect of interest is tangled with confounders that only a model can separate.
+
+Our repo has nothing in this category. Everything built so far — every station —
+competes with a baseline on a task the baseline already performs. That is good
+discipline and it is why the gate rule works, but it has quietly restricted us
+to the set of questions a simple method can already answer.
+
+Candidates, roughly by value to what we actually do:
+
+| Problem | Why it needs a hierarchical model | Feeds |
+|---|---|---|
+| **Catcher framing** | Catcher effect is confounded with pitcher, umpire and location; only joint partial pooling separates them | Run environment → station C/E |
+| **Pitcher "stuff"** from pitch characteristics | Velocity/movement/release → run value is an unknown surface; pitcher true talent needs pooling on top of it | The starter term, our single largest per-game lever |
+| **Fielding, per fielder and per position** | Many fielders, unequal chances, spatial structure | Run environment |
+| **Plate discipline** | Swing decisions by location and count, pooled across hitters | Hitter true talent |
+
+Note what the defence row does *not* say. We tested team defence and it failed
+— but that was a top-down team-level blend that duplicated information the
+existing run-environment blend already held. A per-fielder hierarchical spatial
+model is a different construction against a different baseline, and the earlier
+negative result does not settle it.
+
+**These do not replace the staircase below; they run alongside it.** The
+staircase is how the projection stack stops being Marcel. This section is how
+the repo starts answering questions Marcel was never in the running for, and it
+is where the published evidence for hierarchical Bayes is strongest.
 
 ## The replacement path, component by component
 
