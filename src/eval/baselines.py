@@ -84,7 +84,7 @@ def league_average(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame
     """
     g = latest_rows(train)
     rate = float(g[spec.successes].sum() / g[spec.trials].sum())
-    return pd.DataFrame({"batter": g["batter"].unique(), "predicted": rate})
+    return pd.DataFrame({spec.id_col: g[spec.id_col].unique(), "predicted": rate})
 
 
 def previous_season(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame:
@@ -95,7 +95,8 @@ def previous_season(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFram
     last = int(full["season"].max())
     g = full[full["season"] == last]
     pred = g[spec.successes] / g[spec.trials]
-    return pd.DataFrame({"batter": g["batter"].values, "predicted": pred.values})
+    return pd.DataFrame({spec.id_col: g[spec.id_col].values,
+                         "predicted": pred.values})
 
 
 def season_to_date(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame:
@@ -105,13 +106,13 @@ def season_to_date(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame
     stabilization point. A player with zero trials gets exactly the league
     rate, which is what makes this a well-behaved arm at an April cutoff.
     """
-    g = latest_rows(train).groupby("batter", as_index=False).agg(
+    g = latest_rows(train).groupby(spec.id_col, as_index=False).agg(
         successes=(spec.successes, "sum"), trials=(spec.trials, "sum")
     )
     league = float(g["successes"].sum() / g["trials"].sum())
     b = SEASON_TO_DATE_BALLAST.get(spec.name, MARCEL_BALLAST)
     return pd.DataFrame({
-        "batter": g["batter"].values,
+        spec.id_col: g[spec.id_col].values,
         "predicted": (g["successes"] + b * league) / (g["trials"] + b),
     })
 
@@ -129,7 +130,7 @@ def marcel(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame:
     recent["w_trials"] = recent["w"] * recent[spec.trials]
     recent["w_successes"] = recent["w"] * recent[spec.successes]
 
-    g = recent.groupby("batter").agg(
+    g = recent.groupby(spec.id_col).agg(
         w_trials=("w_trials", "sum"),
         w_successes=("w_successes", "sum"),
     )
@@ -144,9 +145,9 @@ def marcel(train: pd.DataFrame, spec, predict_year: int) -> pd.DataFrame:
         age_last = (
             train[train["season"] == last]
             .dropna(subset=["age"])
-            .set_index("batter")["age"]
+            .set_index(spec.id_col)["age"]
         )
-        proj_age = out["batter"].map(age_last) + (predict_year - last)
+        proj_age = out[spec.id_col].map(age_last) + (predict_year - last)
         adj = np.array([
             age_adjustment(int(a), spec.name) if np.isfinite(a) else 1.0
             for a in proj_age
@@ -438,6 +439,8 @@ def marcel_tuned(
     predict_year: int,
     *,
     params: "MarcelParams | dict | None" = None,
+    league: float | None = None,
+    anchor_season: int | None = None,
 ) -> pd.DataFrame:
     """Marcel with fitted per-component ballast, recency weights, projected
     league rate and age curve.
@@ -449,21 +452,42 @@ def marcel_tuned(
 
     `params` may be a single MarcelParams, a {component: MarcelParams} map,
     or None to read `src/eval/marcel_params.json`.
+
+    The two optional arguments exist for callers outside the harness — station
+    E's rate table is the one that uses them (`src/sim/starters.rate_table`) —
+    and both default to exactly what the harness has always done:
+
+    `league`         the rate to regress toward, when the caller has measured
+                     it somewhere other than the training frame. Station E
+                     pools the *completed* seasons for it, because the
+                     current-season game logs it holds are starters-only and
+                     pooling them would bias the target toward starters.
+    `anchor_season`  the season the three recency weights are hung on
+                     (weights[0] goes to `anchor_season`). Defaults to the
+                     most recent training season, which is right for every
+                     harness call — preseason it is Y-1, at a cutoff it is Y.
+                     A caller pricing season Y whose partial Y is *empty*
+                     (opening day) wants the window anchored on Y anyway, so
+                     that the weights do not silently shift a slot.
     """
     p = _resolve_params(params, spec.name)
     if sum(p.weights) <= 0:
         raise ValueError("marcel_tuned needs at least one positive year weight")
 
     last = int(train["season"].max())
-    league = projected_league_rate(train, spec, p, predict_year)
+    anchor = int(anchor_season) if anchor_season is not None else last
+    if league is None:
+        league = projected_league_rate(train, spec, p, predict_year)
+    league = float(league)
 
     weights = {i: float(w) for i, w in enumerate(p.weights)}
-    recent = train[train["season"] >= last - 2].copy()
-    recent["w"] = (last - recent["season"]).map(weights)
+    recent = train[train["season"] >= anchor - 2].copy()
+    recent["w"] = (anchor - recent["season"]).map(weights)
+    recent = recent[recent["w"].notna()]
     recent["w_trials"] = recent["w"] * recent[spec.trials]
     recent["w_successes"] = recent["w"] * recent[spec.successes]
 
-    g = recent.groupby("batter").agg(
+    g = recent.groupby(spec.id_col).agg(
         w_trials=("w_trials", "sum"),
         w_successes=("w_successes", "sum"),
     )
@@ -475,9 +499,9 @@ def marcel_tuned(
         age_last = (
             train[train["season"] == last]
             .dropna(subset=["age"])
-            .set_index("batter")["age"]
+            .set_index(spec.id_col)["age"]
         )
-        proj_age = out["batter"].map(age_last) + (predict_year - last)
+        proj_age = out[spec.id_col].map(age_last) + (predict_year - last)
         out["predicted"] = out["predicted"] * tuned_age_adjustment(proj_age, p)
     return out
 

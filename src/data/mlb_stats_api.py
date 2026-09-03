@@ -49,6 +49,16 @@ PITCHING_FIELDS = {
     # available tonight. Absent or zero on a stray split, that module falls
     # back to batters faced times the league's pitches per batter faced.
     "numberOfPitches": "pitches",
+    # Hits, at-bats and sacrifice flies allowed. Not needed by station E's FIP
+    # term — FIP is deliberately blind to balls in play — but they are exactly
+    # what a BABIP-against component needs (BIP = AB - K - HR + SF,
+    # hits in play = H - HR), so the pitcher rate provider
+    # (`src/eval/pitchers.py`) can be built from the same season table station
+    # E already reads. The API has carried all three on every season split
+    # since 2015, and they are summed like every other count.
+    "hits": "h",
+    "atBats": "ab",
+    "sacFlies": "sf",
 }
 
 # Stats API field → our column

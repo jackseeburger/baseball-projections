@@ -34,11 +34,19 @@ from src.eval.baselines import BASELINES
 
 @dataclass(frozen=True)
 class ComponentSpec:
-    """A projectable rate: numerator / denominator at the season level."""
+    """A projectable rate: numerator / denominator at the season level.
+
+    `id_col` is the frame's player-id column. It is "batter" for every hitter
+    component and "pitcher" for the pitcher ones (`src/eval/pitchers.py`), and
+    it is the only thing about the harness that has to know which side of the
+    ball a component lives on — every join, groupby and paired comparison
+    reads it off the spec rather than assuming a hitter.
+    """
     name: str
     successes: str   # numerator column
     trials: str      # denominator column (also the scoring weight)
     binomial: bool   # True → log loss applies (numerator is a count)
+    id_col: str = "batter"
 
 
 COMPONENTS = {
@@ -50,6 +58,11 @@ COMPONENTS = {
     # independent trials, so log loss is not meaningful for it.
     "iso": ComponentSpec("iso", "xb_points", "ab", binomial=False),
 }
+
+# The pitcher components register themselves into COMPONENTS under a `p_`
+# prefix when `src.eval.pitchers` is imported, so `backtest("p_k_rate", ...)`
+# and `score()` work with no other change. The import lives at the bottom of
+# this module to avoid a cycle.
 
 Provider = Callable[[pd.DataFrame, ComponentSpec, int], pd.DataFrame]
 
@@ -149,33 +162,34 @@ def _run_split(
     if realized.empty:
         raise ValueError(f"no realized rows with >= {min_trials} "
                          f"{spec.trials} in {predict_year}")
+    ident = spec.id_col
     realized = realized.assign(
         realized_rate=realized[spec.successes] / realized[spec.trials]
-    )[["batter", spec.successes, spec.trials, "realized_rate"]].rename(
+    )[[ident, spec.successes, spec.trials, "realized_rate"]].rename(
         columns={spec.successes: "realized_successes", spec.trials: "trials"}
     )
 
     preds = {}
     for name, provider in providers.items():
-        pred = provider(train, spec, predict_year)[["batter", "predicted"]]
+        pred = provider(train, spec, predict_year)[[ident, "predicted"]]
         pred = pred.dropna(subset=["predicted"])
-        if pred["batter"].duplicated().any():
-            raise ValueError(f"provider {name!r} returned duplicate batters")
+        if pred[ident].duplicated().any():
+            raise ValueError(f"provider {name!r} returned duplicate {ident}s")
         preds[name] = pred
     if common_players:
-        keep = set(realized["batter"])
+        keep = set(realized[ident])
         for pred in preds.values():
-            keep &= set(pred["batter"])
-        realized = realized[realized["batter"].isin(keep)]
+            keep &= set(pred[ident])
+        realized = realized[realized[ident].isin(keep)]
 
     frames = []
     for name, pred in preds.items():
-        joined = realized.merge(pred, on="batter", how="inner")
+        joined = realized.merge(pred, on=ident, how="inner")
         joined["model"] = name
         joined["component"] = component
         frames.append(joined)
     out = pd.concat(frames, ignore_index=True)
-    return out[["component", "model", "batter", "predicted",
+    return out[["component", "model", ident, "predicted",
                 "realized_successes", "realized_rate", "trials"]]
 
 

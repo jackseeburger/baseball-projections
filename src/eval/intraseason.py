@@ -39,22 +39,29 @@ COUNT_COLUMNS = [
 ]
 
 
-def aggregate_pa(pa: pd.DataFrame, season: int | None = None) -> pd.DataFrame:
-    """Roll PA-level outcomes up to the season-table schema, one row per batter.
+def aggregate_pa(pa: pd.DataFrame, season: int | None = None,
+                 id_col: str = "batter") -> pd.DataFrame:
+    """Roll PA-level outcomes up to the season-table schema, one row per player.
 
     Produces the columns `build_seasons_table` produces (pa, ab, h, doubles,
     triples, hr, k, bb, hbp, sf, xb_points, bip, hits_in_play) plus `games`
     and the `first_game_date` / `last_game_date` bounds the leakage guard
     checks. `season` defaults to the frame's `game_year`.
 
+    `id_col` is the column the rows are grouped by: "batter" for the hitter
+    season table, "pitcher" for the pitcher one (`src/eval/pitchers.py`). The
+    PA parquet carries both ids on every row, so the same PA aggregated one
+    way is a hitter's line and the other way is the line he was charged
+    against — the counts and the identities are identical either way.
+
     Counts are forced to int64: the outcome flags are int8 on disk and
     `2*triples + 3*hr` silently overflows if they are left that way.
     """
     if pa.empty:
         # Typed, not just named: an object-dtype empty frame poisons the
-        # concat in build_training_frame and turns `batter` into objects.
+        # concat in build_training_frame and turns the id column into objects.
         empty = {c: pd.Series(dtype="int64")
-                 for c in ["batter", "season", *COUNT_COLUMNS]}
+                 for c in [id_col, "season", *COUNT_COLUMNS]}
         empty["first_game_date"] = pd.Series(dtype="datetime64[ns]")
         empty["last_game_date"] = pd.Series(dtype="datetime64[ns]")
         return pd.DataFrame(empty)
@@ -73,7 +80,7 @@ def aggregate_pa(pa: pd.DataFrame, season: int | None = None) -> pd.DataFrame:
     for name, col in flags.items():
         df[name] = col.astype("int64")
 
-    g = df.groupby("batter", as_index=False).agg(
+    g = df.groupby(id_col, as_index=False).agg(
         pa=("_k", "size"),
         k=("_k", "sum"),
         bb=("_bb", "sum"),
@@ -102,7 +109,7 @@ def aggregate_pa(pa: pd.DataFrame, season: int | None = None) -> pd.DataFrame:
         season = int(df["game_year"].iloc[0]) if "game_year" in df else int(
             df["game_date"].dt.year.iloc[0])
     g.insert(1, "season", season)
-    return g[["batter", "season", *COUNT_COLUMNS,
+    return g[[id_col, "season", *COUNT_COLUMNS,
               "first_game_date", "last_game_date"]]
 
 
@@ -119,14 +126,15 @@ def partial_and_realized(
     pa: pd.DataFrame,
     cutoff_date: str | pd.Timestamp,
     season: int | None = None,
+    id_col: str = "batter",
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Season-shaped (partial, realized) frames either side of the cutoff.
 
     `partial` carries `partial=True`; `realized` carries `partial=False`.
     """
     before, after = split_at_cutoff(pa, cutoff_date)
-    partial = aggregate_pa(before, season).assign(partial=True)
-    realized = aggregate_pa(after, season).assign(partial=False)
+    partial = aggregate_pa(before, season, id_col).assign(partial=True)
+    realized = aggregate_pa(after, season, id_col).assign(partial=False)
     return partial, realized
 
 
@@ -180,6 +188,7 @@ def build_training_frame(
     seasons: pd.DataFrame,
     partial: pd.DataFrame,
     predict_year: int,
+    id_col: str = "batter",
 ) -> pd.DataFrame:
     """Prior full seasons + the partial current season, in one frame.
 
@@ -199,15 +208,21 @@ def build_training_frame(
         current = seasons[seasons["season"] == predict_year]
         partial = partial.copy()
         if "age" in seasons.columns and not current.empty:
-            partial["age"] = partial["batter"].map(
-                current.set_index("batter")["age"])
+            partial["age"] = partial[id_col].map(
+                current.set_index(id_col)["age"])
         else:
-            last_prior = (prior.sort_values("season").groupby("batter")
+            last_prior = (prior.sort_values("season").groupby(id_col)
                           .agg(age=("age", "last"), season=("season", "last")))
-            partial["age"] = partial["batter"].map(
+            partial["age"] = partial[id_col].map(
                 last_prior["age"] + (predict_year - last_prior["season"])
             )
     return pd.concat([prior, partial], ignore_index=True)
+
+
+# `spec.id_col` -> the (pa, cutoff, season) -> (partial, realized) aggregator
+# for that side of the ball. `src.eval.pitchers` registers "pitcher" on import;
+# the hitter entry is the module's own `partial_and_realized`.
+AGGREGATORS: dict[str, object] = {}
 
 
 def backtest_intraseason(
@@ -246,6 +261,7 @@ def backtest_intraseason(
     cutoff = pd.Timestamp(cutoff_date)
     predict_year = predict_year or cutoff.year
     providers = providers or dict(INTRASEASON_BASELINES)
+    aggregate = AGGREGATORS.get(spec.id_col, partial_and_realized)
 
     if partial is None or realized is None:
         if pa_frame is None:
@@ -255,9 +271,9 @@ def backtest_intraseason(
             pa_year = pa_year[pa_year["game_year"] == predict_year]
         if pa_year.empty:
             raise ValueError(f"no PA rows for {predict_year} in pa_frame")
-        partial, realized = partial_and_realized(pa_year, cutoff, predict_year)
+        partial, realized = aggregate(pa_year, cutoff, predict_year)
 
-    train = build_training_frame(seasons, partial, predict_year)
+    train = build_training_frame(seasons, partial, predict_year, spec.id_col)
     assert_split_clean(train, realized, cutoff, predict_year)
     if train.empty:
         raise ValueError(f"no training data before {cutoff.date()}")
