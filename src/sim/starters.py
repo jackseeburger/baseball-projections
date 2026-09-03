@@ -94,6 +94,29 @@ IP_BALLAST_STARTS = 0.0
 # nine, and below three the bullpen delta would carry more than two thirds of
 # the game on a number that is mostly noise.
 MIN_STARTER_IP = 3.0
+# Runs per nine a club is charged for each inning of the flat 5.5 its announced
+# starter is *not* expected to cover — expected length as a **level** rather
+# than only as the starter/bullpen split (`starter_length_delta`).
+#
+# Where it comes from: a gradient-boosted model given the chain's own inputs
+# reproduced the chain term for term but put ten to twenty times the chain's
+# weight on the two starters' expected innings, in both scored seasons
+# (docs/market-benchmark-2026.md, "It reproduces the chain, term for term").
+# In the chain that number only divides the game between two staffs, so a
+# league-average starter who is expected to go four and one expected to go
+# seven are the same pitcher to it.
+#
+# The constant is a maximum-likelihood fit of this one parameter on the eleven
+# completed seasons *before* the scored one, 2015-2025, with nothing else
+# refit — not the blend weight, not a ballast, not the home-field edge — which
+# gives 0.89 runs per nine with a standard error of 0.30 (t = 2.95); the paired
+# Brier argmin on the same games is 0.88. Rounded to 0.9 and never chosen on a
+# 2026 score (`scripts/sweep_starter_ip_level.py`). Choosing it on 2025 alone,
+# the way the constants a station ago were chosen, would have picked 1.37 and
+# scored *better* on the held-out season, so the wider pool is the conservative
+# reading and not a flattering one. Zero is the chain without the term, to the
+# last bit.
+IP_LEVEL_RUNS = 0.9
 
 COMPONENTS = ("k", "bbhbp", "hr")
 RATE_COLS = [f"rate_{c}" for c in COMPONENTS]
@@ -350,6 +373,40 @@ def expected_starter_ip(starts: pd.DataFrame, as_of: str,
     ip = ((agg["sum"] + float(ballast) * float(prior))
           / (agg["size"] + float(ballast))).clip(MIN_STARTER_IP, GAME_IP)
     return {int(k): float(v) for k, v in ip.items()}
+
+
+def starter_length_delta(starter_ip, level_runs: float = IP_LEVEL_RUNS,
+                         prior: float = STARTER_IP, game_ip: float = GAME_IP):
+    """Runs per nine a start's expected *length* carries on its own.
+
+        level_runs · (prior − starter_ip) / game_ip
+
+    The chain already spends `starter_ip` on arithmetic: it is the weight that
+    divides the game between `blend_starter_team` and
+    `bullpen.blend_bullpen_team`. This is the other half of the same fact — how
+    deep a manager expects a starter to go is information about the *club*, not
+    only a share of nine innings, and a flexible model given the chain's own
+    inputs kept asking for it as a level (docs/market-benchmark-2026.md).
+
+    A delta, like every other term in the chain: a starter expected to cover
+    exactly `prior` leaves the club's runs-allowed rate where the split put it,
+    so the term can only redistribute and `level_runs = 0` is the chain without
+    it to the last bit. Centring on the flat 5.5 rather than on the day's own
+    mean start is deliberate and immaterial — the centre is common to both
+    clubs and cancels in log5 to within 1.2e-5 of Brier on any of the twelve
+    seasons on file, whether it is the flat 5.5, the season's own mean or that
+    date's — and it keeps the term free of any new walk-forward quantity for
+    anything to leak through.
+
+    Sign: a *short* expected start is charged runs. The innings the split hands
+    to the pen are not the pen's average innings; they are its worst, and the
+    pitchers a manager pulls at four have something wrong with them that FIP
+    (which is blind to balls in play and to sequencing) has not yet priced.
+
+    Scalars or aligned arrays.
+    """
+    return (float(level_runs) / float(game_ip)) * (
+        float(prior) - np.asarray(starter_ip, dtype=float))
 
 
 def starter_ra9_lookup(rates: pd.DataFrame, lg: dict, lg_ra9: float) -> dict:

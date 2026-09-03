@@ -36,9 +36,10 @@ home club's point of view and the label is `home_win`: the indicator would be
 a constant column, and the home-field edge itself is on the row as `hfa_obs`,
 the season-to-date value the chain's log5 conversion uses.
 
-The three quantities the chain itself computes from those — `chain_p`
-(`pythag_C_sp_bpa_ip`, the model the nightly serves and the gate baseline),
-`chain_p_lu` (the same with the posted card applied) and `pythag_60` — ride
+The three quantities the chain itself computes from those — `chain_p` (the
+model the nightly serves: `pythag_C_sp_bpa_ip_lvl` since issue #66 and
+`pythag_C_sp_bpa_ip` before it, whichever the slate handed in is configured
+for), `chain_p_lu` (the same with the posted card applied) and `pythag_60` — ride
 along as **columns, not features**. A learned model handed the chain's own
 answer would be a residual-learner, and the question is whether the raw
 inputs are enough on their own; the blend in `scripts/train_game_learned.py`

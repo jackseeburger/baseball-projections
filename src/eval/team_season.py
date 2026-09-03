@@ -506,7 +506,7 @@ def project_chain(split: TeamSplit, inputs: gm.ChainInputs,
     The posted-lineup branch is switched off (`cards` and `card_history` are
     empty). That is what the nightly job does in practice too: it runs at 09:15
     UTC and no club has published a card, so `n_games_with_lineups` reads 0 and
-    the served model is exactly `pythag_C_sp_bpa_ip`. Feeding a backtest the
+    the served model is exactly `pythag_C_sp_bpa_ip_lvl`. Feeding a backtest the
     cards of games that had not been played would be leakage of a different
     kind, since lineups go up two to four hours before first pitch.
     """
