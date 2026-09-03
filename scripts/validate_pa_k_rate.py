@@ -41,25 +41,48 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def summarize_prior_predictive(model, data, samples: int = 200, seed: int = 59) -> dict:
-    """Where the prior puts the implied per-cell strikeout rate.
+def _rates_by_batter(replicate: np.ndarray, data: dict, min_pa: int = 100):
+    """Roll a per-cell replicate up to per-batter rates at the real exposure.
 
-    A prior that puts real mass on 2% or 70% strikeout rates is telling you
-    something before any Modal time is spent.
+    Cells are ~2 PA each once the pitcher is in the key, so a per-cell rate is
+    almost always 0, 0.5 or 1 and tells you nothing. The quantity worth
+    checking is a hitter's rate over the PA he actually took.
+    """
+    n = np.asarray(data["n_trials"], dtype="float64")
+    b = np.asarray(data["batter_idx"])
+    nb = int(b.max()) + 1
+    pa = np.bincount(b, weights=n, minlength=nb)
+    rate = np.bincount(b, weights=replicate, minlength=nb) / np.maximum(pa, 1)
+    return rate[pa >= min_pa], pa
+
+
+def summarize_prior_predictive(model, data, samples: int = 200, seed: int = 59) -> dict:
+    """Where the prior puts a hitter's strikeout rate, before seeing any data.
+
+    Reported at the batter level with real exposure (see `_rates_by_batter`).
+    A prior that puts real mass on a 2% or a 70% strikeout hitter is telling
+    you something before any Modal time is spent.
     """
     import pymc as pm
 
     with model:
         prior = pm.sample_prior_predictive(draws=samples, random_seed=seed)
     obs = np.asarray(prior.prior_predictive["obs_k"].values, dtype="float64")
+    obs = obs.reshape(-1, obs.shape[-1])                  # (draws, cells)
     n = np.asarray(data["n_trials"], dtype="float64")
-    rate = obs / np.maximum(n, 1)
-    q = np.percentile(rate, [1, 5, 25, 50, 75, 95, 99])
+
+    per_draw_league = obs.sum(axis=1) / n.sum()
+    by_batter = np.concatenate([_rates_by_batter(obs[i], data)[0]
+                                for i in range(obs.shape[0])])
+    q = np.percentile(by_batter, [1, 5, 25, 50, 75, 95, 99])
     return {
-        "quantiles": {f"p{p}": float(v) for p, v in
-                      zip((1, 5, 25, 50, 75, 95, 99), q)},
-        "mean": float(rate.mean()),
-        "pooled_rate": float(obs.sum() / n.sum() / 1.0) if n.sum() else float("nan"),
+        "hitter_rate_quantiles": {f"p{p}": round(float(v), 4) for p, v in
+                                  zip((1, 5, 25, 50, 75, 95, 99), q)},
+        "league_rate_mean": round(float(per_draw_league.mean()), 4),
+        "league_rate_p5_p95": [round(float(np.percentile(per_draw_league, 5)), 4),
+                               round(float(np.percentile(per_draw_league, 95)), 4)],
+        "implausible_share": round(float(np.mean(
+            (by_batter < 0.05) | (by_batter > 0.55))), 4),
     }
 
 
@@ -80,31 +103,26 @@ def summarize_posterior_predictive(trace, model, data, seed: int = 59) -> dict:
     rep = rep.reshape(-1, rep.shape[-1])                 # (draws, cells)
     n = np.asarray(data["n_trials"], dtype="float64")
     k = np.asarray(data["k"], dtype="float64")
-    b = np.asarray(data["batter_idx"])
 
-    nb = int(b.max()) + 1
-    pa_by_batter = np.bincount(b, weights=n, minlength=nb)
-    obs_by_batter = np.bincount(b, weights=k, minlength=nb) / np.maximum(pa_by_batter, 1)
+    obs_by_batter, pa_by_batter = _rates_by_batter(k, data)
 
     # A subsample of draws is plenty for a spread check and keeps this cheap.
     idx = np.linspace(0, rep.shape[0] - 1, min(100, rep.shape[0])).astype(int)
     rep_sd, rep_rate = [], []
     for i in idx:
-        by_batter = np.bincount(b, weights=rep[i], minlength=nb) / np.maximum(pa_by_batter, 1)
-        keep = pa_by_batter >= 100
-        rep_sd.append(float(by_batter[keep].std()))
+        rates, _ = _rates_by_batter(rep[i], data)
+        rep_sd.append(float(rates.std()))
         rep_rate.append(float(rep[i].sum() / n.sum()))
-    keep = pa_by_batter >= 100
     return {
-        "observed_league_rate": float(k.sum() / n.sum()),
-        "replicated_league_rate_mean": float(np.mean(rep_rate)),
-        "replicated_league_rate_p5_p95": [float(np.percentile(rep_rate, 5)),
-                                          float(np.percentile(rep_rate, 95))],
-        "observed_sd_across_hitters": float(obs_by_batter[keep].std()),
-        "replicated_sd_across_hitters_mean": float(np.mean(rep_sd)),
-        "replicated_sd_p5_p95": [float(np.percentile(rep_sd, 5)),
-                                 float(np.percentile(rep_sd, 95))],
-        "n_hitters_over_100_pa": int(keep.sum()),
+        "observed_league_rate": round(float(k.sum() / n.sum()), 4),
+        "replicated_league_rate_mean": round(float(np.mean(rep_rate)), 4),
+        "replicated_league_rate_p5_p95": [round(float(np.percentile(rep_rate, 5)), 4),
+                                          round(float(np.percentile(rep_rate, 95)), 4)],
+        "observed_sd_across_hitters": round(float(obs_by_batter.std()), 4),
+        "replicated_sd_across_hitters_mean": round(float(np.mean(rep_sd)), 4),
+        "replicated_sd_p5_p95": [round(float(np.percentile(rep_sd, 5)), 4),
+                                 round(float(np.percentile(rep_sd, 95)), 4)],
+        "n_hitters_over_100_pa": int(len(obs_by_batter)),
     }
 
 
