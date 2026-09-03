@@ -43,6 +43,11 @@ SEASON_BUCKETS = [(0.0, 0.15), (0.15, 0.30), (0.30, 0.45), (0.45, 0.60),
                   (0.60, 0.75), (0.75, 0.90), (0.90, 1.01)]
 BUCKET_LABELS = ["0-15%", "15-30%", "30-45%", "45-60%", "60-75%", "75-90%",
                  "90-100%"]
+# A finer grid for the plotted curve. Too narrow to carry a season-clustered
+# standard error, wide enough that a twenty-point line is not a scatter.
+FINE_EDGES = [round(0.05 * i, 2) for i in range(21)]
+FINE_LABELS = [f"{int(FINE_EDGES[i] * 100)}-{int(FINE_EDGES[i + 1] * 100)}%"
+               for i in range(20)]
 
 
 def attach_outcomes(projections: pd.DataFrame,
@@ -68,6 +73,9 @@ def attach_outcomes(projections: pd.DataFrame,
         df["season_fraction"],
         bins=[b[0] for b in SEASON_BUCKETS] + [SEASON_BUCKETS[-1][1]],
         labels=BUCKET_LABELS, right=False, include_lowest=True)
+    df["fine_bucket"] = pd.cut(df["season_fraction"].clip(upper=0.999),
+                               bins=FINE_EDGES, labels=FINE_LABELS,
+                               right=False, include_lowest=True)
     # Log loss needs a floor, and the honest floor is the Monte Carlo's own
     # resolution: nought out of 4,000 simulations means p < 1/4,000, not p = 0.
     # Clipping at machine epsilon instead would make a single surprise worth 27

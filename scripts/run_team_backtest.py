@@ -452,6 +452,8 @@ def payload(scored: pd.DataFrame, seasons, n_sims) -> dict:
         "reliability": [tb.reliability(scored, a) for a in ARMS
                         if a in set(scored["arm"])],
         "curve": json.loads(curve(scored).to_json(orient="records")),
+        "curve_fine": json.loads(
+            tb.score(scored, by=("fine_bucket", "arm")).to_json(orient="records")),
         "curve_paired": json.loads(curve_paired(scored).to_json(orient="records")),
     }
 
