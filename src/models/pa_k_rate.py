@@ -3,21 +3,37 @@ PA-level Bayesian Strikeout Rate Model
 
 Hierarchical Bayesian model for projecting batter strikeout rates using
 plate-appearance-level data, collapsed to Binomial counts per
-(batter, season, team, stand) cell with a logit-linear predictor combining:
+(batter, season, team, stand [, pitcher]) cell with a logit-linear predictor:
 
     logit(p_K) = league_trend[season] + player_ability[batter]
+               + pitcher_ability[pitcher]
                + handedness[stand] + park_effect[team]
                + age_curve(age)
 
 Components:
     - League trend: random walk on logit scale across seasons
     - Player ability: partial pooling with non-centered parameterization
+    - Opposing pitcher: partial pooling, non-centered, mean fixed at zero
+      (BAS-59). Without it a hitter who drew tough arms looks worse than he
+      is; the term reads a batter's rate net of who he faced. Projections are
+      made at a neutral pitcher, which is the point of having it.
     - Handedness: batter stand (L/R) effect
     - Park effects: ZeroSumNormal across teams
     - Age curve: quadratic on centered age (peak ~ 27)
 
 Likelihood: Binomial(n, logistic(eta)) per cell — identical to per-PA
-Bernoulli up to a constant, with ~10x fewer likelihood rows (roadmap 0.4)
+Bernoulli up to a constant, with ~10x fewer likelihood rows (roadmap 0.4).
+The pitcher term is the one thing that varies *within* an old cell, so
+`include_pitcher=True` puts `pitcher_idx` in the cell key: exact, but the
+compression drops to roughly 2 PA per cell (2026: 796 cells → 81,468). That
+is the price of the term and the full refit has to budget for it.
+
+**Dated cutoffs (BAS-59).** `cutoff_date` gives the model the same partial
+current season the intra-season baselines get: PA strictly before the cutoff
+train the model, PA on or after it are withheld, and the current season is
+its own cell in the season random walk carrying its actual partial exposure.
+See `prepare_model_data` for exactly where the semantics match
+`src.eval.baselines.marcel` and where they cannot.
 
 Designed for Modal deployment (8GB RAM, 4 CPU, NumpyRo backend).
 
@@ -41,6 +57,8 @@ import pandas as pd
 import pymc as pm
 import pytensor.tensor as pt
 
+from src.models.cutoff import apply_cutoff, assert_no_post_cutoff, cutoff_exposure
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -59,6 +77,12 @@ PARQUET_DIR = DATA_DIR / "parquet"
 REFERENCE_AGE = 27.0       # center of age curve (typical peak)
 MIN_PA_THRESHOLD = 50      # minimum PAs to include a batter
 PROJECTION_YEAR = 2026
+# Prior scale on the opposing-pitcher random effect, on the logit scale.
+# `pm.find_constrained_prior(pm.HalfNormal, lower=0, upper=0.45, mass=0.95)`
+# returns sigma ≈ 0.23; 0.45 on the logit scale is roughly the gap between a
+# league-average arm and an elite one at league K% (.22 → .31), so the prior
+# puts 95% of its mass on pitcher spreads no wider than the ones we can see.
+PITCHER_SIGMA_PRIOR = 0.23
 SAMPLER_KWARGS = dict(
     draws=2000,
     tune=1500,
@@ -75,16 +99,31 @@ SAMPLER_KWARGS = dict(
 # Data Loading
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def load_pa_data(pa_dir: Path | str | None = None) -> pd.DataFrame:
+BASE_PA_COLUMNS = [
+    "batter", "game_year", "stand", "is_k",
+    "home_team", "away_team", "inning_topbot",
+]
+
+
+def load_pa_data(
+    pa_dir: Path | str | None = None,
+    cutoff_date: str | pd.Timestamp | None = None,
+    include_pitcher: bool = False,
+) -> pd.DataFrame:
     """Load and concatenate PA outcome parquet files.
 
     Args:
         pa_dir: Directory containing pa_outcomes_YYYY.parquet files.
                 Defaults to DATA_DIR / 'parquet' / 'pa_outcomes'.
+        cutoff_date: ISO date. Rows dated on or after it are dropped as they
+            are read, so post-cutoff PA never reach memory, let alone the
+            likelihood. Requires a `game_date` column.
+        include_pitcher: also read `pitcher`, for the opposing-pitcher term.
 
     Returns:
         DataFrame with one row per PA, columns include:
-        batter, game_year, stand, is_k, home_team, away_team, inning_topbot.
+        batter, game_year, stand, is_k, home_team, away_team, inning_topbot
+        (plus game_date and pitcher when asked for).
     """
     if pa_dir is None:
         pa_dir = PARQUET_DIR / "pa_outcomes"
@@ -97,15 +136,23 @@ def load_pa_data(pa_dir: Path | str | None = None) -> pd.DataFrame:
     logger.info(f"Loading {len(parquet_files)} PA parquet files from {pa_dir}")
 
     # Only read the columns we need to save memory
-    keep_cols = [
-        "batter", "game_year", "stand", "is_k",
-        "home_team", "away_team", "inning_topbot",
-    ]
+    keep_cols = list(BASE_PA_COLUMNS)
+    if cutoff_date is not None:
+        keep_cols.append("game_date")
+    if include_pitcher:
+        keep_cols.append("pitcher")
+
     frames = []
     for f in parquet_files:
         df = pd.read_parquet(f, columns=keep_cols)
+        if cutoff_date is not None:
+            df = apply_cutoff(df, cutoff_date)
         frames.append(df)
     data = pd.concat(frames, ignore_index=True)
+    if cutoff_date is not None:
+        assert_no_post_cutoff(data, cutoff_date)
+        logger.info("cutoff %s: %s", cutoff_date,
+                    cutoff_exposure(data, cutoff_date))
     logger.info(f"Loaded {len(data):,} PAs across years "
                 f"{data['game_year'].min()}-{data['game_year'].max()}")
     return data
@@ -143,13 +190,16 @@ def prepare_model_data(
     park_factors: pd.DataFrame | None = None,
     min_pa: int = MIN_PA_THRESHOLD,
     birthdates: pd.DataFrame | None = None,
+    cutoff_date: str | pd.Timestamp | None = None,
+    include_pitcher: bool = False,
 ) -> dict:
     """Prepare PA data for the PyMC model.
 
     Steps:
+        0. Apply the dated cutoff, if any, and assert nothing survives it.
         1. Filter pitchers (batters with < min_pa total PAs are dropped).
         2. Determine batting team from inning_topbot.
-        3. Create integer indices for batters, seasons, teams.
+        3. Create integer indices for batters, seasons, teams (and pitchers).
         4. Compute age as of June 30 from Chadwick register birthdates.
         5. Merge park factors (default to 1.0 if unavailable).
 
@@ -161,10 +211,53 @@ def prepare_model_data(
             Loaded from the parquet cache when None; falls back to the
             legacy first_year - 23 estimate only if no register data is
             available at all.
+        cutoff_date: ISO date. Only PA strictly before it are kept, so the
+            current season enters as a partial one. Safe to pass even when
+            `load_pa_data` already cut — the filter is idempotent and the
+            guard runs either way.
+        include_pitcher: put `pitcher_idx` in the cell key so the model can
+            carry an opposing-pitcher random effect.
+
+    **Partial-season semantics, against `src.eval.baselines.marcel`.**
+    The two arms are handed the same plate appearances: the harness's
+    training frame is the prior full seasons plus the current season through
+    the cutoff (`intraseason.build_training_frame`), and `apply_cutoff` keeps
+    exactly `game_date < cutoff` — the same strict inequality
+    `intraseason.split_at_cutoff` uses, so a game played *on* the cutoff date
+    is withheld from both. The partial season is not reweighted or annualized
+    here any more than it is there: it is one more season in the random walk
+    whose cells carry the PA actually played, which is the model's analogue of
+    Marcel weighting by trials.
+
+    Four differences remain, all deliberate:
+
+    1. **Window and recency.** Marcel reads three seasons at fixed 5/4/3
+       weights; this model reads every season in `pa_dir` with no recency
+       weight on the player term. Recency enters only through the league
+       random walk. Feeding the model the same three seasons Marcel sees is
+       a matter of which parquets are in `pa_dir`.
+    2. **Universe.** Marcel's prior seasons come from the Stats API season
+       table and the current partial season from PA data; this model reads PA
+       data throughout. The Statcast universe runs ~0.7% more PA per player,
+       so the *prior* seasons differ slightly between the arms. The
+       current-season slice is bit-identical.
+    3. **Coverage.** `min_pa` drops batters below a career-PA floor, which
+       Marcel does not do. The harness scores on the common player set, so
+       this costs coverage rather than fairness; `generate_projections` can
+       cover the remainder from the fitted population instead.
+    4. **League level.** Marcel regresses toward a projected league rate; at
+       an intra-season cutoff its horizon is zero, so that is the current
+       season's own partial rate. The random walk's last node is the same
+       partial season, and `generate_projections` extrapolates zero steps when
+       the projection year is the cutoff year. Same convention, reached from
+       opposite directions.
 
     Returns:
         Dictionary with all arrays/indices needed by the model.
     """
+    if cutoff_date is not None:
+        pa = apply_cutoff(pa, cutoff_date)
+        assert_no_post_cutoff(pa, cutoff_date)
     df = pa.copy()
 
     # --- Batting team: if Top of inning, batter is away; Bottom → home ---
@@ -200,6 +293,20 @@ def prepare_model_data(
 
     # Handedness: L=0, R=1
     df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
+
+    # Opposing pitchers (for the pitcher random effect). Every pitcher who
+    # threw a PA in the window gets a level; partial pooling shrinks the ones
+    # with a handful of batters faced back to zero on its own, so there is no
+    # minimum-batters-faced filter to tune.
+    pitchers = np.array([], dtype=np.int64)
+    pitcher_map: dict = {}
+    if include_pitcher:
+        if "pitcher" not in df.columns:
+            raise KeyError("include_pitcher=True needs a 'pitcher' column; "
+                           "load_pa_data(include_pitcher=True)")
+        pitchers = np.sort(df["pitcher"].unique())
+        pitcher_map = {p: i for i, p in enumerate(pitchers)}
+        df["pitcher_idx"] = df["pitcher"].map(pitcher_map).astype(np.int64)
 
     # --- Age from real birthdates (Chadwick register), June 30 convention ---
     from src.data.birthdates import (
@@ -262,7 +369,14 @@ def prepare_model_data(
     # --- Binomial aggregation (roadmap 0.4) ---
     from src.models.aggregation import aggregate_binomial_cells
 
-    cells = aggregate_binomial_cells(df)
+    cell_cols = ("batter_idx", "season_idx", "team_idx", "stand_idx")
+    if include_pitcher:
+        # The pitcher effect varies within the old cell, so it has to join the
+        # key for the Binomial to stay an exact rewrite of the per-PA
+        # Bernoulli. Compression drops to ~2 PA/cell — that is the cost of the
+        # term, not a bug.
+        cell_cols = cell_cols + ("pitcher_idx",)
+    cells = aggregate_binomial_cells(df, cell_cols=cell_cols)
     logger.info(f"Binomial aggregation: {len(df):,} PAs → {len(cells):,} cells "
                 f"({len(df) / max(len(cells), 1):.1f}x compression)")
 
@@ -273,11 +387,13 @@ def prepare_model_data(
         "n_batters": len(batters),
         "n_seasons": len(seasons),
         "n_teams": n_teams,
+        "n_pitchers": len(pitchers),
         # Index arrays (int64)
         "batter_idx": cells["batter_idx"].values,
         "season_idx": cells["season_idx"].values,
         "team_idx": cells["team_idx"].values,
         "stand_idx": cells["stand_idx"].values,
+        "pitcher_idx": (cells["pitcher_idx"].values if include_pitcher else None),
         # Continuous features (float64)
         "age_centered": cells["age_centered"].values,
         "log_pf_k": cells["log_pf_k"].values,
@@ -288,13 +404,20 @@ def prepare_model_data(
         "seasons": seasons,
         "batters": batters,
         "teams": teams,
+        "pitchers": pitchers,
         "season_map": season_map,
         "batter_map": batter_map,
         "team_map": team_map,
+        "pitcher_map": pitcher_map,
         # Metadata
         "batter_meta": batter_meta,
         "log_pf_matrix": log_pf,
         "df": cells,
+        "include_pitcher": bool(include_pitcher),
+        "cutoff_date": None if cutoff_date is None else str(pd.Timestamp(cutoff_date).date()),
+        # Trials-weighted share of right-handed PA, used to marginalize the
+        # handedness term for a batter whose stand we never saw.
+        "stand_share_r": float(df["stand_idx"].mean()),
     }
 
     logger.info(
@@ -302,7 +425,8 @@ def prepare_model_data(
         f"({model_data['n_pa']:,} PAs), "
         f"{model_data['n_batters']:,} batters, "
         f"{model_data['n_seasons']} seasons, "
-        f"{model_data['n_teams']} teams"
+        f"{model_data['n_teams']} teams, "
+        f"{model_data['n_pitchers']:,} pitchers"
     )
     return model_data
 
@@ -317,16 +441,25 @@ def build_model(data: dict) -> pm.Model:
     Structure (all on logit scale):
         eta = league_trend[season]
             + player_ability[batter]
+            + pitcher_ability[pitcher]        (when data carries pitchers)
             + handedness * stand_idx
             + park_effect[team]
             + beta_age * age_centered
             + beta_age2 * age_centered^2
             + log_pf_k  (park factor offset)
 
-        k ~ Binomial(n, logistic(eta))   per (batter, season, team, stand) cell
+        k ~ Binomial(n, logistic(eta))   per cell
 
-    Non-centered parameterization is used for player abilities to
-    improve sampling geometry.
+    Non-centered parameterization is used for player abilities and for the
+    pitcher effect, to improve sampling geometry.
+
+    **The pitcher term.** `pitcher_ability = sigma_pitcher * z_pitcher` with
+    `z ~ N(0,1)` and *no* free mean: a mean would be exactly confounded with
+    `league_init`, which is the one thing that turns this from a random effect
+    into a funnel with an unidentified ridge. `sigma_pitcher`'s HalfNormal
+    scale comes from `PITCHER_SIGMA_PRIOR` (see the constant for how it was
+    chosen). Everything about a batter is now read net of the arms he faced,
+    and projections are made at `pitcher_ability = 0`.
 
     Args:
         data: Dictionary from prepare_model_data().
@@ -334,12 +467,15 @@ def build_model(data: dict) -> pm.Model:
     Returns:
         PyMC Model object (not yet sampled).
     """
+    include_pitcher = bool(data.get("include_pitcher")) and data.get("n_pitchers")
     coords = {
         "batter": data["batters"],
         "season": data["seasons"],
         "team": data["teams"],
         "cell": np.arange(data["n_obs"]),
     }
+    if include_pitcher:
+        coords["pitcher"] = data["pitchers"]
 
     with pm.Model(coords=coords) as model:
         # ─── Mutable data containers (for posterior predictive) ───────────
@@ -380,6 +516,17 @@ def build_model(data: dict) -> pm.Model:
             dims="batter",
         )
 
+        # ─── Opposing pitcher: partial pooling, non-centered, zero mean ───
+        if include_pitcher:
+            pitcher_idx = pm.Data("pitcher_idx", data["pitcher_idx"], dims="cell")
+            sigma_pitcher = pm.HalfNormal("sigma_pitcher", sigma=PITCHER_SIGMA_PRIOR)
+            z_pitcher = pm.Normal("z_pitcher", mu=0, sigma=1, dims="pitcher")
+            pitcher_ability = pm.Deterministic(
+                "pitcher_ability",
+                sigma_pitcher * z_pitcher,
+                dims="pitcher",
+            )
+
         # ─── Handedness effect ────────────────────────────────────────────
         # R vs L batter (R=1, L=0); positive = R batters strike out more
         beta_hand = pm.Normal("beta_hand", mu=0.0, sigma=0.2)
@@ -407,6 +554,8 @@ def build_model(data: dict) -> pm.Model:
             + beta_age2 * (age_c ** 2)
             + log_pf
         )
+        if include_pitcher:
+            eta = eta + pitcher_ability[pitcher_idx]
 
         # ─── Likelihood ──────────────────────────────────────────────────
         # Binomial over cells; no p_k Deterministic — writing a float per
@@ -427,9 +576,11 @@ def build_model(data: dict) -> pm.Model:
         + 1                      # beta_hand
         + data["n_teams"] - 1    # park_effect (zero-sum = n-1 free)
         + 2                      # beta_age, beta_age2
+        + (data["n_pitchers"] + 1 if include_pitcher else 0)  # z_pitcher, sigma
     )
     logger.info(f"Model built: ~{n_params:,} free parameters, "
-                f"{data['n_obs']:,} cells ({data.get('n_pa', 0):,} PAs)")
+                f"{data['n_obs']:,} cells ({data.get('n_pa', 0):,} PAs)"
+                f"{', + pitcher effect' if include_pitcher else ''}")
     return model
 
 
@@ -461,51 +612,191 @@ def sample_model(
 
     logger.info(f"Sampling complete in {elapsed:.0f}s")
 
-    # Quick diagnostics
-    rhat = az.rhat(trace)
-    max_rhat = max(
-        float(rhat[v].values.max()) if rhat[v].values.ndim > 0
-        else float(rhat[v].values)
-        for v in rhat.data_vars
+    diag = model_diagnostics(trace)
+    logger.info(
+        "Max R-hat: %.4f (%s), min ESS bulk: %.0f (%s), divergences: %d, "
+        "BFMI: %s",
+        diag["max_rhat"], diag["max_rhat_var"], diag["min_ess_bulk"],
+        diag["min_ess_var"], diag["divergences"],
+        ", ".join(f"{b:.2f}" for b in diag["bfmi"]),
     )
-    divergences = 0
-    if hasattr(trace, "sample_stats"):
-        div = trace.sample_stats.get("diverging")
-        if div is not None:
-            divergences = int(div.values.sum())
-    logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
 
     return trace
+
+
+def model_diagnostics(trace: az.InferenceData) -> dict:
+    """R-hat, ESS, divergences and BFMI in one dict. No sampling, no plots.
+
+    Split out so a validation run and a CI test can assert on the same
+    numbers, and so the energy diagnostic (BFMI) is reported alongside R-hat
+    rather than only when someone remembers to look — a new group-level scale
+    like `sigma_pitcher` is exactly the thing that shows up in the energy
+    plot before it shows up in R-hat.
+    """
+    rhat = az.rhat(trace)
+    ess = az.ess(trace)
+
+    def _extreme(ds, worst_is_max: bool):
+        """(value, variable) for the worst finite entry across every var."""
+        best, name = None, None
+        for v in ds.data_vars:
+            vals = np.asarray(ds[v].values, dtype="float64").ravel()
+            vals = vals[np.isfinite(vals)]
+            if vals.size == 0:
+                continue
+            cand = float(vals.max() if worst_is_max else vals.min())
+            if best is None or (cand > best if worst_is_max else cand < best):
+                best, name = cand, str(v)
+        return best, name
+
+    max_rhat, max_rhat_var = _extreme(rhat, worst_is_max=True)
+    min_ess, min_ess_var = _extreme(ess, worst_is_max=False)
+
+    divergences = 0
+    bfmi: list[float] = []
+    stats = getattr(trace, "sample_stats", None)
+    if stats is not None:
+        div = stats.get("diverging")
+        if div is not None:
+            divergences = int(np.asarray(div.values).sum())
+        if "energy" in stats:
+            bfmi = [float(b) for b in np.atleast_1d(az.bfmi(trace))]
+
+    return {
+        "max_rhat": float(max_rhat) if max_rhat is not None else float("nan"),
+        "max_rhat_var": max_rhat_var,
+        "min_ess_bulk": float(min_ess) if min_ess is not None else float("nan"),
+        "min_ess_var": min_ess_var,
+        "divergences": divergences,
+        "bfmi": bfmi,
+        # BFMI below ~0.3 is the usual "this posterior has a funnel" alarm.
+        "bfmi_ok": bool(bfmi) and min(bfmi) >= 0.3,
+        "healthy": (
+            (max_rhat is not None and float(max_rhat) < 1.01)
+            and divergences == 0
+            and (not bfmi or min(bfmi) >= 0.3)
+        ),
+    }
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # Projections
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _project_unseen(
+    unseen: pd.DataFrame | None,
+    data: dict,
+    post,
+    projected_trend: np.ndarray,
+    beta_hand_flat: np.ndarray,
+    beta_age_flat: np.ndarray,
+    beta_age2_flat: np.ndarray,
+    projection_year: int,
+    n_samples: int,
+    already: set[int],
+) -> list[dict]:
+    """Population-level projections for batters the fit never saw.
+
+    A hierarchical model already says what to do about a player with no
+    history: his ability is a draw from the fitted population,
+    `N(mu_ability, sigma_ability)`. That is the same construction as drawing a
+    fresh random effect for an unseen group, done here in numpy on the
+    posterior rather than by extending the model, because nothing else about
+    the prediction needs the graph.
+
+    `unseen` is [batter, age] with an optional `stand`. Without a stand the
+    handedness term is marginalized at the training set's right-handed PA
+    share — the honest answer when we have not seen the player bat, and the
+    only place a projection here is not conditioned on a known covariate.
+    """
+    if unseen is None or len(unseen) == 0:
+        return []
+    if "batter" not in unseen.columns:
+        raise KeyError("unseen frame needs a 'batter' column")
+
+    mu_ability = post["mu_ability"].values.reshape(n_samples)
+    sigma_ability = post["sigma_ability"].values.reshape(n_samples)
+    rng = np.random.default_rng(2026)
+    share_r = float(data.get("stand_share_r", 0.5))
+
+    rows = []
+    for _, row in unseen.iterrows():
+        batter_id = int(row["batter"])
+        if batter_id in already:
+            continue
+        already.add(batter_id)
+
+        age = row.get("age", np.nan)
+        age = float(age) if age is not None and np.isfinite(float(age)) else np.nan
+        age_c = 0.0 if np.isnan(age) else age - REFERENCE_AGE
+
+        stand = row.get("stand") if "stand" in unseen.columns else None
+        s_term = share_r if stand not in ("L", "R") else (1.0 if stand == "R" else 0.0)
+
+        ability = mu_ability + sigma_ability * rng.standard_normal(n_samples)
+        eta = (
+            projected_trend
+            + ability
+            + beta_hand_flat * s_term
+            + beta_age_flat * age_c
+            + beta_age2_flat * (age_c ** 2)
+        )
+        p_k = 1.0 / (1.0 + np.exp(-eta))
+        rows.append({
+            "batter": batter_id,
+            "stand": stand if stand in ("L", "R") else None,
+            "age": age,
+            "projected_k_rate": float(np.mean(p_k)),
+            "k_rate_std": float(np.std(p_k)),
+            "k_rate_lower": float(np.percentile(p_k, 5)),
+            "k_rate_upper": float(np.percentile(p_k, 95)),
+            "posterior_mean_ability": float(np.mean(ability)),
+            "total_pa": 0,
+            "career_k_rate": float("nan"),
+            "last_season": int(projection_year),
+            "unseen": True,
+        })
+    logger.info("Projected %d batters from the fitted population (unseen)", len(rows))
+    return rows
+
+
 def generate_projections(
     trace: az.InferenceData,
     data: dict,
     projection_year: int = PROJECTION_YEAR,
     recent_seasons: int = 3,
+    unseen: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
-    """Generate 2026 K-rate projections from posterior samples.
+    """Generate K-rate projections from posterior samples.
 
     For each batter who appeared in at least one of the last `recent_seasons`,
     compute the posterior predictive K-rate at the projection year by:
         - Extrapolating the league trend (last value + one innovation draw)
         - Using the player's posterior ability
         - Applying the age curve at their projected age
-        - Using neutral park/handedness (or their actual stand)
+        - Using neutral park/handedness (or their actual stand), and a neutral
+          (average) opposing pitcher when the fit carries a pitcher effect
+
+    At an intra-season cutoff the projection year *is* the last training
+    season, so `years_ahead` is zero and no innovation is drawn: the level is
+    the partial season's own fitted league node. That matches
+    `marcel_tuned`'s "drift collapses to last at horizon zero".
 
     Args:
         trace: Posterior trace from sample_model().
         data: Model data dictionary.
         projection_year: Year to project (default 2026).
         recent_seasons: Include batters active within this many years.
+        unseen: optional [batter, age, (stand)] frame of batters with no
+            training PA — a September call-up at an April cutoff, or anyone
+            below `min_pa`. Their ability is drawn from the fitted population,
+            `N(mu_ability, sigma_ability)` per posterior sample, which is the
+            hierarchical model's own answer for a player it has never seen
+            rather than a hard-coded league rate. Rows carry `unseen=True`.
 
     Returns:
         DataFrame with columns: batter, stand, age, projected_k_rate,
-        k_rate_lower, k_rate_upper, posterior_mean_ability, total_pa.
+        k_rate_lower, k_rate_upper, posterior_mean_ability, total_pa, unseen.
     """
     post = trace.posterior
 
@@ -563,7 +854,9 @@ def generate_projections(
             + beta_hand_flat * s_idx
             + beta_age_flat * age_c
             + beta_age2_flat * (age_c ** 2)
-            # No park effect (neutral venue) and no log_pf
+            # No park effect (neutral venue) and no log_pf, and a neutral
+            # opposing pitcher: pitcher_ability is zero-mean by construction,
+            # so leaving it out *is* the average-arm projection.
         )
 
         # Convert to probability
@@ -581,7 +874,15 @@ def generate_projections(
             "total_pa": int(row["total_pa"]),
             "career_k_rate": float(row["career_k_rate"]),
             "last_season": int(row["last_season"]),
+            "unseen": False,
         })
+
+    results.extend(_project_unseen(
+        unseen, data, post, projected_trend,
+        beta_hand_flat, beta_age_flat, beta_age2_flat,
+        projection_year, n_samples,
+        already={int(r["batter"]) for r in results},
+    ))
 
     proj_df = pd.DataFrame(results)
     proj_df = proj_df.sort_values("projected_k_rate", ascending=True).reset_index(drop=True)
@@ -686,6 +987,9 @@ def run_model(
     log_wandb: bool = True,
     wandb_offline: bool = False,
     projection_year: int = PROJECTION_YEAR,
+    cutoff_date: str | pd.Timestamp | None = None,
+    include_pitcher: bool = False,
+    unseen: pd.DataFrame | None = None,
     **sampler_overrides,
 ) -> tuple[az.InferenceData, pd.DataFrame, dict]:
     """End-to-end model pipeline: load → prep → build → sample → project → log.
@@ -697,6 +1001,11 @@ def run_model(
         log_wandb: Whether to log to wandb.
         wandb_offline: If True, wandb logs locally.
         projection_year: Year to project.
+        cutoff_date: ISO date; train on PA strictly before it (see
+            `prepare_model_data` for the partial-season semantics).
+        include_pitcher: fit the opposing-pitcher random effect.
+        unseen: [batter, age, (stand)] frame of batters to project from the
+            fitted population because they have no training PA.
         **sampler_overrides: Override default sampler kwargs.
 
     Returns:
@@ -707,11 +1016,15 @@ def run_model(
     logger.info("=" * 60)
 
     # 1. Load data
-    pa = load_pa_data(pa_dir)
+    pa = load_pa_data(pa_dir, cutoff_date=cutoff_date,
+                      include_pitcher=include_pitcher)
     park_factors = load_park_factors(pf_path)
 
     # 2. Prepare model data
-    model_data = prepare_model_data(pa, park_factors, min_pa=min_pa)
+    model_data = prepare_model_data(
+        pa, park_factors, min_pa=min_pa,
+        cutoff_date=cutoff_date, include_pitcher=include_pitcher,
+    )
     del pa  # free raw data
     gc.collect()
 
@@ -723,7 +1036,7 @@ def run_model(
 
     # 5. Generate projections
     projections = generate_projections(
-        trace, model_data, projection_year=projection_year,
+        trace, model_data, projection_year=projection_year, unseen=unseen,
     )
 
     # 6. Save projections to parquet
@@ -742,6 +1055,9 @@ def run_model(
         "n_batters": model_data["n_batters"],
         "n_seasons": model_data["n_seasons"],
         "n_teams": model_data["n_teams"],
+        "n_pitchers": model_data["n_pitchers"],
+        "include_pitcher": include_pitcher,
+        "cutoff_date": model_data["cutoff_date"],
         "reference_age": REFERENCE_AGE,
         **{k: v for k, v in SAMPLER_KWARGS.items() if k != "idata_kwargs"},
         **sampler_overrides,
