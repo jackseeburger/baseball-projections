@@ -149,6 +149,8 @@ def main() -> None:
                     help="merge into the existing parquet instead of replacing it")
     ap.add_argument("--count-only", action="store_true",
                     help="list settled markets and stop before the candlesticks")
+    ap.add_argument("--assemble-only", action="store_true",
+                    help="write the parquets from the checkpoint without fetching")
     args = ap.parse_args()
 
     series = kalshi.PROP_SERIES
@@ -158,32 +160,40 @@ def main() -> None:
         if not series:
             raise SystemExit(f"no prop series matches {args.stats}")
 
-    markets = backfill.kalshi_settled_props(
-        args.season, series=series, start=args.start, end=args.end,
-        min_volume=args.min_volume)
-    logger.info("%d settled prop contracts that traded", len(markets))
-    if args.count_only:
-        return
-
     ckpt_dir = args.checkpoint_dir or ROOT / f"data/cache/prop_backfill_{args.season}"
     ckpt = Checkpoint(ckpt_dir, every=args.checkpoint_every)
-    done = set()
-    if not args.restart:
+    if args.assemble_only:
+        # Write the archive from whatever the checkpoint already holds. The
+        # fetch is newest-first, so a run stopped early leaves a complete
+        # recent window and this turns it into the two parquets without
+        # spending another request.
         ckpt.resume()
-        done = ckpt.done()
-    if done:
-        logger.info("%d markets already fetched (%d closes); resuming",
-                    len(done), len(ckpt.rows))
-    # Newest first. The archive is one candlestick request per contract and a
-    # season is hours of them, so a run that has to be stopped early should
-    # leave a *complete recent window* rather than a complete June and nothing
-    # since. Resuming is by ticker and does not care about the order.
-    todo = sorted((m for m in markets if m["ticker"] not in done),
-                  key=lambda m: str(m.get("close_time") or ""), reverse=True)
+    else:
+        markets = backfill.kalshi_settled_props(
+            args.season, series=series, start=args.start, end=args.end,
+            min_volume=args.min_volume)
+        logger.info("%d settled prop contracts that traded", len(markets))
+        if args.count_only:
+            return
 
-    backfill.kalshi_prop_closes(args.season, markets=todo, workers=args.workers,
-                                candle_hours=args.candle_hours,
-                                on_market=ckpt.on_market)
+        done = set()
+        if not args.restart:
+            ckpt.resume()
+            done = ckpt.done()
+        if done:
+            logger.info("%d markets already fetched (%d closes); resuming",
+                        len(done), len(ckpt.rows))
+        # Newest first. The archive is one candlestick request per contract and
+        # a season is hours of them, so a run that has to be stopped early
+        # should leave a *complete recent window* rather than a complete June
+        # and nothing since. Resuming is by ticker and ignores the order.
+        todo = sorted((m for m in markets if m["ticker"] not in done),
+                      key=lambda m: str(m.get("close_time") or ""), reverse=True)
+
+        backfill.kalshi_prop_closes(args.season, markets=todo,
+                                    workers=args.workers,
+                                    candle_hours=args.candle_hours,
+                                    on_market=ckpt.on_market)
     ckpt.flush()
     rows, candles = ckpt.rows, ckpt.candles()
     logger.info("%d contracts with a pre-first-pitch close, %d hourly candles",

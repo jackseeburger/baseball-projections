@@ -259,6 +259,58 @@ def test_the_probable_is_what_is_read_not_the_man_who_actually_started():
         pytest.approx(with_filler)
 
 
+def _k_closes() -> pd.DataFrame:
+    """One strikeout contract on a starter pitching for the home club."""
+    return pd.DataFrame([
+        {"game_pk": 700001, "game_date": "2026-08-20", "player_id": 91,
+         "team_id": 140, "prop_stat": "k", "prop_line": 5.5,
+         "p_over_close": 0.50, "over_hit": True},
+    ])
+
+
+def _k_pitcher_ctx() -> dict:
+    """One starter at the league's strikeout rate, from a long prior season."""
+    prior = pd.DataFrame({"pitcher": [91], "season": [2025], "bf": [700.0],
+                          "k": [154.0], "bbhbp": [63.0], "hr": [21.0],
+                          "outs": [500.0]})
+    return {"season": 2026, "league": {"rate_k": 0.22, "rate_bbhbp": 0.09,
+                                       "rate_hr": 0.03},
+            "prior_counts": prior,
+            "game_logs": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                               "bbhbp", "hr", "outs", "date"])}
+
+
+def _k_matchup_ctx(card: list) -> dict:
+    ctx = _matchup_ctx(_ace_logs(91, ["2026-08-01"]), {}, LEAGUE_ALLOWED)
+    ctx["cards"] = {(700001, "away"): card}
+    return ctx
+
+
+def test_a_strikeout_prone_card_raises_the_starters_price():
+    """The mirror: the opposing posted card is in the pitcher's number."""
+    batter_ctx = _batter_ctx()
+    # Batter 1 whiffs in half his plate appearances; batter 2 never does.
+    prior = pd.DataFrame({
+        "batter": [1, 2], "season": [2025, 2025], "pa": [600, 600],
+        "ab": [540, 540], "h": [140, 140], "doubles": [28, 28],
+        "triples": [2, 2], "hr": [20, 20], "k": [300, 20], "bb": [55, 55],
+        "hbp": [5, 5], "sf": [5, 5]})
+    batter_ctx["prior_counts"] = pd.concat(
+        [batter_ctx["prior_counts"], lu_model.normalize_counts(prior)],
+        ignore_index=True)
+
+    def price(card):
+        return props.price(_k_closes(), batter_ctx, _k_pitcher_ctx(), {},
+                           stats=("k",), matchup_ctx=_k_matchup_ctx(card))
+
+    whiffers = price([1] * 9).loc[0, "p_matchup"]
+    contact = price([2] * 9).loc[0, "p_matchup"]
+    assert whiffers > contact
+    # No card at all and no recent ones: the league, i.e. the current price.
+    none = price([])
+    assert none.loc[0, "p_matchup"] == pytest.approx(none.loc[0, "p_model"])
+
+
 def test_paired_brier_is_negative_when_the_first_arm_is_better():
     priced = pd.DataFrame({
         "game_pk": [1, 1, 2, 2], "over_hit": [True, True, False, False],
