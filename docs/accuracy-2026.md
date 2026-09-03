@@ -86,6 +86,16 @@ strength model only moves the margin (mostly in expected wins). So the
 tiebreakers, bracket — not evidence of modeling skill. Playoff odds become a
 model test in April, not September.
 
+**Since Sept 3 that last sentence is measured, not asserted.** A walk-forward
+backtest over 2015–2025 — 7,470 club-projections an arm at 249 weekly as-of
+dates — puts the crossing point at **the start of August**: our playoff
+probabilities beat a .500 extrapolation of the current record by .034 of Brier
+in April, by .006 at the start of July, by nothing from 60% of the season on,
+and are nominally *behind* it (+.0024, t 1.8) in the last tenth. The
+projected-wins column is the half that survives all season — 1.31 wins of MAE
+better pooled, 0.14 better even in the final fortnight. Full tables:
+[team-projection-backtest.md](team-projection-backtest.md).
+
 ## 3. So where is edge?
 
 Not in September playoff odds (85% of the season is banked; being within

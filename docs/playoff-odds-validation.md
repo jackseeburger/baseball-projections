@@ -611,3 +611,35 @@ Neither term is served. Park is worth −0.00006 of Brier on the 756 market game
 and +0.00002 on 2025; defence is worth +0.00007 and +0.00003, i.e. worse than
 not having it on both. The scoreboard, the grids and the mechanism are in
 [market-benchmark-2026.md](market-benchmark-2026.md#sept-3-2026--park-and-team-defence-both-measured-neither-one-clears).
+
+---
+
+## Sept 3, 2026 — and the board itself, scored at last
+
+Everything above this line tests the *plumbing* (the probabilities add up, the
+tiebreakers fire, the terms reach the games they should) or *agreement* (with
+FanGraphs, with the Kalshi futures board, with a no-model control). None of it
+is accuracy: no rest-of-season team projection this repository has ever served
+had been scored against what actually happened.
+
+[team-projection-backtest.md](team-projection-backtest.md) does that.
+`src/eval/team_season.py` is the team analogue of the player harness — cut a
+season at a date, hand the whole chain everything strictly before it through
+the same `chain_terms` the nightly calls, simulate the rest, score it — and it
+was run over **2015–2025 (2020 excluded), 249 weekly as-of dates, 7,470
+club-projections an arm.**
+
+The headline: projected final wins MAE **4.50** against 5.80 for the current
+record extrapolated at .500, 6.12 at the club's own rate, 8.47 for a preseason
+projection held fixed and 10.40 for no model at all; playoff Brier **.1034**
+against .1119 / .1236 / .2032 / .2294. Paired and clustered by season, −1.31
+wins (se 0.16) and −.0085 of Brier (se .0038) against the .500 extrapolation.
+
+The part that matters for *this* document: **the coin-flip control's lesson
+has a date on it now.** The board's advantage over that control is .034 of
+Brier in April, .006 at the start of July, indistinguishable from zero from
+60% of the season on, and nominally negative in the last tenth. Division,
+pennant and World Series never separate from it at any point of any season —
+which is what ten champions will do to a standard error. September playoff
+odds are not a model test, and now there is a curve saying where the test
+stops working rather than one September afternoon's control run.
