@@ -31,6 +31,9 @@ Metrics: Brier score and log loss (lower is better). Baselines:
     pythag_C_sp_bpa — pythag_C_sp with the pitch-count availability delta on the
                       3.5 relief innings, the one term at a time on the best
                       model there is
+    pythag_C_sp_bpa_ip
+                    — the same, splitting the game between starter and pen at
+                      *this* starter's expected innings instead of a flat 5.5
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -70,6 +73,7 @@ BPA_MODEL = "pythag_60_sp_lu_bpa"
 C_MODEL = "pythag_C"
 C_SP_MODEL = "pythag_C_sp"
 C_SP_BPA_MODEL = "pythag_C_sp_bpa"
+C_SP_BPA_IP_MODEL = "pythag_C_sp_bpa_ip"
 SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
@@ -88,6 +92,10 @@ BPA_HARD_1D = ru_model.HARD_1D_PITCHES
 BPA_HARD_2D = ru_model.HARD_2D_PITCHES
 BPA_TAPER = ru_model.TAPER_PITCHES
 BPA_BASELINE = ru_model.BASELINE
+# How hard to regress a starter's own innings per start toward the flat 5.5
+# when his expected innings, not 5.5, set the starter/bullpen split. Chosen
+# walk-forward on 2025 only (docs/market-benchmark-2026.md).
+SP_IP_BALLAST = sp_model.IP_BALLAST_STARTS
 # Station C: how much of the bottom-up run environment to use, what trailing
 # window defines a club's hitters and their plate-appearance shares, and how
 # many days of starts define a rotation. All three chosen walk-forward on 2025
@@ -291,7 +299,7 @@ def lineup_day_context(tot: pd.DataFrame, date: str, day: pd.DataFrame,
 
 
 def pen_delta_ra9(ra9: float, team_id, pid, bp_day: dict, bp_ctx: dict,
-                  kind: str) -> tuple[float, float]:
+                  kind: str, relief_ip: float | None = None) -> tuple[float, float]:
     """Apply the 3.5-inning bullpen delta to one side's runs-allowed rate.
 
     `kind` picks which reading of "the pen that is available" is used:
@@ -316,7 +324,8 @@ def pen_delta_ra9(ra9: float, team_id, pid, bp_day: dict, bp_ctx: dict,
     else:
         now = avail
         base = bp_day["lg_pen_ra9"] if bp_ctx["baseline"] == "league" else full
-    out = bp_model.blend_bullpen_team(now, ra9, base, relief_ip=bp_ctx["relief_ip"])
+    ip = bp_ctx["relief_ip"] if relief_ip is None else relief_ip
+    out = bp_model.blend_bullpen_team(now, ra9, base, relief_ip=ip)
     return float(out), abs(float(now) - float(full))
 
 
@@ -461,6 +470,10 @@ def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
 
     return {"pen": pen, "lg_pen_ra9": bp_model.league_pen_ra9(pens, ra9, lg_ra9),
             "available": available,
+            # How deep each starter has been going, regressed toward the flat
+            # 5.5 — the workload split the `_ip` model uses in place of it.
+            "sp_ip": sp_model.expected_starter_ip(bp_ctx["start_ip"], date,
+                                                  ballast=bp_ctx["ip_ballast"]),
             # The pieces `available` closes over, so a caller sweeping the two
             # pitch thresholds can rebuild it without paying for the rates
             # again (scripts/sweep_reliever_usage.py).
@@ -478,7 +491,8 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
                      bpa_baseline: str = BPA_BASELINE,
                      hard_1d: float = BPA_HARD_1D,
                      hard_2d: float = BPA_HARD_2D,
-                     taper: float = BPA_TAPER) -> dict:
+                     taper: float = BPA_TAPER,
+                     ip_ballast: float = SP_IP_BALLAST) -> dict:
     """Fetch every pitcher's appearances once for the whole backtest.
 
     `sp_ctx` already holds the prior-season pitching totals and league rates —
@@ -496,13 +510,15 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
             # Every appearance with its pitch count, starts included: the
             # workload half of the availability weight (src/sim/reliever_usage).
             "usage": ru_model.appearance_pitches(logs),
-            # The other half of the same appearances: station C's rotation.
-            "starts": rn_model.start_appearances(logs), "league": league,
+            # The other half of the same appearances: station C's rotation,
+            # and how many innings each of those starts actually lasted.
+            "starts": rn_model.start_appearances(logs),
+            "start_ip": sp_model.start_innings(logs), "league": league,
             "season": season, "ballast": ballast, "baseline": baseline,
             "roster_days": roster_days, "rest_days": rest_days,
             "rest_min_days": rest_min_days, "relief_ip": relief_ip,
             "bpa_baseline": bpa_baseline, "hard_1d": hard_1d,
-            "hard_2d": hard_2d, "taper": taper}
+            "hard_2d": hard_2d, "taper": taper, "ip_ballast": ip_ballast}
 
 
 # ─── station C: the bottom-up team run environment ───
@@ -582,8 +598,8 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
     """
     team, lg_ra9 = c_day["team"], c_day["lg_ra9"]
     sp_ids = sp_day["probables"].get(int(g.game_pk))
-    talent, talent_sp, talent_bpa = {}, {}, {}
-    shift = 0.0
+    talent, talent_sp, talent_bpa, talent_ip = {}, {}, {}, {}
+    shift, ip_used = 0.0, 0.0
     for side, team_id, i in (("home", g.home_id, 0), ("away", g.away_id, 1)):
         rs9 = max(float(team.loc[team_id, "rs_pg"]), MIN_R9)
         ra9 = max(float(team.loc[team_id, "ra_pg"]), MIN_R9)
@@ -598,6 +614,17 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
                                            bp_day, bp_ctx, "available")
                 shift += d
                 talent_bpa[side] = pythagenpat(rs9, max(ra9_bpa, MIN_R9), 1.0)
+                # ...and the same two deltas with the game split at this
+                # starter's own expected innings instead of the flat 5.5.
+                ip = bp_day["sp_ip"].get(int(sp_ids[i]), c_day["starter_ip"])
+                ip_used += ip
+                ra9_ip = sp_model.blend_starter_team(
+                    sp_day["sp_ra9"].get(int(sp_ids[i]), lg_ra9), ra9, lg_ra9,
+                    starter_ip=ip)
+                ra9_ip, _ = pen_delta_ra9(float(ra9_ip), team_id, sp_ids[i],
+                                          bp_day, bp_ctx, "available",
+                                          relief_ip=sp_model.GAME_IP - ip)
+                talent_ip[side] = pythagenpat(rs9, max(ra9_ip, MIN_R9), 1.0)
     p_c = float(home_win_prob(talent["home"], talent["away"], hfa))
     p_c_sp = (p_c if sp_ids is None else
               float(home_win_prob(talent_sp["home"], talent_sp["away"], hfa)))
@@ -609,7 +636,11 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
         out[C_SP_BPA_MODEL] = (p_c_sp if sp_ids is None else
                                float(home_win_prob(talent_bpa["home"],
                                                    talent_bpa["away"], hfa)))
+        out[C_SP_BPA_IP_MODEL] = (p_c_sp if sp_ids is None else
+                                  float(home_win_prob(talent_ip["home"],
+                                                      talent_ip["away"], hfa)))
         out["c_bpa_shift"] = shift
+        out["c_starter_ip"] = ip_used
     return out
 
 
@@ -793,6 +824,10 @@ def main() -> None:
     parser.add_argument("--bpa-taper", type=float, default=BPA_TAPER,
                         help="recency-discounted pitch load at which a reliever "
                              "who is still usable would be scored at zero")
+    parser.add_argument("--sp-ip-ballast", type=float, default=SP_IP_BALLAST,
+                        help="league-average starts of ballast on a starter's "
+                             "own innings per start, for the model that splits "
+                             "the game there instead of at 5.5")
     parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
                         help="innings the bullpen is assumed to cover")
     parser.add_argument("--no-run-env", action="store_true",
@@ -863,7 +898,8 @@ def main() -> None:
             args.bp_rest_min_days, args.relief_ip,
             sp_ctx["league"], sp_ctx["prior_counts"],
             bpa_baseline=args.bpa_baseline, hard_1d=args.bpa_hard_1d,
-            hard_2d=args.bpa_hard_2d, taper=args.bpa_taper)
+            hard_2d=args.bpa_hard_2d, taper=args.bpa_taper,
+            ip_ballast=args.sp_ip_ballast)
 
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:
@@ -885,7 +921,7 @@ def main() -> None:
     if c_ctx is not None:
         models += [C_MODEL, C_SP_MODEL]
         if bp_ctx is not None:
-            models.append(C_SP_BPA_MODEL)
+            models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL]
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -911,6 +947,10 @@ def main() -> None:
               f"per nine; baseline={args.bpa_baseline}, "
               f"hard={args.bpa_hard_1d:.0f}/{args.bpa_hard_2d:.0f} pitches, "
               f"taper={args.bpa_taper:.0f}.")
+        print(f"{C_SP_BPA_IP_MODEL}: mean expected start "
+              f"{preds['c_starter_ip'].sum() / (2 * len(preds)):.2f} innings "
+              f"against the flat {sp_model.STARTER_IP}; "
+              f"ip_ballast={args.sp_ip_ballast:.0f} starts.")
     if c_ctx is not None:
         print(f"{C_SP_MODEL}: {int(preds['c_sp_fallback'].sum())} of {len(preds)} games "
               f"fell back to {C_MODEL} for a missing starter; "
@@ -961,7 +1001,8 @@ def main() -> None:
         if bp_ctx is not None:
             # The reliever-availability gate: the one new term against the best
             # model there is.
-            pairs.append((C_SP_BPA_MODEL, C_SP_MODEL))
+            pairs += [(C_SP_BPA_MODEL, C_SP_MODEL),
+                      (C_SP_BPA_IP_MODEL, C_SP_BPA_MODEL)]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 

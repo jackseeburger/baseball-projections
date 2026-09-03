@@ -69,6 +69,21 @@ MIN_RA9 = 0.5
 # Innings the average start covers; the bullpen takes the other 3.5.
 STARTER_IP = 5.5
 GAME_IP = 9.0
+# Ballast, in starts, on a pitcher's *own* innings per start when that is used
+# as the workload split instead of the flat 5.5 (`expected_starter_ip`).
+#
+# Zero — no regression at all beyond the clip below — chosen walk-forward on
+# 2025 over the grid {0, 5, 10, 20, 40, 80}, where the gain grows monotonically
+# as the ballast falls and the sign is the same at every point (t between −2.2
+# and −2.9). That is not the shape a noisy estimate makes, and the reason is
+# that innings per start is mostly a fact about a pitcher's *role* rather than
+# his luck: an opener is an opener, a horse is a horse, and regressing the
+# opener's two innings toward five and a half only throws the role away.
+IP_BALLAST_STARTS = 0.0
+# Innings a start is allowed to project to. A starter cannot cover more than
+# nine, and below three the bullpen delta would carry more than two thirds of
+# the game on a number that is mostly noise.
+MIN_STARTER_IP = 3.0
 
 COMPONENTS = ("k", "bbhbp", "hr")
 RATE_COLS = [f"rate_{c}" for c in COMPONENTS]
@@ -228,6 +243,53 @@ def blend_starter_team(sp_ra9, team_ra9, lg_ra9, starter_ip: float = STARTER_IP,
     w = float(starter_ip) / float(game_ip)
     return np.asarray(team_ra9, dtype=float) + w * (
         np.asarray(sp_ra9, dtype=float) - np.asarray(lg_ra9, dtype=float))
+
+
+def start_innings(logs: pd.DataFrame) -> pd.DataFrame:
+    """`pitcher, date, ip` for every *start* in a pitching game-log frame.
+
+    The mirror of `bullpen.relief_appearances` on the innings column: only
+    outings the pitcher started, because how deep he goes as a starter says
+    nothing about a relief appearance and vice versa.
+    """
+    cols = ["pitcher", "date", "ip"]
+    if logs.empty:
+        return pd.DataFrame(columns=cols)
+    keep = logs[pd.to_numeric(logs.get("gs", 0), errors="coerce").fillna(0) == 1]
+    if keep.empty:
+        return pd.DataFrame(columns=cols)
+    return pd.DataFrame({
+        "pitcher": pd.to_numeric(keep["pitcher"], errors="coerce").astype("int64"),
+        "date": keep["date"].astype(str),
+        "ip": pd.to_numeric(keep.get("outs", 0), errors="coerce").fillna(0.0) / 3.0,
+    }).reset_index(drop=True)
+
+
+def expected_starter_ip(starts: pd.DataFrame, as_of: str,
+                        ballast: float = IP_BALLAST_STARTS,
+                        prior: float = STARTER_IP) -> dict:
+    """{pitcher_id: expected innings} from his starts *strictly before* `as_of`.
+
+    A straight regression of his own innings per start toward `prior` (the flat
+    5.5 every other model uses) with `ballast` league-average starts of ballast:
+
+        ip = (Σ innings + ballast · prior) / (starts + ballast)
+
+    Strictly before, for the same reason every other table in this module is:
+    how long tonight's start lasts is the outcome being predicted.
+
+    A pitcher with no starts on file is absent, and callers fall back to
+    `prior`, which leaves the model exactly where the flat split put it.
+    """
+    if starts is None or len(starts) == 0:
+        return {}
+    past = starts[starts["date"].astype(str) < str(as_of)]
+    if past.empty:
+        return {}
+    agg = past.groupby("pitcher")["ip"].agg(["sum", "size"])
+    ip = ((agg["sum"] + float(ballast) * float(prior))
+          / (agg["size"] + float(ballast))).clip(MIN_STARTER_IP, GAME_IP)
+    return {int(k): float(v) for k, v in ip.items()}
 
 
 def starter_ra9_lookup(rates: pd.DataFrame, lg: dict, lg_ra9: float) -> dict:
