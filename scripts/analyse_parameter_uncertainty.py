@@ -238,6 +238,30 @@ def effective_lambda(scored: pd.DataFrame, arm: str, prob: str = "p_playoffs",
     return pd.DataFrame(rows)
 
 
+def wins_compression(scored: pd.DataFrame, arm: str,
+                     against: str = BASE_ARM) -> dict:
+    """How much the width compresses *projected wins* toward .500.
+
+    Predicted rather than observed: log5 with a home-field odds multiplier is
+    exactly linear in the logit of strength, `logit p = logit(s_h) − logit(s_a)
+    + c`, and the width is a mean-zero shift on that logit. `expit` is concave
+    above .500 and convex below it, so a symmetric shift lowers a favourite's
+    expected win probability and raises an underdog's: the projected-wins
+    column is pulled toward 81 by Jensen's inequality, not jittered. The slope
+    of the arm's projected wins on the served chain's, about 81 wins, is the
+    size of that compression in one number.
+    """
+    keys = ["season", "as_of", "team_id"]
+    a = scored[scored["arm"] == arm].set_index(keys)["proj_final_wins"]
+    b = scored[scored["arm"] == against].set_index(keys)["proj_final_wins"]
+    a = a.reindex(b.index)
+    x, y = b.to_numpy() - 81.0, a.to_numpy() - 81.0
+    slope = float(np.sum(x * y) / np.sum(x * x)) if np.sum(x * x) else float("nan")
+    return {"arm": arm, "against": against, "n": int(len(b)),
+            "slope_about_81": slope,
+            "sd_wins_arm": float(a.std()), "sd_wins_against": float(b.std())}
+
+
 def per_season(scored: pd.DataFrame, arm: str,
                against: str = BASE_ARM) -> pd.DataFrame:
     """The paired difference season by season — is it one season carrying it?"""
@@ -364,6 +388,16 @@ def markdown(scored: pd.DataFrame, arms, lams) -> str:
         lines.append(f"| {r.season} | {r.metric} | {_fmt(r.mean_a, 5)} | "
                      f"{_fmt(r.mean_b, 5)} | {_fmt(r.diff, 5)} |")
 
+    lines += ["", "### Projected wins: the compression toward 81", "",
+              "| Arm | n | Slope on chain, about 81 | SD of projected wins | "
+              "chain's SD |", "|---|---:|---:|---:|---:|"]
+    for arm in arms:
+        if arm in (BASE_ARM,) or scored[scored["arm"] == arm].empty:
+            continue
+        c = wins_compression(scored, arm)
+        lines.append(f"| {arm} | {c['n']} | {c['slope_about_81']:.5f} | "
+                     f"{c['sd_wins_arm']:.4f} | {c['sd_wins_against']:.4f} |")
+
     lines += ["", "### Fitted shrinkage constants", "", "```",
               json.dumps(lams, indent=1, default=float), "```"]
     return "\n".join(lines)
@@ -410,6 +444,9 @@ def payload(scored: pd.DataFrame, arms, lams) -> dict:
             ignore_index=True).to_json(orient="records")),
         "per_season": json.loads(
             per_season(scored, PU_ARM).to_json(orient="records")),
+        "wins_compression": [wins_compression(scored, a) for a in arms
+                             if a != BASE_ARM
+                             and not scored[scored["arm"] == a].empty],
         "calibration": {
             arm: json.loads(tb.calibration(scored, arm).to_json(
                 orient="records"))
