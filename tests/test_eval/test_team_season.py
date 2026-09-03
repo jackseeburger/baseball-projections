@@ -613,3 +613,51 @@ class TestLogLossFloor:
         got = self._frame(0.3, n_sims=4000)
         assert got["logloss_p_playoffs"].iloc[0] == pytest.approx(-np.log(0.3))
         assert got["brier_p_playoffs"].iloc[0] == pytest.approx(0.49)
+
+
+class TestSuspendedGames:
+    """One `game_pk` on two dates is one game, and the later date is when it ended.
+
+    The Stats API lists a game suspended on one night and finished on another
+    under a single `game_pk` on *both* dates, each marked Final and each
+    carrying the final score. Four of them in 2025. Counted twice, a club
+    finishes with 165 games, the standings double-count four results, and the
+    Monte Carlo draws four games twice.
+    """
+
+    @staticmethod
+    def _with_suspension(schedule):
+        row = schedule.iloc[0].copy()
+        row["date"] = "2024-04-03"           # resumed two days later
+        return pd.concat([schedule, pd.DataFrame([row])], ignore_index=True)
+
+    def test_one_row_per_game(self, schedule, teams):
+        doubled = self._with_suspension(schedule)
+        reg = ts.regular_season_games(doubled, teams)
+        assert len(reg) == reg["game_pk"].nunique() == len(schedule)
+
+    def test_the_later_date_is_the_one_kept(self, schedule, teams):
+        doubled = self._with_suspension(schedule)
+        reg = ts.regular_season_games(doubled, teams)
+        pk = int(schedule.iloc[0]["game_pk"])
+        assert reg.loc[reg["game_pk"] == pk, "date"].iloc[0] == "2024-04-03"
+
+    def test_the_standings_do_not_double_count_it(self, schedule, teams):
+        doubled = self._with_suspension(schedule)
+        clean = ts.split_season_at(schedule, teams, CUTOFF, SEASON)
+        with_susp = ts.split_season_at(doubled, teams, CUTOFF, SEASON)
+        pd.testing.assert_frame_equal(
+            clean.standings.sort_values("team_id").reset_index(drop=True),
+            with_susp.standings.sort_values("team_id").reset_index(drop=True))
+        ts.assert_team_split_clean(with_susp)
+
+    def test_outcomes_reconcile_against_the_api_table(self, schedule, teams):
+        rec = ts.final_records(schedule, teams)
+        standings = rec.rename(columns={"final_wins": "wins",
+                                        "final_losses": "losses"}).assign(
+            division_champ=0)
+        ts.season_outcomes(schedule, teams, standings)          # passes
+        wrong = standings.copy()
+        wrong.loc[wrong.index[0], "wins"] = int(wrong.loc[wrong.index[0], "wins"]) + 3
+        with pytest.raises(ValueError, match="game accounting"):
+            ts.season_outcomes(schedule, teams, wrong)

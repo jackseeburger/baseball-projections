@@ -79,9 +79,20 @@ def regular_season_games(schedule: pd.DataFrame,
                          teams: pd.DataFrame) -> pd.DataFrame:
     """Regular-season games between two major-league clubs, one row per game.
 
-    Drops the two shapes that are on the schedule but never happened: a
-    postponement (status Final with no score, whose makeup appears as its own
-    row) and a suspended game that ended level.
+    Three shapes on the schedule are not one played game each, and all three
+    have to go before anything is counted:
+
+    * a **postponement** — status Final with no score, whose makeup appears as
+      its own row — never happened and is dropped;
+    * a **tie** (a suspended game called level) counts in neither the standings
+      nor this frame;
+    * a **suspended game finished on a later date appears twice under one
+      `game_pk`**, once on the night it was stopped and once on the night it
+      was completed, both marked Final and both carrying the final score. Four
+      of them in 2025 alone. Left in, a club plays 165 games, the standings
+      double-count four results and the Monte Carlo draws four games twice.
+      The row kept is the **later** one, because that is the date the result
+      became known and this harness is walk-forward.
     """
     valid = set(teams["team_id"].astype(int))
     reg = schedule[schedule["game_type"] == REGULAR_SEASON].copy()
@@ -90,7 +101,11 @@ def regular_season_games(schedule: pd.DataFrame,
     final = reg["status"] == "Final"
     scored = reg["home_score"].notna() & reg["away_score"].notna()
     tie = scored & (reg["home_score"] == reg["away_score"])
-    return reg[~(final & (~scored | tie))].reset_index(drop=True)
+    reg = reg[~(final & (~scored | tie))]
+    if "game_pk" in reg.columns:
+        reg = (reg.sort_values("date")
+               .drop_duplicates("game_pk", keep="last"))
+    return reg.reset_index(drop=True)
 
 
 def standings_from_games(played: pd.DataFrame,
@@ -552,16 +567,38 @@ def postseason_outcomes(schedule: pd.DataFrame,
 
 
 def season_outcomes(schedule: pd.DataFrame, teams: pd.DataFrame,
-                    standings: pd.DataFrame) -> pd.DataFrame:
+                    standings: pd.DataFrame, *, strict: bool = True) -> pd.DataFrame:
     """Every outcome one season's projections are scored against.
 
     `standings` is the API's *final* table for the season — the one place it is
     safe to read, because this frame is the answer, not an input.
+
+    With `strict`, the wins this harness counts off the schedule must equal the
+    wins the API's own table reports, club for club. That reconciliation is the
+    end-to-end check on the whole game-accounting path — the same summation
+    that builds every as-of standings table, where no independent answer
+    exists to check it against. It is what caught suspended games being counted
+    twice (see `regular_season_games`), which had four clubs finishing 2025
+    with 163 to 165 games.
     """
     out = final_records(schedule, teams).merge(
         postseason_outcomes(schedule, teams), on="team_id")
-    champ = standings.set_index("team_id")["division_champ"].astype(int)
-    out["won_division"] = out["team_id"].map(champ).fillna(0).astype(int)
+    st = standings.set_index("team_id")
+    out["won_division"] = out["team_id"].map(
+        st["division_champ"].astype(int)).fillna(0).astype(int)
+    if strict and "wins" in st.columns:
+        check = out.assign(api_wins=out["team_id"].map(st["wins"]),
+                           api_losses=out["team_id"].map(st["losses"]))
+        bad = check[(check["final_wins"] != check["api_wins"])
+                    | (check["final_losses"] != check["api_losses"])]
+        if len(bad):
+            worst = bad.iloc[0]
+            raise ValueError(
+                f"game accounting: {len(bad)} club(s) disagree with the API's "
+                f"final standings — team {int(worst['team_id'])} counted "
+                f"{int(worst['final_wins'])}-{int(worst['final_losses'])} off "
+                f"the schedule against {int(worst['api_wins'])}-"
+                f"{int(worst['api_losses'])} reported")
     return out
 
 
