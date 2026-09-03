@@ -6,29 +6,41 @@ runs the season Monte Carlo + bracket, and writes:
     public/data/playoff_odds/YYYY-MM-DD.json   (never overwritten — roadmap 3.1)
     public/data/playoff_odds/latest.json
 
-Station E's starting-pitcher term (`pythag_60_sp`, Brier .2448 vs the
-production model's .2462 on the 756 market-priced 2026 games — see
-docs/market-benchmark-2026.md) is applied to every *remaining* game whose
-probable starters the Stats API has already posted. Probables go up two to
-five days out, so a seven-day window catches all of them and most of the
-window is empty; games without both probables keep team strength, which is
-the correct rotation-average expectation for a game whose starters nobody
-has announced.
+**The whole per-game chain runs here**, through the one function
+`scripts/backtest_game_odds.py` scores (`src/sim/game_model.py`), so the number
+the site serves and the number on the scoreboard cannot drift apart:
 
-The same term prices the **postseason bracket**: each club carries an ordered
-rotation — its most-used starters this season, ranked by that same regressed
-FIP, ace first — and every game of every series is priced off the arm whose
-turn it is, cycling and wrapping after `--rotation-size` (default 4). A short
-series is 3-7 games off four announced arms, so this is where knowing the
-pitcher has the most room to move an answer.
+  * **Team strength** is station C's run environment — each club's runs scored
+    and allowed rebuilt from the hitters actually taking its plate appearances
+    and the rotation and pen actually pitching, blended half and half with the
+    regressed season-to-date rates (`src/sim/run_environment.py`, w = 0.5).
+    That is the prior every remaining game starts from, including every game
+    beyond the probables horizon, and it is what the postseason bracket's
+    rotation deltas are applied to.
+  * **Every remaining game with both probables posted** is repriced through the
+    full chain: the starter's regressed FIP over *his own* expected innings,
+    the availability-weighted bullpen over the rest, and the posted lineup
+    where a club has already published its card. Probables go up two to five
+    days out, so a seven-day window catches all of them; a game without both
+    keeps the station C prior, which is the correct rotation-average, roster-
+    average expectation for a game nobody has announced.
+  * **The postseason bracket** carries an ordered rotation per club — its
+    most-used starters this season, ranked by that same regressed FIP, ace
+    first — and every game of every series is priced off the arm whose turn it
+    is, wrapping after `--rotation-size` (default 4).
 
-`--no-starters` reverts to team strength everywhere, regular season and
-bracket alike.
+That chain scores Brier .24388 on the 756 market-priced 2026 games against the
+production model's .24619 (docs/market-benchmark-2026.md).
+
+`--legacy-chain` reverts to the pre-chain pricing (station D strength with the
+starting-pitcher term alone), and `--no-starters` to team strength everywhere,
+regular season and bracket alike; both remain reproducible.
 
 Usage:
     python scripts/run_playoff_odds.py --sims 20000
     python scripts/run_playoff_odds.py --sims 2000 --dry-run   # print only
     python scripts/run_playoff_odds.py --sims 5000 --dry-run --rotation-compare
+    python scripts/run_playoff_odds.py --sims 20000 --dry-run --legacy-chain
 """
 from __future__ import annotations
 
@@ -43,7 +55,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import numpy as np
 import pandas as pd
 
-from src.data.mlb_stats_api import fetch_probables, fetch_schedule, fetch_standings
+from src.data.mlb_stats_api import (
+    build_seasons_table, fetch_hitter_game_logs, fetch_lineups,
+    fetch_pitcher_game_logs, fetch_probables, fetch_schedule,
+    fetch_season_hitting, fetch_season_pitching, fetch_standings,
+)
+from src.sim import game_model as gm
 from src.sim import starters as sp_model
 from src.sim.bracket import DEFAULT_ROTATION_SIZE, Rotations
 from src.sim.odds import run_playoff_odds
@@ -60,12 +77,29 @@ BASE_METHOD = "Regressed Pythagenpat strength, log5 + HFA, MLB tiebreakers"
 SP_METHOD = (BASE_METHOD + "; pythag_60_sp starting-pitcher term on remaining "
              "games with both probables posted, and on every postseason series "
              "game from each club\'s regressed-FIP rotation")
+CHAIN_METHOD = (
+    "Bottom-up team run environment (the hitters taking the plate appearances "
+    "and the rotation and pen actually pitching, blended half and half with "
+    "the regressed season-to-date rates) into Pythagenpat, log5 + HFA, MLB "
+    "tiebreakers; every remaining game with both probables posted repriced "
+    "through the full per-game chain — the starter's regressed FIP over his "
+    "own expected innings, the availability-weighted bullpen over the rest, "
+    "and the posted lineup where a card exists; every postseason series game "
+    "priced off the club's regressed-FIP rotation")
 # Probables are posted ~2-5 days ahead, so a week covers every game that has
 # them and costs one extra schedule call for the empty tail.
 STARTER_WINDOW_DAYS = 7
 # How many pitchers beyond the rotation to rank by FIP. Two is enough to let
 # the rank pick around a swingman without reaching into September call-ups.
 ROTATION_POOL_EXTRA = 2
+# Completed seasons Marcel-weighted alongside the current one, on both sides of
+# the ball. Two, matching the 5/4/3 weights in `src.sim.starters`.
+PRIOR_SEASONS = 2
+# How many player-season game logs to pull at a time. The chain needs every
+# pitcher's appearances and every hitter's plate appearances *today*: ~2,200
+# requests, six minutes sequentially and about one at eight at a time.
+CHAIN_WORKERS = 8
+LINEUP_SLOTS = 9
 
 
 def _rotation_candidates(probables: pd.DataFrame, schedule: pd.DataFrame,
@@ -212,6 +246,218 @@ def starter_terms(
     return overrides, rotations, diag
 
 
+def fetch_chain_data(season: int, as_of: date, window_days: int, *,
+                     refresh: bool = True, workers: int = CHAIN_WORKERS) -> dict:
+    """Everything the per-game chain reads, fetched once for one date.
+
+    The starter term needed the announced starters' rates and nothing else; the
+    full chain needs the whole population on both sides of the ball, because
+    who is *in* a pen, whose turn it is in a rotation and whose plate
+    appearances a club is giving away are all questions about players nobody
+    announced:
+
+      * every pitcher's appearances this season — the pen window, the rotation
+        window, last night's pitch counts, and how deep each starter goes
+      * every hitter's games, with the club he took the plate appearances for —
+        station C's shares and the hitter rate table
+      * the completed prior seasons on both sides, Marcel-weighted alongside
+
+    All of it lands in `data/cache/statsapi/` under the existing conventions
+    (one JSON per player-season, keyed by season). Those keys go stale the
+    moment another game is played, which is why the nightly job passes
+    `refresh=True` and only a local rerun passes `--cached-pitchers`.
+
+    Returns `{"probables": frame, "inputs": ChainInputs}`.
+    """
+    end = as_of + timedelta(days=window_days)
+    probables = fetch_probables(f"{season}-03-01", end.isoformat(), refresh=refresh)
+
+    pitchers = fetch_season_pitching(season, refresh=refresh)
+    p_logs = fetch_pitcher_game_logs(pitchers["pitcher"], season,
+                                     refresh=refresh, workers=workers)
+    p_logs = p_logs[p_logs["game_type"] == "R"]
+
+    hitters = fetch_season_hitting(season)
+    batters = hitters.loc[hitters["pa"] > 0, "batter"]
+    h_logs = fetch_hitter_game_logs(batters, season, refresh=refresh,
+                                    workers=workers)
+
+    prior_p = pd.concat([fetch_season_pitching(y)
+                         for y in range(season - PRIOR_SEASONS, season)],
+                        ignore_index=True)
+    prior_h = build_seasons_table(season - PRIOR_SEASONS, season - 1)
+    return {"probables": probables,
+            "inputs": gm.ChainInputs.from_logs(season, p_logs, h_logs,
+                                               prior_p, prior_h)}
+
+
+def posted_cards(game_pks, *, refresh: bool, workers: int = CHAIN_WORKERS
+                 ) -> dict[int, dict[str, list[int]]]:
+    """`{game_pk: {"home": [nine ids], "away": [...]}}` for the cards that exist.
+
+    A side that has not posted is simply absent, and so is a game nobody has
+    posted for — which at the nightly job's hour (09:15 UTC, ~5am ET) is every
+    game on the slate. The lineup term is therefore normally a no-op in
+    production; it fires for a caller running late enough in the day to see a
+    card, and the chain is the same either way because a club's own recent
+    cards are what its card is measured against.
+    """
+    pks = [int(p) for p in game_pks]
+    if not pks:
+        return {}
+    lu = fetch_lineups(pks, refresh=refresh, workers=workers)
+    out: dict[int, dict[str, list[int]]] = {}
+    if not len(lu):
+        return out
+    for (pk, side), grp in lu.sort_values("slot").groupby(["game_pk", "side"]):
+        ids = [int(b) for b in grp["batter"]]
+        if len(ids) == LINEUP_SLOTS:
+            out.setdefault(int(pk), {})[str(side)] = ids
+    return out
+
+
+def club_card_history(state: SeasonState, team_ids, window: int,
+                      workers: int = CHAIN_WORKERS) -> dict[int, list[list[int]]]:
+    """Each club's last `window` posted cards, oldest first.
+
+    The baseline the day's card is measured against
+    (`lineups.team_lineup_baseline`). Only clubs that actually posted a card
+    for a game being repriced are asked for, so on a nightly run this fetches
+    nothing at all; the games are finished, so their feeds are settled facts
+    and the cache is permanent.
+
+    A completed game whose feed was cached *before* first pitch has no card in
+    it. Those are re-pulled once rather than silently dropping a card from the
+    window.
+    """
+    wanted = {int(t) for t in team_ids}
+    done = state.completed
+    if not wanted or "game_pk" not in done.columns or not len(done):
+        return {}
+    per_team, pks = {}, set()
+    for team_id in sorted(wanted):
+        mine = done[(done["home_id"] == team_id) | (done["away_id"] == team_id)]
+        games = [(int(r.game_pk), "home" if int(r.home_id) == team_id else "away")
+                 for r in mine.tail(window).itertuples(index=False)]
+        per_team[team_id] = games
+        pks |= {pk for pk, _ in games}
+    cards = posted_cards(pks, refresh=False, workers=workers)
+    stale = [pk for pk in pks if pk not in cards]
+    if stale:
+        cards.update(posted_cards(stale, refresh=True, workers=workers))
+    return {t: [cards[pk][side] for pk, side in games
+                if pk in cards and side in cards[pk]]
+            for t, games in per_team.items()}
+
+
+def chain_terms(
+    season: int, state: SeasonState, standings: pd.DataFrame,
+    schedule: pd.DataFrame, hfa: float, regress_games: float, as_of: date,
+    window_days: int = STARTER_WINDOW_DAYS,
+    rotation_size: int = DEFAULT_ROTATION_SIZE, refresh: bool = True,
+    workers: int = CHAIN_WORKERS, use_lineups: bool = True,
+    data: dict | None = None,
+) -> tuple[dict[int, float], Rotations, pd.Series, dict]:
+    """The whole chain for today: strength, game overrides and rotations.
+
+    Returns `({game_pk: P(home)}, Rotations, strength, diagnostics)`.
+
+    One slate (`game_model.build_slate`) answers all three, which is the point:
+    the team strength the Monte Carlo draws unannounced games with, the
+    probability it draws an announced one with, and the run environment the
+    bracket bends with a rotation delta are the same estimate of the same
+    clubs, cut to games strictly before today.
+
+    *Strength.* `Slate.talent()` — Pythagenpat on station C's blended runs
+    scored and allowed. A game beyond the probables horizon is drawn from it,
+    which is exactly what the chain returns for a game with no starter named,
+    so the horizon is a boundary in what is *known*, not in how it is priced.
+
+    *Overrides.* Every remaining game whose probables are both posted, priced
+    by `game_model.home_win_probability` — the same function
+    `scripts/backtest_game_odds.py` scores as `pythag_C_sp_bpa_ip` (and, when a
+    card is up, `pythag_C_sp_bpa_ip_lu`). The live number and the scored number
+    are one call, not two implementations.
+
+    *Rotations.* The bracket gets each club's ordered `(pitcher_id, RA/9
+    delta)` pairs off the slate's own rate table, applied to the slate's run
+    environment. The pool is still the season's most-used starters ranked by
+    regressed FIP — the rule BAS-42 shipped, with its documented limits — so
+    what changed here is the strength it bends, not who is in it.
+
+    `data` is the fetch, injectable so the agreement test can hand this
+    function and the backtest the same synthetic season.
+    """
+    if data is None:
+        data = fetch_chain_data(season, as_of, window_days, refresh=refresh,
+                                workers=workers)
+    probables, inputs = data["probables"], data["inputs"]
+
+    # Only games the simulator is actually still drawing. This drops spring and
+    # postseason game types, anything already final, and — importantly —
+    # tonight's games if they have started, since those leave `remaining`.
+    remaining = {int(r.game_pk): (int(r.home_id), int(r.away_id))
+                 for r in state.remaining.itertuples(index=False)}
+    window = probables.dropna(subset=["home_sp_id", "away_sp_id"])
+    window = window[window["game_pk"].astype(int).isin(remaining)]
+    pmap = {int(r.game_pk): (int(r.home_sp_id), int(r.away_sp_id))
+            for r in window.itertuples(index=False)}
+
+    cards = data.get("cards")
+    if cards is None:
+        cards = (posted_cards(pmap, refresh=refresh, workers=workers)
+                 if (use_lineups and pmap) else {})
+    history = data.get("card_history")
+    if history is None:
+        clubs = {remaining[pk][0 if side == "home" else 1]
+                 for pk, sides in cards.items() if pk in remaining
+                 for side in sides}
+        history = club_card_history(state, clubs,
+                                    gm.ChainConfig().baseline_window,
+                                    workers=workers) if clubs else {}
+
+    top_down = regressed_run_rates(standings, regress_games=regress_games)
+    games = float((standings["wins"] + standings["losses"]).sum())
+    lg_rs9, lg_ra9 = gm.league_run_rates(float(standings["runs_scored"].sum()),
+                                         float(standings["runs_allowed"].sum()),
+                                         games)
+    slate = gm.build_slate(as_of.isoformat(), inputs, top_down, lg_rs9, lg_ra9,
+                           cards=history)
+    strength = gm.strength_series(slate, state.team_ids)
+
+    diag = {"n_games_with_starters": 0, "starter_window_days": window_days,
+            "sp_no_history": 0, "rotation_size": rotation_size,
+            "n_teams_with_rotation": 0, "n_lineup_slots": 0,
+            "n_games_with_lineups": 0,
+            "blend_weight": slate.diagnostics["blend_weight"],
+            "n_pitchers_rated": slate.diagnostics["n_pitchers_rated"],
+            "n_batters_rated": slate.diagnostics["n_batters_rated"],
+            "n_limited_arms": slate.diagnostics["n_limited_arms"],
+            "n_clubs_top_down_only": len(set(slate.diagnostics["rs_missing"])
+                                         | set(slate.diagnostics["ra_missing"]))}
+
+    overrides = {}
+    for game_pk, sp_ids in pmap.items():
+        home_id, away_id = remaining[game_pk]
+        if home_id not in slate.team.index or away_id not in slate.team.index:
+            continue
+        p_home, flags = gm.home_win_probability(
+            slate, home_id, away_id, sp_ids, hfa, lineups=cards.get(game_pk))
+        overrides[game_pk] = p_home
+        diag["sp_no_history"] += int(flags["sp_no_history"])
+        diag["n_lineup_slots"] += int(flags["lineup_slots"])
+        diag["n_games_with_lineups"] += int(flags["lineup_slots"] > 0)
+    diag["n_games_with_starters"] = len(overrides)
+
+    candidates = _rotation_candidates(probables, schedule, as_of,
+                                      pool=rotation_size + ROTATION_POOL_EXTRA)
+    run_env = slate.run_env().reindex(state.team_ids).to_numpy(dtype=float)
+    rotations = build_rotations(candidates, slate.sp_ra9, lg_ra9,
+                                state.index_of(), run_env, rotation_size)
+    diag["n_teams_with_rotation"] = len(rotations.by_team)
+    return overrides, rotations, strength, diag
+
+
 def rotation_table(rotations: Rotations, teams: pd.DataFrame) -> pd.DataFrame:
     """One row per club: its rotation, ace first, with each starter's RA/9 delta."""
     abbrev = teams["abbrev"].to_numpy()
@@ -314,6 +560,19 @@ def main() -> None:
                              "rotations; price every remaining game and every "
                              "series game off team strength alone (the "
                              "pre-station-E production model)")
+    parser.add_argument("--legacy-chain", action="store_true",
+                        help="the pre-chain production pricing: station D's "
+                             "regressed run-differential strength everywhere, "
+                             "with the starting-pitcher term alone on the "
+                             "games that have probables. Keeps the old answer "
+                             "reproducible for a before/after")
+    parser.add_argument("--no-lineups", action="store_true",
+                        help="skip the posted-card term. It is a no-op at the "
+                             "nightly job's hour (no lineup is up at 5am) and "
+                             "this saves the fetch that proves it")
+    parser.add_argument("--chain-workers", type=int, default=CHAIN_WORKERS,
+                        help="how many player-season game logs to fetch at a "
+                             "time (1 disables the thread pool)")
     parser.add_argument("--starter-window-days", type=int, default=STARTER_WINDOW_DAYS,
                         help="how far ahead to look for posted probables")
     parser.add_argument("--rotation-size", type=int, default=DEFAULT_ROTATION_SIZE,
@@ -326,11 +585,12 @@ def main() -> None:
                              "postseason term from the regular-season one "
                              "(one extra Monte Carlo pass)")
     parser.add_argument("--cached-pitchers", action="store_true",
-                        help="reuse cached probables and pitcher game logs "
-                             "instead of re-pulling them. Faster for repeated "
-                             "local runs; the nightly job must NOT use it, "
-                             "because those caches are keyed by season and go "
-                             "stale the moment another game is played")
+                        help="reuse cached probables, pitcher game logs and "
+                             "hitter game logs instead of re-pulling them. "
+                             "Faster for repeated local runs; the nightly job "
+                             "must NOT use it, because those caches are keyed "
+                             "by season and go stale the moment another game "
+                             "is played")
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--out-dir", type=Path, default=OUT_DIR)
     args = parser.parse_args()
@@ -349,28 +609,57 @@ def main() -> None:
 
     overrides: dict[int, float] = {}
     rotations: Rotations | None = None
+    # The team strength the games nobody has announced are drawn with. Station
+    # D's regressed run differential until the chain replaces it below, and the
+    # fallback if the chain cannot be built at all.
+    served = strength
     diag = {"n_games_with_starters": 0, "sp_no_history": 0,
             "starter_window_days": args.starter_window_days,
             "rotation_size": args.rotation_size, "n_teams_with_rotation": 0}
     if not args.no_starters:
         try:
-            overrides, rotations, diag = starter_terms(
-                args.season, state, standings, schedule, hfa,
-                args.regress_games, today,
-                window_days=args.starter_window_days,
-                rotation_size=args.rotation_size,
-                refresh=not args.cached_pitchers)
+            if args.legacy_chain:
+                overrides, rotations, diag = starter_terms(
+                    args.season, state, standings, schedule, hfa,
+                    args.regress_games, today,
+                    window_days=args.starter_window_days,
+                    rotation_size=args.rotation_size,
+                    refresh=not args.cached_pitchers)
+            else:
+                overrides, rotations, served, diag = chain_terms(
+                    args.season, state, standings, schedule, hfa,
+                    args.regress_games, today,
+                    window_days=args.starter_window_days,
+                    rotation_size=args.rotation_size,
+                    refresh=not args.cached_pitchers,
+                    workers=args.chain_workers,
+                    use_lineups=not args.no_lineups)
         except Exception as exc:   # noqa: BLE001 — the nightly job must still ship odds
-            overrides, rotations = {}, None
-            print(f"WARNING: starting-pitcher term unavailable ({exc!r}); "
+            overrides, rotations, served = {}, None, strength
+            print(f"WARNING: the per-game chain is unavailable ({exc!r}); "
                   f"falling back to team strength on every remaining game "
                   f"and on every postseason series")
         else:
-            print(f"starters: {diag['n_games_with_starters']} of "
+            label = "starters" if args.legacy_chain else "chain"
+            print(f"{label}: {diag['n_games_with_starters']} of "
                   f"{len(state.remaining)} remaining games have both probables "
                   f"posted in the next {args.starter_window_days} days "
                   f"({diag['sp_no_history']} starter slots had no history, "
                   f"scored at league average)")
+            if not args.legacy_chain:
+                print(f"run environment: bottom-up rates blended at "
+                      f"w={diag['blend_weight']} on {diag['n_pitchers_rated']} "
+                      f"pitchers and {diag['n_batters_rated']} hitters; "
+                      f"{diag['n_limited_arms']} arms short of full "
+                      f"availability, {diag['n_clubs_top_down_only']} clubs "
+                      f"kept a top-down half; "
+                      f"{diag['n_games_with_lineups']} games had a card posted "
+                      f"({diag['n_lineup_slots']} slots)")
+                shift = (served - strength).abs().sort_values(ascending=False)
+                abbrev = state.teams.set_index("team_id")["abbrev"]
+                print("  largest strength moves vs the regressed rates: "
+                      + ", ".join(f"{abbrev[t]} {served[t] - strength[t]:+.4f}"
+                                  for t in shift.head(6).index))
             print(f"rotations: {diag['n_teams_with_rotation']} clubs carry a "
                   f"{args.rotation_size}-man postseason rotation, ace first "
                   f"(RA/9 delta from league; negative is better)")
@@ -378,28 +667,31 @@ def main() -> None:
 
     has_rotations = rotations is not None and bool(rotations.by_team)
 
+    moved_strength = not served.equals(strength)
+
     # Same seed everywhere, so the draw is identical on every game and every
     # series the terms do not touch and the whole difference in the tables
     # below is the term.
     base = run_playoff_odds(state, strength, hfa, n_sims=args.sims, seed=seed)
     base["division"] = base["division_id"].map(DIVISION_NAMES)
-    if overrides or has_rotations:
-        odds = run_playoff_odds(state, strength, hfa, n_sims=args.sims, seed=seed,
+    if overrides or has_rotations or moved_strength:
+        odds = run_playoff_odds(state, served, hfa, n_sims=args.sims, seed=seed,
                                 p_home_overrides=overrides or None,
                                 rotations=rotations if has_rotations else None)
         odds["division"] = odds["division_id"].map(DIVISION_NAMES)
     else:
         odds = base
 
-    print(f"\n─── without the starter term (team strength on all "
-          f"{len(state.remaining)} remaining games and every postseason "
-          f"series) ───")
+    print(f"\n─── without any station E term (regressed run-differential "
+          f"strength on all {len(state.remaining)} remaining games and every "
+          f"postseason series) ───")
     print(format_odds(base).to_string(index=False))
 
     if odds is not base:
-        print(f"\n─── with the starter term: {len(overrides)} regular-season "
+        print(f"\n─── with the chain: {len(overrides)} regular-season "
               f"games repriced, {diag['n_teams_with_rotation']} postseason "
-              f"rotations ───")
+              f"rotations"
+              f"{', station C strength on the rest' if moved_strength else ''} ───")
         print(format_odds(odds).to_string(index=False))
         cmp = compare(base, odds)
         print("\n─── with vs without, same seed (percentage points) ───")
@@ -414,7 +706,7 @@ def main() -> None:
     # the regular-season overrides are held fixed and the only thing that moves
     # is how the postseason series are priced.
     if args.rotation_compare and has_rotations:
-        flat = run_playoff_odds(state, strength, hfa, n_sims=args.sims, seed=seed,
+        flat = run_playoff_odds(state, served, hfa, n_sims=args.sims, seed=seed,
                                 p_home_overrides=overrides or None)
         flat["division"] = flat["division_id"].map(DIVISION_NAMES)
         rot_cmp = compare(flat, odds)
@@ -437,9 +729,12 @@ def main() -> None:
 
     if overrides:
         # The odds tables above are Monte Carlo runs; in September their
-        # difference is smaller than the sim noise. This part is exact.
-        effect = override_effect(state, strength, hfa, overrides)
-        print(f"\n─── the regular-season term itself, in closed form (no "
+        # difference is smaller than the sim noise. This part is exact. The
+        # baseline is the strength the same run draws the *other* games with,
+        # so this isolates the per-game terms from the strength change.
+        effect = override_effect(state, served, hfa, overrides)
+        print(f"\n─── the per-game terms themselves, against the strength the "
+              f"unannounced games are drawn with, in closed form (no "
               f"sampling) ───")
         print(f"{len(effect)} games repriced: mean |Δ P(home)| = "
               f"{effect['delta'].abs().mean():.4f}, max = "
@@ -464,7 +759,11 @@ def main() -> None:
         "starter_window_days": int(diag["starter_window_days"]),
         "n_teams_with_rotation": int(diag["n_teams_with_rotation"]),
         "rotation_size": int(diag["rotation_size"]) if has_rotations else 0,
-        "method": (SP_METHOD if odds is not base else BASE_METHOD),
+        "n_games_with_lineups": int(diag.get("n_games_with_lineups", 0)),
+        "run_env_blend_weight": (float(diag["blend_weight"])
+                                 if moved_strength else 0.0),
+        "method": (BASE_METHOD if odds is base else
+                   (SP_METHOD if args.legacy_chain else CHAIN_METHOD)),
         "teams": json.loads(odds.drop(columns=["division_id"]).to_json(orient="records")),
     }
     args.out_dir.mkdir(parents=True, exist_ok=True)
