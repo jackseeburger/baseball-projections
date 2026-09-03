@@ -26,8 +26,8 @@ multiplicand measured, the multiplier asserted.
 2024–2026, on 22,807 pitcher-projections, the arithmetic already in production
 beats a season-to-date rate extrapolation by **5.6 batters faced a pitcher
 (t −16.7)**, a trailing-30-day one by 4.9 (−12.1), last season prorated by
-22.1 (−19.8) and projecting nobody at all by 47.7 (−19.9). Two models built
-specifically to beat it lose. The largest single term inside it is station B's
+22.1 (−19.8) and projecting nobody at all by 47.7 (−19.9). Three models
+built specifically to beat it lose. The largest single term inside it is station B's
 injured-list machinery, worth 4.4 batters faced a pitcher (t −37.8) and 9.2
 for a starter. What does **not** carry over is station B's own headline
 finding — projecting the injured at their pre-injury usage times an expected
