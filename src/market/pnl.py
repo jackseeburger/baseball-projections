@@ -511,7 +511,15 @@ def first_fill(candles, side: str, limit: float, first_pitch_ts: int | None = No
     """
     if candles is None:
         return None                 # market never archived: it cannot fill
-    if isinstance(candles, pd.DataFrame):
+    if isinstance(candles, dict):
+        # The packed form `candle_index` builds: one dict of numpy arrays per
+        # market. A prop book asks this question millions of times, so the
+        # arrays are sliced once at index time rather than re-extracted here.
+        ts = candles["end_period_ts"]
+        if len(ts) == 0:
+            return None
+        low, high, vol = candles["price_low"], candles["price_high"], candles["volume"]
+    elif isinstance(candles, pd.DataFrame):
         if candles.empty:
             return None
         ts = candles["end_period_ts"].to_numpy(dtype="int64")
@@ -550,13 +558,27 @@ CANDLE_FIELDS = ["end_period_ts", "price_low", "price_high", "price_close",
 
 
 def candle_index(candles: pd.DataFrame) -> dict:
-    """market_id → the arrays the maker exam needs, built once per exam."""
+    """market_id → {column: numpy array}, sorted by hour, built once per exam.
+
+    Packed as arrays rather than as one small DataFrame per market because a
+    prop book has a hundred thousand markets and asks about each of them once
+    per (model, margin, half): building 100k frames, and re-extracting their
+    columns on every question, dominated everything else in the exam. The
+    moneyline's 876 markets never noticed.
+    """
     out = {}
     if candles is None or len(candles) == 0:
         return out
     cols = [c for c in CANDLE_FIELDS if c in candles.columns]
-    for market_id, g in candles.sort_values("end_period_ts").groupby("market_id"):
-        out[str(market_id)] = g[cols].reset_index(drop=True)
+    df = candles.sort_values(["market_id", "end_period_ts"], kind="stable")
+    mids = df["market_id"].astype(str).to_numpy()
+    packed = {c: (df[c].to_numpy(dtype="int64") if c == "end_period_ts"
+                  else pd.to_numeric(df[c], errors="coerce").to_numpy(dtype=float))
+              for c in cols}
+    starts = np.flatnonzero(np.concatenate([[True], mids[1:] != mids[:-1]]))
+    ends = np.concatenate([starts[1:], [len(mids)]])
+    for lo, hi in zip(starts, ends):
+        out[mids[lo]] = {c: packed[c][lo:hi] for c in cols}
     return out
 
 
@@ -638,13 +660,15 @@ def maker_bet_frame(df: pd.DataFrame, model: str, candles: dict, margin: float,
 
 def _first_live(cd, start_ts: int, first_pitch_ts: int, column: str):
     """`column` in the first archived hour the order is live in, or None."""
-    if cd is None or len(cd) == 0 or column not in cd:
+    if cd is None or column not in cd:
         return None
-    ts = cd["end_period_ts"].to_numpy(dtype="int64")
+    ts = np.asarray(cd["end_period_ts"], dtype="int64")
+    if ts.size == 0:
+        return None
     keep = (ts > start_ts) & (ts <= first_pitch_ts)
     if not keep.any():
         return None
-    v = cd[column].to_numpy(dtype=float)[keep]
+    v = np.asarray(cd[column], dtype=float)[keep]
     good = np.isfinite(v)
     return float(v[good][0]) if good.any() else None
 

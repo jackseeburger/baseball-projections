@@ -16,9 +16,16 @@ here.
 Produced by:
 
 ```
-python scripts/backfill_prop_closes.py --season 2026 --start 2026-08-05 --end 2026-09-03
-python scripts/props_exam.py --markdown
+python scripts/backfill_prop_closes.py --season 2026     # closes + hourly candles
+python scripts/props_exam.py --markdown                  # the taker tables
+python scripts/props_exam.py --matchup on --maker --markdown   # Sept 3, below
 ```
+
+The archive lives in `data/market/prop_closes_2026.parquet` and
+`data/market/kalshi_prop_candles_2026.parquet`, both committed. It was
+gitignored once, did not survive a container restart, and cost a full re-fetch
+of tens of thousands of requests; the hourly candles cannot be re-fetched at
+all once Kalshi ages the markets out.
 
 **Headline: props are a much softer contract than moneylines, and it is still
 not enough — because on props the fee is the whole loss.** The same model

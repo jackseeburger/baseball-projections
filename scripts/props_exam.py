@@ -499,6 +499,14 @@ def main() -> None:
                             args.draws, args.seed, cut=cut)
         print("\n== money (maker) ==")
         print(maker.to_string(index=False))
+        print("\n== maker margin chosen on the first half, by ¢ per posted ==")
+        for model in maker["model"].unique():
+            m = pnl.choose_margin(maker, model)
+            scored = maker[(maker["model"] == model) & (maker["half"] == "second")
+                           & (maker["margin"] == m) & (maker["staking"] == "flat")]
+            roi = float(scored["roi"].iloc[0]) if len(scored) else float("nan")
+            print(f"  {LABELS.get(model, model):32s} m={m:.2f} "
+                  f"→ second-half ROI {roi:+.1%}")
 
     if args.markdown:
         print("\n" + markdown(brier, grid, per_stat, args.headline, models))
