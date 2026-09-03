@@ -79,6 +79,7 @@ from src.data.mlb_stats_api import (
 )
 from src.sim import bullpen as bp_model
 from src.sim import defence as df_model
+from src.sim import game_features as gf
 from src.sim import game_model as gm
 from src.sim import lineups as lu_model
 from src.sim import park as pk_model
@@ -149,30 +150,15 @@ PARK_PRIOR_SEASONS = pk_model.PRIOR_SEASONS
 DEF_BALLAST = df_model.BALLAST_BIP
 
 
-def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
-    """Runs scored/allowed, wins/losses per team from a completed-games frame."""
-    home = games.groupby("home_id").agg(rs=("home_score", "sum"), ra=("away_score", "sum"),
-                                        w=("home_win", "sum"), g=("home_win", "size"))
-    away = games.groupby("away_id").agg(rs=("away_score", "sum"), ra=("home_score", "sum"),
-                                        w=("home_win", lambda x: (~x).sum()), g=("home_win", "size"))
-    tot = home.add(away, fill_value=0).reindex(team_ids).fillna(0)
-    return tot
-
-
-def team_rates(tot: pd.DataFrame, regress_games: float) -> pd.DataFrame:
-    """Runs scored/allowed per game, regressed toward league average."""
-    lg_rs = tot["rs"].sum() / max(tot["g"].sum(), 1)
-    lg_ra = tot["ra"].sum() / max(tot["g"].sum(), 1)
-    return pd.DataFrame({
-        "rs_pg": (tot["rs"] + regress_games * lg_rs) / (tot["g"] + regress_games),
-        "ra_pg": (tot["ra"] + regress_games * lg_ra) / (tot["g"] + regress_games),
-    })
-
-
-def strengths(tot: pd.DataFrame, regress_games: float) -> pd.Series:
-    rates = team_rates(tot, regress_games)
-    return pd.Series({t: pythagenpat(r["rs_pg"], r["ra_pg"], 1.0)
-                      for t, r in rates.iterrows()})
+# The walk-forward season state — each club's totals before a date, the
+# regressed rates they imply, the talent win% those collapse to — is defined
+# once in `src/sim/game_features.py` and imported by both callers that walk a
+# season: this harness, which scores the chain, and the feature table its
+# learned challenger trains on. Two definitions of "before this date" is how a
+# scoreboard and a training set quietly stop describing the same games.
+team_totals = gf.team_totals
+team_rates = gf.team_rates
+strengths = gf.strengths
 
 
 def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,

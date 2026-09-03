@@ -222,7 +222,11 @@ def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
     the home club's park for all but the handful of neutral-site games a season
     and is what `src.sim.park` keys its run multipliers on. Taken from the
     schedule rather than from a static park table so a club that moves, a
-    London series and a temporary home all come out right.
+    London series and a temporary home all come out right. `day_night` comes
+    free on the same response; it and the venue are the two pre-game
+    circumstances no station models, and the learned challenger of station E
+    reads both (`src/sim/game_features.py`). All are `.get`-guarded, so a
+    caller serving a trimmed fixture keeps working and simply gets a null.
     """
     data = _get("schedule", sportId=1, startDate=start_date, endDate=end_date)
     rows = []
@@ -241,6 +245,8 @@ def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
                 "away_id": g["teams"]["away"]["team"]["id"],
                 "home_score": g["teams"]["home"].get("score"),
                 "away_score": g["teams"]["away"].get("score"),
+                "venue_id": (g.get("venue") or {}).get("id"),
+                "day_night": g.get("dayNight"),
             })
     return pd.DataFrame(rows)
 
