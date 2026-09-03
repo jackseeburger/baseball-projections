@@ -140,7 +140,7 @@ def price_with(closes: pd.DataFrame, ctx: dict, stats: tuple,
 
 
 def choose_weight(closes: pd.DataFrame, ctx: dict, stats: tuple,
-                  pitcher_bf: str, grid=WEIGHT_GRID) -> tuple:
+                  pitcher_bf: str, cut: str, grid=WEIGHT_GRID) -> tuple:
     """The matchup weight that scores best on the **first half** of the window.
 
     A free parameter chosen on the data it is scored on is not a result, so the
@@ -148,8 +148,7 @@ def choose_weight(closes: pd.DataFrame, ctx: dict, stats: tuple,
     scored on the second. Returns `(weight, table)` and the table is printed,
     because a boundary solution should be visible as one.
     """
-    first_dates, _ = halves_of(sorted(closes["game_date"].astype(str).unique()))
-    train = closes[closes["game_date"].astype(str).isin(first_dates)]
+    train = closes[closes["game_date"].astype(str) < cut]
     rows = []
     for w in grid:
         priced = price_with(train, ctx, stats, pitcher_bf, weight=w)
@@ -170,10 +169,11 @@ def halves_of(dates: list) -> tuple:
 
 # ───────────────────────────── scoring ─────────────────────────────
 
-def brier_halves(priced: pd.DataFrame, models: list[str]) -> pd.DataFrame:
+def brier_halves(priced: pd.DataFrame, models: list[str], cut: str) -> pd.DataFrame:
     """`props.brier_table` per stat on each half of the window, labelled."""
     dates = sorted(priced["game_date"].astype(str).unique())
-    first, second = halves_of(dates)
+    first = [d for d in dates if d < cut]
+    second = [d for d in dates if d >= cut]
     out = []
     for label, keep in (("first", first), ("second", second), ("all", dates)):
         sub = priced[priced["game_date"].astype(str).isin(keep)]
@@ -186,10 +186,11 @@ def brier_halves(priced: pd.DataFrame, models: list[str]) -> pd.DataFrame:
     return pd.concat(out, ignore_index=True)
 
 
-def paired_halves(priced: pd.DataFrame, a: str, b: str) -> pd.DataFrame:
+def paired_halves(priced: pd.DataFrame, a: str, b: str, cut: str) -> pd.DataFrame:
     """`a − b` per contract, per stat, on each half. Negative means `a` wins."""
     dates = sorted(priced["game_date"].astype(str).unique())
-    first, second = halves_of(dates)
+    first = [d for d in dates if d < cut]
+    second = [d for d in dates if d >= cut]
     rows = []
     for label, keep in (("first", first), ("second", second), ("all", dates)):
         sub = priced[priced["game_date"].astype(str).isin(keep)]
@@ -249,7 +250,7 @@ def per_stat_money(df: pd.DataFrame, threshold: float, draws: int,
 
 def maker_table(priced: pd.DataFrame, candles: pd.DataFrame, models: list[str],
                 margins, venue: pnl.Venue, hours: int, maker_round_cents: bool,
-                anchor: str, draws: int, seed: int,
+                anchor: str, draws: int, seed: int, cut: str | None = None,
                 stakings=("flat",)) -> pd.DataFrame:
     """Resting orders on props: every model at every margin, on both halves.
 
@@ -263,7 +264,7 @@ def maker_table(priced: pd.DataFrame, candles: pd.DataFrame, models: list[str],
     return pnl.maker_grid(frame, candles, models, margins=margins, venue=venue,
                           stakings=stakings, hours=hours, anchor=anchor,
                           maker_round_cents=maker_round_cents, draws=draws,
-                          seed=seed, split=True, group_col="game_pk")
+                          seed=seed, split=True, group_col="game_pk", cut=cut)
 
 
 # ───────────────────────────── markdown ─────────────────────────────
@@ -373,6 +374,8 @@ def main() -> None:
     ap.add_argument("--candles", type=Path, default=None,
                     help="hourly prop candles; default "
                          "data/market/kalshi_prop_candles_<season>.parquet")
+    ap.add_argument("--start", help="earliest game date to score (YYYY-MM-DD)")
+    ap.add_argument("--end", help="latest game date to score (YYYY-MM-DD)")
     ap.add_argument("--stats", nargs="+", default=list(props.PRICEABLE))
     ap.add_argument("--thresholds", nargs="+", type=float, default=[0.0, 0.02, 0.04, 0.06])
     ap.add_argument("--headline", type=float, default=0.02)
@@ -415,11 +418,19 @@ def main() -> None:
 
     closes_path = args.closes or default_closes()
     closes = pd.read_parquet(closes_path)
+    if args.start:
+        closes = closes[closes["game_date"].astype(str) >= args.start]
+    if args.end:
+        closes = closes[closes["game_date"].astype(str) <= args.end]
     if args.min_volume:
         closes = closes[closes["volume_pre"] >= args.min_volume]
     stats = tuple(args.stats)
     with_matchup = args.matchup == "on" or (args.matchup == "auto"
                                             and props.MATCHUP_DEFAULT)
+
+    priceable = closes[closes["prop_stat"].isin(stats) & closes["player_id"].notna()]
+    all_dates = sorted(priceable["game_date"].astype(str).unique())
+    cut = all_dates[len(all_dates) // 2] if all_dates else ""
 
     weight_table = None
     if args.priced_in:
@@ -432,7 +443,7 @@ def main() -> None:
         ctx = contexts(closes, args.season, stats, with_matchup, weight)
         if with_matchup and args.matchup_weight is None:
             weight, weight_table = choose_weight(closes, ctx, stats,
-                                                 args.pitcher_bf,
+                                                 args.pitcher_bf, cut,
                                                  tuple(args.matchup_weights))
             logger.info("matchup weight chosen on the first half: %.2f", weight)
         priced = price_with(closes, ctx, stats, args.pitcher_bf, weight=weight)
@@ -441,7 +452,7 @@ def main() -> None:
 
     models = ["p_model"] + (["p_matchup"] if with_matchup else []) \
         + ["p_market", "p_league"]
-    brier = brier_halves(priced, models)
+    brier = brier_halves(priced, models, cut)
     frame = props.to_pnl_frame(priced)
     money_models = ["model"] + (["matchup"] if with_matchup else []) \
         + ["league", "market", "random_edge"]
@@ -453,7 +464,8 @@ def main() -> None:
 
     print("\n== coverage ==")
     print(closes.groupby("prop_stat").agg(archived=("market_id", "nunique")).to_string())
-    print(f"\npriced {len(priced)} of {len(closes)} archived closes; "
+    print(f"\nhalves split at {cut}")
+    print(f"priced {len(priced)} of {len(closes)} archived closes; "
           f"{frame['game_pk'].nunique()} games, {frame['player_id'].nunique()} players, "
           f"{frame['game_date'].min()} .. {frame['game_date'].max()}")
     if weight_table is not None:
@@ -463,11 +475,11 @@ def main() -> None:
     print("\n== Brier ==")
     print(brier.to_string(index=False))
     if with_matchup:
-        paired = paired_halves(priced, "p_matchup", "p_model")
+        paired = paired_halves(priced, "p_matchup", "p_model", cut)
         print("\n== paired: matchup − current (negative = matchup wins) ==")
         print(paired.to_string(index=False))
         print("\n== paired: matchup − market ==")
-        print(paired_halves(priced, "p_matchup", "p_market").to_string(index=False))
+        print(paired_halves(priced, "p_matchup", "p_market", cut).to_string(index=False))
     print("\n== money (taker) ==")
     print(grid.to_string(index=False))
 
@@ -484,7 +496,7 @@ def main() -> None:
         maker = maker_table(priced, candles, maker_models, args.maker_margins,
                             maker_venue, args.maker_hours,
                             args.maker_round_cents, args.maker_anchor,
-                            args.draws, args.seed)
+                            args.draws, args.seed, cut=cut)
         print("\n== money (maker) ==")
         print(maker.to_string(index=False))
 
@@ -492,7 +504,7 @@ def main() -> None:
         print("\n" + markdown(brier, grid, per_stat, args.headline, models))
         if with_matchup:
             print("\n### Paired, matchup − current (negative = matchup wins)\n")
-            print(paired_markdown(paired_halves(priced, "p_matchup", "p_model"),
+            print(paired_markdown(paired_halves(priced, "p_matchup", "p_model", cut),
                                   "matchup", "current"))
         if maker is not None:
             for half in ("first", "second"):

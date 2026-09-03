@@ -784,17 +784,24 @@ def add_maker_controls(df: pd.DataFrame, models: list[str], seed: int = 0) -> tu
     return out, names
 
 
-def split_halves(df: pd.DataFrame, date_col: str = "date") -> tuple:
+def split_halves(df: pd.DataFrame, date_col: str = "date",
+                 cut: str | None = None) -> tuple:
     """(first half, second half) of the game window by date.
 
     The margin is a free parameter and a free parameter chosen on the data it
     is scored on is not a result. It is chosen on the first half of the season
     and scored on the second, and both halves are reported so the reader can
     see whether the choice travelled.
+
+    `cut` pins the boundary date rather than taking this frame's own median,
+    so several tables over slightly different row sets — a Brier table, a
+    taker table, a maker grid — can be guaranteed to be split in the same
+    place.
     """
     d = df.sort_values(date_col).reset_index(drop=True)
-    dates = pd.Index(sorted(d[date_col].astype(str).unique()))
-    cut = dates[len(dates) // 2]
+    if cut is None:
+        dates = pd.Index(sorted(d[date_col].astype(str).unique()))
+        cut = dates[len(dates) // 2]
     first = d[d[date_col].astype(str) < cut].reset_index(drop=True)
     second = d[d[date_col].astype(str) >= cut].reset_index(drop=True)
     return first, second
@@ -824,7 +831,7 @@ def maker_grid(df: pd.DataFrame, candles: pd.DataFrame, models: list[str],
                anchor: str = "close", maker_round_cents: bool = False,
                draws: int = BOOTSTRAP_DRAWS, seed: int = 0,
                split: bool = True, group_col: str | None = None,
-               date_col: str = "date") -> pd.DataFrame:
+               date_col: str = "date", cut: str | None = None) -> pd.DataFrame:
     """Every model at every margin, on each half of the window, plus controls.
 
     Takes an already-joined frame — one row per order the strategy could post,
@@ -840,7 +847,7 @@ def maker_grid(df: pd.DataFrame, candles: pd.DataFrame, models: list[str],
     index = candle_index(candles)
     halves = {"all": df}
     if split:
-        first, second = split_halves(df, date_col)
+        first, second = split_halves(df, date_col, cut)
         halves.update({"first": first, "second": second})
     rows = []
     for half, sub in halves.items():
