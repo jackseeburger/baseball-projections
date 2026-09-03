@@ -297,7 +297,7 @@ data backtest cannot simulate.
 > backtest cannot simulate a resting order; an hourly *candle* archive can, and
 > the prop candles now exist. Quoting instead of crossing does not recover the
 > fee — it returns **−7.2%** where crossing the same contracts returns −3.2% —
-> because most of the orders are not maker orders at all and the ones that are
+> because a quarter of the orders are not maker orders at all and the ones that are
 > get adversely selected. See
 > [resting orders on props](#sept-3-2026--resting-orders-on-props). The
 > paragraph above is left as written because it is what the evidence then
@@ -416,11 +416,13 @@ Three things are worth reading off the table.
    small, because a hitter's four or five plate appearances against one starter
    are a much smaller share of his night than a starter's whole start is of
    his.
-2. **The league-rate control is the thing it beats most clearly.** Knowing
-   *which hitter this is* was worth 0.0015 of Brier; the pooled matchup gain of
-   0.0009 is more than half as much again, from a term that knows nothing about
-   the hitter at all. Read against the headline that is the story: the price
-   was missing about as much matchup as it was missing player.
+2. **It is worth about as much as knowing which player it is.** On the same
+   scored half the `league_rate` control — the identical contract priced with
+   the league's rates instead of the player's — sits 0.00105 behind the current
+   price. That gap is the entire contribution of knowing *whose* prop this is.
+   The matchup term is worth 0.00095, from a term that knows nothing about the
+   hitter at all. The price was missing as much matchup as it was missing
+   player.
 3. **Total bases is still the weak arm and the pitcher does not fix it.** The
    league-rate control still ties us there (0.18249 vs 0.18205 on the scored
    half). The Poisson is the problem, not the opponent.
@@ -565,13 +567,13 @@ recover the fee; it paid a different and larger cost.
 
 **Two mechanisms, and the table separates them.**
 
-*The order is usually not a maker order at all.* The `crossed` column counts
+*A large minority of the orders are not maker orders at all.* The `crossed` column counts
 orders posted at or above the prevailing ask, which the exchange fills
 immediately against a resting offer and charges the *taker* fee for. On
 moneylines at a 5-pt margin that was 13% of orders. Here it is **27%**, and at
 a zero margin **76%**, because a prop model's disagreement with the price is
 large relative to the price: the mean edge on a traded prop is 6.6 points and the
-median contract closes at 17. Bidding "my fair value minus five cents" for
+median contract closes at 17¢. Bidding "my fair value minus five cents" for
 a 12¢ home run is not providing liquidity, it is lifting the offer and paying
 more than the ask to do it.
 
