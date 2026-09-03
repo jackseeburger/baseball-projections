@@ -23,6 +23,7 @@ Sizes of real, gated gains measured in this repo, largest first:
 |---|---|
 | Projecting injured and optioned hitters at their expected return share | **6.4 PA per hitter** at a two-month horizon (t −5.4) — station B's first win on every metric |
 | Feeding Marcel the current season instead of a preseason projection | **6–11%** of component MAE |
+| Six Statcast contact-quality aggregates as covariates on the rate models | **1.6–4.8%** of component MAE (t −2.6 to −5.9), most of it a denoiser on small samples |
 | Tuning Marcel's ballasts, recency and age curve on 2020–24 | **1.1%** of component MAE (t −3.7) |
 | Each per-game term: starter, lineup, pen, run environment, start length | **.0001 – .0004** of Brier apiece |
 
@@ -123,6 +124,29 @@ derived from tracking data feed shrinkage-based projection systems. Two stages,
 each doing what it is good at.
 
 Prefer this over either extreme when the data supports it. See BAS-60.
+
+**We have now tried it, and on this problem it lost** (BAS-58,
+[contact-quality.md](contact-quality.md)). The HSGP over (EV, LA) was built
+exactly as described — refitted at every walk-forward fold, r-hat 1.01, stable
+length scales, a surface that is recognizably expected wOBA on contact — and
+the covariate it produces is *significantly worse* than six hand-chosen
+aggregates of the same two coordinates, on every component of both sides of the
+ball. Six plain numbers beat the flexible model by more than the flexible model
+beat the baseline.
+
+The reason is specific and worth carrying forward, because it is a property of
+the *pattern* and not of the GP. The surface maps a batted ball to what it was
+worth, so averaging it over a player's batted balls returns approximately what
+those balls were worth — which is approximately what his realized outcome rate
+says, and the hierarchical model downstream already reads his realized outcome
+rate. **A learned measurement that is trained to predict the same outcome the
+second stage is fitted on will tend to collapse onto that outcome.** The hand-
+chosen aggregates survive because they keep the *inputs* (how hard, at what
+angle) separate from the *value*, and the information the outcome does not
+already carry lives in that separation. So the question to ask before reaching
+for stage one is not "can a flexible model learn this surface" — it can — but
+"is the thing it learns a different quantity from the one stage two already
+has?"
 
 ## 4. Neither — and this is the category people forget
 

@@ -44,7 +44,11 @@ leaves and carrying the variance.
 │    (exit velo, launch angle) ──► contact quality surface          │
 │    (velo, movement, release) ──► pitch run value / "stuff"        │
 │  Millions of rows, unknown surface, no entity to pool.            │
-│  STATUS: contact quality in progress. Stuff not started.          │
+│  STATUS: contact quality GATED (7 of 8 components, t clustered by │
+│  player) but NOT WIRED — the artifact is monthly and the board     │
+│  projects on an arbitrary date, so it needs a partial-month        │
+│  top-up. The HSGP surface LOST to six plain aggregates. Stuff not  │
+│  started (BAS-67).                                                 │
 └───────────────────────────────────────────────────────────────────┘
                               │ enters as a covariate
 ┌─ LAYER 2 · TRUE TALENT ───────────────── MODEL (hierarchical Bayes) ─┐
@@ -55,7 +59,10 @@ leaves and carrying the variance.
 │    · within-season random walk on skill                              │
 │    · hierarchical aging curve                                        │
 │  OUTPUT: a posterior per player per rate — not a number.             │
-│  STATUS: K% exists and loses to Marcel. Four components not started. │
+│  STATUS: K% exists and loses to Marcel; four components not started. │
+│  Statcast covariates clear the gate ON TOP of tuned Marcel, so the   │
+│  layer-1 → layer-2 path is proven even though layer 2's own          │
+│  Bayesian engine is not yet the one serving.                         │
 └──────────────────────────────────────────────────────────────────────┘
                               │
 ┌─ LAYER 3 · PLAYING TIME ──────────── MODEL (actuarial, + Bayes later) ─┐
@@ -110,7 +117,7 @@ one hid the fact that two of them are much emptier than the first.
 
 | | **Hitting** | **Pitching** | **Defence / catching** |
 |---|---|---|---|
-| **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8 components | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
+| **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8, not yet wired; HSGP version lost | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
 | **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm inside noise | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
 | **L3 Playing time** | PA — **gated**, the biggest win in the repo | batters faced — **gated** (B-P) | innings by position — **does not exist** |
 | **L4 Assembly** | rates × PA → wOBA → wRC+ → oWAR | rates × BF → FIP / RA9 → pWAR | runs saved → dWAR |
