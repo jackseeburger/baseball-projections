@@ -1,6 +1,6 @@
 {
   "generated": "scripts/tune_marcel.py",
-  "method": "coordinate search, walk-forward predict years 2020-2024 (train <= Y-1), objective = mean trials-weighted MAE, min_trials=100, ages = Chadwick register (June 30); components whose fit does not beat stock on an inner validation (fit 2020-2022, score 2023-2024) keep stock's constants",
+  "method": "coordinate search, walk-forward predict years 2020-2024 (train <= Y-1), objective = mean trials-weighted MAE, min_trials=100, ages = Chadwick register (June 30); age term constrained to a peak in 25-31 with slopes of opposite signs; components whose fit does not beat stock on an inner validation (fit 2020-2022, score 2023-2024) keep stock's constants",
   "grid": {
     "ballast": [
       25.0,
@@ -25,26 +25,42 @@
       0.8,
       1.0
     ],
+    "league": [
+      {
+        "mode": "last",
+        "damp": 0.0
+      },
+      {
+        "mode": "weighted3",
+        "damp": 0.0
+      },
+      {
+        "mode": "drift",
+        "damp": 0.25
+      },
+      {
+        "mode": "drift",
+        "damp": 0.5
+      },
+      {
+        "mode": "drift",
+        "damp": 0.75
+      },
+      {
+        "mode": "drift",
+        "damp": 1.0
+      }
+    ],
     "peak_age": [
-      23.0,
-      24.0,
       25.0,
       26.0,
       27.0,
       28.0,
       29.0,
       30.0,
-      31.0,
-      32.0
+      31.0
     ],
     "age_slope": [
-      -0.012,
-      -0.008,
-      -0.006,
-      -0.004,
-      -0.003,
-      -0.002,
-      -0.001,
       0.0,
       0.001,
       0.002,
@@ -54,7 +70,588 @@
       0.008,
       0.012
     ],
-    "n_points_per_pass": 89
+    "age_constrained": true,
+    "age_peak_window": [
+      25.0,
+      31.0
+    ],
+    "age_direction": {
+      "k_rate": -1.0,
+      "bb_rate": 1.0,
+      "hr_rate": 1.0,
+      "babip": 1.0,
+      "iso": 1.0
+    },
+    "n_points_per_pass": 78
+  },
+  "league_rate": {
+    "picked": {
+      "babip": {
+        "mode": "last",
+        "damp": 0.0
+      },
+      "bb_rate": {
+        "mode": "last",
+        "damp": 0.0
+      },
+      "hr_rate": {
+        "mode": "last",
+        "damp": 0.0
+      },
+      "iso": {
+        "mode": "weighted3",
+        "damp": 0.0
+      },
+      "k_rate": {
+        "mode": "last",
+        "damp": 0.0
+      }
+    },
+    "chosen_on": "inner validation inside the tuning window: fit 2020-2022 with the league option pinned, score 2023-2024; the holdout is never consulted",
+    "inner_validation": [
+      {
+        "component": "k_rate",
+        "option": "last",
+        "fit_mae": 0.0317893454996998,
+        "validate_mae": 0.02776879096468397,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.465278723803831
+      },
+      {
+        "component": "k_rate",
+        "option": "weighted3",
+        "fit_mae": 0.03176197237797017,
+        "validate_mae": 0.0277748342721728,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.4440522933028044
+      },
+      {
+        "component": "k_rate",
+        "option": "drift@0.25",
+        "fit_mae": 0.031793355154417835,
+        "validate_mae": 0.02777831113041762,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.4318402239960504
+      },
+      {
+        "component": "k_rate",
+        "option": "drift@0.5",
+        "fit_mae": 0.03179947494562224,
+        "validate_mae": 0.027790965629961806,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.387392733015924
+      },
+      {
+        "component": "k_rate",
+        "option": "drift@0.75",
+        "fit_mae": 0.03180678916413641,
+        "validate_mae": 0.027804349568222263,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.340383171473553
+      },
+      {
+        "component": "k_rate",
+        "option": "drift@1",
+        "fit_mae": 0.0318144325148489,
+        "validate_mae": 0.027817838221554265,
+        "stock_validate_mae": 0.0284706723937305,
+        "vs_stock_pct": -2.2930058101472626
+      },
+      {
+        "component": "bb_rate",
+        "option": "last",
+        "fit_mae": 0.018617850835933758,
+        "validate_mae": 0.015967715588795162,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.19488281894186865
+      },
+      {
+        "component": "bb_rate",
+        "option": "weighted3",
+        "fit_mae": 0.018594596921384546,
+        "validate_mae": 0.015995462240106884,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.3689886552674384
+      },
+      {
+        "component": "bb_rate",
+        "option": "drift@0.25",
+        "fit_mae": 0.018611209578981717,
+        "validate_mae": 0.015979579835051758,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.26932908251690335
+      },
+      {
+        "component": "bb_rate",
+        "option": "drift@0.5",
+        "fit_mae": 0.018608861327786552,
+        "validate_mae": 0.015993300963051314,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.35542698452512766
+      },
+      {
+        "component": "bb_rate",
+        "option": "drift@0.75",
+        "fit_mae": 0.01860710185841145,
+        "validate_mae": 0.016011754606084068,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.47122066778353844
+      },
+      {
+        "component": "bb_rate",
+        "option": "drift@1",
+        "fit_mae": 0.01860744885625,
+        "validate_mae": 0.016032923282568667,
+        "stock_validate_mae": 0.01593665778086669,
+        "vs_stock_pct": 0.6040507553443962
+      },
+      {
+        "component": "hr_rate",
+        "option": "last",
+        "fit_mae": 0.011127731729760275,
+        "validate_mae": 0.009229905804862127,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": -1.2541712158826068
+      },
+      {
+        "component": "hr_rate",
+        "option": "weighted3",
+        "fit_mae": 0.011153315073789265,
+        "validate_mae": 0.00923983640525456,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": -1.1479290302301615
+      },
+      {
+        "component": "hr_rate",
+        "option": "drift@0.25",
+        "fit_mae": 0.011112224238050325,
+        "validate_mae": 0.00927232613167014,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": -0.8003388132004774
+      },
+      {
+        "component": "hr_rate",
+        "option": "drift@0.5",
+        "fit_mae": 0.011100120795857734,
+        "validate_mae": 0.00931814883018512,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": -0.3101062542069733
+      },
+      {
+        "component": "hr_rate",
+        "option": "drift@0.75",
+        "fit_mae": 0.011090869957735028,
+        "validate_mae": 0.009367463549607324,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": 0.21748556997356516
+      },
+      {
+        "component": "hr_rate",
+        "option": "drift@1",
+        "fit_mae": 0.01108827987921687,
+        "validate_mae": 0.009422307451271619,
+        "stock_validate_mae": 0.009347134880037277,
+        "vs_stock_pct": 0.8042311595918831
+      },
+      {
+        "component": "babip",
+        "option": "last",
+        "fit_mae": 0.02824829471388231,
+        "validate_mae": 0.025116661551210284,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.7844207116455872
+      },
+      {
+        "component": "babip",
+        "option": "weighted3",
+        "fit_mae": 0.028278521140758146,
+        "validate_mae": 0.025255963167368303,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.250791444590313
+      },
+      {
+        "component": "babip",
+        "option": "drift@0.25",
+        "fit_mae": 0.028235554377168792,
+        "validate_mae": 0.025127920430159836,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.7412907933616655
+      },
+      {
+        "component": "babip",
+        "option": "drift@0.5",
+        "fit_mae": 0.02822607226475347,
+        "validate_mae": 0.025149314300331183,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.6593362864874535
+      },
+      {
+        "component": "babip",
+        "option": "drift@0.75",
+        "fit_mae": 0.028221052158219056,
+        "validate_mae": 0.025175398517944165,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.5594142445871175
+      },
+      {
+        "component": "babip",
+        "option": "drift@1",
+        "fit_mae": 0.02822150270125139,
+        "validate_mae": 0.025204551929408216,
+        "stock_validate_mae": 0.026104568238306407,
+        "vs_stock_pct": -3.447734897133784
+      },
+      {
+        "component": "iso",
+        "option": "last",
+        "fit_mae": 0.03933495576302246,
+        "validate_mae": 0.03474876327531335,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": -0.2172929831885859
+      },
+      {
+        "component": "iso",
+        "option": "weighted3",
+        "fit_mae": 0.03947438380340924,
+        "validate_mae": 0.03449422521268393,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": -0.9482109939030056
+      },
+      {
+        "component": "iso",
+        "option": "drift@0.25",
+        "fit_mae": 0.0393020482756942,
+        "validate_mae": 0.034974428540089746,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": 0.4307154314030024
+      },
+      {
+        "component": "iso",
+        "option": "drift@0.5",
+        "fit_mae": 0.039275328019689894,
+        "validate_mae": 0.03522297705510171,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": 1.1444341746113906
+      },
+      {
+        "component": "iso",
+        "option": "drift@0.75",
+        "fit_mae": 0.03925918584730924,
+        "validate_mae": 0.03550049321938743,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": 1.941334884255476
+      },
+      {
+        "component": "iso",
+        "option": "drift@1",
+        "fit_mae": 0.03926255649099388,
+        "validate_mae": 0.03579046919213574,
+        "stock_validate_mae": 0.03482443432754222,
+        "vs_stock_pct": 2.774014519539521
+      }
+    ],
+    "levels": [
+      {
+        "predict_year": 2020,
+        "n_players": 291,
+        "regressed_toward": 0.2295930129693272,
+        "mean_projected": 0.21867734955826845,
+        "realized_scored": 0.2248979979125154,
+        "level_error": -0.00622064835424696,
+        "realized_league": 0.23435479505608517,
+        "level_error_vs_league": -0.015677445497816717,
+        "component": "k_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2021,
+        "n_players": 431,
+        "regressed_toward": 0.23435479505608517,
+        "mean_projected": 0.2269432026642993,
+        "realized_scored": 0.22139584219841754,
+        "level_error": 0.005547360465881751,
+        "realized_league": 0.2317977317977318,
+        "level_error_vs_league": -0.004854529133432511,
+        "component": "k_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2022,
+        "n_players": 407,
+        "regressed_toward": 0.2317977317977318,
+        "mean_projected": 0.22559158823161243,
+        "realized_scored": 0.21900734475851324,
+        "level_error": 0.006584243473099188,
+        "realized_league": 0.2241777074681959,
+        "level_error_vs_league": 0.0014138807634165307,
+        "component": "k_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2023,
+        "n_players": 410,
+        "regressed_toward": 0.2241777074681959,
+        "mean_projected": 0.22280665500033897,
+        "realized_scored": 0.22181325186643847,
+        "level_error": 0.0009934031339005056,
+        "realized_league": 0.22727914656933038,
+        "level_error_vs_league": -0.004472491568991405,
+        "component": "k_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2024,
+        "n_players": 416,
+        "regressed_toward": 0.22727914656933038,
+        "mean_projected": 0.22575257087798717,
+        "realized_scored": 0.22168203476439283,
+        "level_error": 0.004070536113594342,
+        "realized_league": 0.2258000865995429,
+        "level_error_vs_league": -4.7515721555729806e-05,
+        "component": "k_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2020,
+        "n_players": 291,
+        "regressed_toward": 0.08522011398424809,
+        "mean_projected": 0.08810731599079494,
+        "realized_scored": 0.09439225732991745,
+        "level_error": -0.00628494133912251,
+        "realized_league": 0.09160075782636153,
+        "level_error_vs_league": -0.003493441835566588,
+        "component": "bb_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2021,
+        "n_players": 431,
+        "regressed_toward": 0.09160075782636153,
+        "mean_projected": 0.08886556746857154,
+        "realized_scored": 0.08888518867982707,
+        "level_error": -1.9621211255538284e-05,
+        "realized_league": 0.08686708686708687,
+        "level_error_vs_league": 0.0019984806014846646,
+        "component": "bb_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2022,
+        "n_players": 407,
+        "regressed_toward": 0.08686708686708687,
+        "mean_projected": 0.08851940050507717,
+        "realized_scored": 0.08225493625003974,
+        "level_error": 0.006264464255037433,
+        "realized_league": 0.08158657965855909,
+        "level_error_vs_league": 0.006932820846518084,
+        "component": "bb_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2023,
+        "n_players": 410,
+        "regressed_toward": 0.08158657965855909,
+        "mean_projected": 0.08554352766117268,
+        "realized_scored": 0.08665059413168437,
+        "level_error": -0.001107066470511689,
+        "realized_league": 0.0859242602007561,
+        "level_error_vs_league": -0.00038073253958341435,
+        "component": "bb_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2024,
+        "n_players": 416,
+        "regressed_toward": 0.0859242602007561,
+        "mean_projected": 0.0859179892121705,
+        "realized_scored": 0.0825397017600155,
+        "level_error": 0.0033782874521550016,
+        "realized_league": 0.08182560605977561,
+        "level_error_vs_league": 0.004092383152394893,
+        "component": "bb_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2020,
+        "n_players": 291,
+        "regressed_toward": 0.03632912817598396,
+        "mean_projected": 0.03776838331570091,
+        "realized_scored": 0.037062339880444065,
+        "level_error": 0.0007060434352568479,
+        "realized_league": 0.03464349081285899,
+        "level_error_vs_league": 0.003124892502841925,
+        "component": "hr_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2021,
+        "n_players": 431,
+        "regressed_toward": 0.03464349081285899,
+        "mean_projected": 0.03597685491413121,
+        "realized_scored": 0.03441194427485153,
+        "level_error": 0.0015649106392796805,
+        "realized_league": 0.03269203269203269,
+        "level_error_vs_league": 0.00328482222209852,
+        "component": "hr_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2022,
+        "n_players": 407,
+        "regressed_toward": 0.03269203269203269,
+        "mean_projected": 0.035912169615742874,
+        "realized_scored": 0.029334520365012242,
+        "level_error": 0.006577649250730632,
+        "realized_league": 0.0286456616790807,
+        "level_error_vs_league": 0.007266507936662173,
+        "component": "hr_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2023,
+        "n_players": 410,
+        "regressed_toward": 0.0286456616790807,
+        "mean_projected": 0.03209873927763571,
+        "realized_scored": 0.03304684959910681,
+        "level_error": -0.0009481103214711017,
+        "realized_league": 0.03187328901055925,
+        "level_error_vs_league": 0.0002254502670764602,
+        "component": "hr_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2024,
+        "n_players": 416,
+        "regressed_toward": 0.03187328901055925,
+        "mean_projected": 0.03298930360813316,
+        "realized_scored": 0.03083508406541179,
+        "level_error": 0.00215421954272137,
+        "realized_league": 0.029887804263109143,
+        "level_error_vs_league": 0.003101499345024017,
+        "component": "hr_rate",
+        "option": "last"
+      },
+      {
+        "predict_year": 2020,
+        "n_players": 176,
+        "regressed_toward": 0.2983282854774031,
+        "mean_projected": 0.3040863535553205,
+        "realized_scored": 0.30350920856147334,
+        "level_error": 0.0005771449938471451,
+        "realized_league": 0.29211400510326896,
+        "level_error_vs_league": 0.011972348452051529,
+        "component": "babip",
+        "option": "last"
+      },
+      {
+        "predict_year": 2021,
+        "n_players": 376,
+        "regressed_toward": 0.29211400510326896,
+        "mean_projected": 0.2983028189550783,
+        "realized_scored": 0.2952652938523974,
+        "level_error": 0.0030375251026809047,
+        "realized_league": 0.2916648549936954,
+        "level_error_vs_league": 0.006637963961382942,
+        "component": "babip",
+        "option": "last"
+      },
+      {
+        "predict_year": 2022,
+        "n_players": 365,
+        "regressed_toward": 0.2916648549936954,
+        "mean_projected": 0.2964036359823097,
+        "realized_scored": 0.2915656616247621,
+        "level_error": 0.00483797435754757,
+        "realized_league": 0.2903962515379818,
+        "level_error_vs_league": 0.006007384444327857,
+        "component": "babip",
+        "option": "last"
+      },
+      {
+        "predict_year": 2023,
+        "n_players": 362,
+        "regressed_toward": 0.2903962515379818,
+        "mean_projected": 0.29314966722806807,
+        "realized_scored": 0.29795031362671015,
+        "level_error": -0.004800646398642083,
+        "realized_league": 0.2965227197571585,
+        "level_error_vs_league": -0.0033730525290904256,
+        "component": "babip",
+        "option": "last"
+      },
+      {
+        "predict_year": 2024,
+        "n_players": 371,
+        "regressed_toward": 0.2965227197571585,
+        "mean_projected": 0.29538145589384723,
+        "realized_scored": 0.29236749932643086,
+        "level_error": 0.003013956567416376,
+        "realized_league": 0.29053745625454364,
+        "level_error_vs_league": 0.004843999639303598,
+        "component": "babip",
+        "option": "last"
+      },
+      {
+        "predict_year": 2020,
+        "n_players": 264,
+        "regressed_toward": 0.17266945961307115,
+        "mean_projected": 0.18959188673584498,
+        "realized_scored": 0.18510633479038796,
+        "level_error": 0.0044855519454570225,
+        "realized_league": 0.17308148399119092,
+        "level_error_vs_league": 0.016510402744654068,
+        "component": "iso",
+        "option": "weighted3"
+      },
+      {
+        "predict_year": 2021,
+        "n_players": 420,
+        "regressed_toward": 0.17347827577929426,
+        "mean_projected": 0.18129829335703118,
+        "realized_scored": 0.1744150375101096,
+        "level_error": 0.006883255846921593,
+        "realized_league": 0.16695586664278966,
+        "level_error_vs_league": 0.014342426714241518,
+        "component": "iso",
+        "option": "weighted3"
+      },
+      {
+        "predict_year": 2022,
+        "n_players": 401,
+        "regressed_toward": 0.17294850877681012,
+        "mean_projected": 0.18088413842734544,
+        "realized_scored": 0.15515462083199885,
+        "level_error": 0.025729517595346585,
+        "realized_league": 0.1521487780258771,
+        "level_error_vs_league": 0.028735360401468346,
+        "component": "iso",
+        "option": "weighted3"
+      },
+      {
+        "predict_year": 2023,
+        "n_players": 402,
+        "regressed_toward": 0.16024684276196444,
+        "mean_projected": 0.16746392211503278,
+        "realized_scored": 0.17073827914496137,
+        "level_error": -0.003274357029928593,
+        "realized_league": 0.16577260397280102,
+        "level_error_vs_league": 0.0016913181422317514,
+        "component": "iso",
+        "option": "weighted3"
+      },
+      {
+        "predict_year": 2024,
+        "n_players": 404,
+        "regressed_toward": 0.16152480434790364,
+        "mean_projected": 0.16874864702659514,
+        "realized_scored": 0.15985350279447505,
+        "level_error": 0.008895144232120095,
+        "realized_league": 0.15593174778693483,
+        "level_error_vs_league": 0.012816899239660312,
+        "component": "iso",
+        "option": "weighted3"
+      }
+    ]
   },
   "in_sample": {
     "k_rate": {
@@ -65,6 +662,11 @@
         2023,
         2024
       ],
+      "league_mode": {
+        "mode": "last",
+        "damp": 0.0,
+        "chosen_on": "inner validation"
+      },
       "n_scored_by_year": {
         "2020": 310,
         "2021": 463,
@@ -78,38 +680,38 @@
         "log_loss": 0.5226003289471587
       },
       "tuned": {
-        "mae": 0.029707607822458397,
-        "rmse": 0.03834727482741377,
-        "log_loss": 0.5224550844403504
+        "mae": 0.030135302003143415,
+        "rmse": 0.03856449591561014,
+        "log_loss": 0.5224835866245156
       },
       "tuned_ballast_weights_only": {
         "mae": 0.03010824161797001,
         "rmse": 0.03851109440776319,
         "log_loss": 0.5224694484118926
       },
-      "mae_gain_pct": -3.0983814386725617,
+      "mae_gain_pct": -1.7033092199559803,
       "mae_gain_pct_ballast_weights_only": -1.7915760079742888,
-      "log_loss_gain_pct": -0.02779265506795966,
+      "log_loss_gain_pct": -0.022338738836680205,
       "mae_by_year": {
         "2020": {
           "stock": 0.03540133786410989,
-          "tuned": 0.0363985003935191
+          "tuned": 0.03597790317111245
         },
         "2021": {
           "stock": 0.03077176510014136,
-          "tuned": 0.029870823650441445
+          "tuned": 0.030390142789956717
         },
         "2022": {
           "stock": 0.030173021867058586,
-          "tuned": 0.028171426631739084
+          "tuned": 0.02920296870333639
         },
         "2023": {
           "stock": 0.029596522055220252,
-          "tuned": 0.028194302886144936
+          "tuned": 0.0284894174751678
         },
         "2024": {
           "stock": 0.027344822732240745,
-          "tuned": 0.025902985550447434
+          "tuned": 0.026616077876143715
         }
       },
       "inner_validation": {
@@ -122,38 +724,162 @@
           2024
         ],
         "stock_mae": 0.0284706723937305,
-        "tuned_mae": 0.02730242666112176,
-        "tuned_ballast_weights_only_mae": 0.027674161548523916,
-        "tuned_pct": -4.103330319890857,
-        "tuned_ballast_weights_only_pct": -2.797653789806457,
-        "generalises": true
+        "tuned_mae": 0.02776879096468397,
+        "tuned_ballast_weights_only_mae": 0.027749951365741037,
+        "tuned_pct": -2.465278723803831,
+        "tuned_ballast_weights_only_pct": -2.5314506732484876,
+        "generalises": true,
+        "params": {
+          "ballast": 100.0,
+          "weights": [
+            1.0,
+            0.6,
+            0.4
+          ],
+          "peak_age": 30.0,
+          "age_slope_young": 0.0,
+          "age_slope_old": 0.008,
+          "league_mode": "last",
+          "league_damp": 0.0
+        }
       },
       "kept_stock": false,
+      "level": {
+        "stock": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.2295930129693272,
+            "mean_projected": 0.21867734955826845,
+            "realized_scored": 0.2248979979125154,
+            "level_error": -0.00622064835424696,
+            "realized_league": 0.23435479505608517,
+            "level_error_vs_league": -0.015677445497816717
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.23435479505608517,
+            "mean_projected": 0.2269432026642993,
+            "realized_scored": 0.22139584219841754,
+            "level_error": 0.005547360465881751,
+            "realized_league": 0.2317977317977318,
+            "level_error_vs_league": -0.004854529133432511
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.2317977317977318,
+            "mean_projected": 0.22559158823161243,
+            "realized_scored": 0.21900734475851324,
+            "level_error": 0.006584243473099188,
+            "realized_league": 0.2241777074681959,
+            "level_error_vs_league": 0.0014138807634165307
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.2241777074681959,
+            "mean_projected": 0.22280665500033897,
+            "realized_scored": 0.22181325186643847,
+            "level_error": 0.0009934031339005056,
+            "realized_league": 0.22727914656933038,
+            "level_error_vs_league": -0.004472491568991405
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.22727914656933038,
+            "mean_projected": 0.22575257087798717,
+            "realized_scored": 0.22168203476439283,
+            "level_error": 0.004070536113594342,
+            "realized_league": 0.2258000865995429,
+            "level_error_vs_league": -4.7515721555729806e-05
+          }
+        ],
+        "tuned": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.2295930129693272,
+            "mean_projected": 0.2182739914036634,
+            "realized_scored": 0.2248979979125154,
+            "level_error": -0.006624006508852004,
+            "realized_league": 0.23435479505608517,
+            "level_error_vs_league": -0.01608080365242176
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.23435479505608517,
+            "mean_projected": 0.22677992201190073,
+            "realized_scored": 0.22139584219841754,
+            "level_error": 0.0053840798134831835,
+            "realized_league": 0.2317977317977318,
+            "level_error_vs_league": -0.005017809785831079
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.2317977317977318,
+            "mean_projected": 0.22429421582510303,
+            "realized_scored": 0.21900734475851324,
+            "level_error": 0.005286871066589788,
+            "realized_league": 0.2241777074681959,
+            "level_error_vs_league": 0.00011650835690713013
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.2241777074681959,
+            "mean_projected": 0.22275332346769952,
+            "realized_scored": 0.22181325186643847,
+            "level_error": 0.0009400716012610555,
+            "realized_league": 0.22727914656933038,
+            "level_error_vs_league": -0.004525823101630855
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.22727914656933038,
+            "mean_projected": 0.22587281013790803,
+            "realized_scored": 0.22168203476439283,
+            "level_error": 0.004190775373515199,
+            "realized_league": 0.2258000865995429,
+            "level_error_vs_league": 7.272353836512702e-05
+          }
+        ]
+      },
       "final_pass": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.030135302003143415
+        },
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.029707607822458397
+          "mae": 0.030135302003143415
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.029707607822458397
+          "mae": 0.030135302003143415
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.029707607822458397
+          "mae": 0.030135302003143415
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.029707607822458397
+          "mae": 0.030135302003143415
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.029707607822458397
+          "mae": 0.030135302003143415
         }
       ]
     },
@@ -165,6 +891,11 @@
         2023,
         2024
       ],
+      "league_mode": {
+        "mode": "last",
+        "damp": 0.0,
+        "chosen_on": "inner validation"
+      },
       "n_scored_by_year": {
         "2020": 310,
         "2021": 463,
@@ -222,14 +953,138 @@
           2024
         ],
         "stock_mae": 0.01593665778086669,
-        "tuned_mae": 0.015957660918692284,
-        "tuned_ballast_weights_only_mae": 0.0160064350140942,
-        "tuned_pct": 0.13179135873024356,
-        "tuned_ballast_weights_only_pct": 0.4378410717414271,
-        "generalises": false
+        "tuned_mae": 0.015967715588795162,
+        "tuned_ballast_weights_only_mae": 0.01599365272158574,
+        "tuned_pct": 0.19488281894186865,
+        "tuned_ballast_weights_only_pct": 0.3576342135392795,
+        "generalises": false,
+        "params": {
+          "ballast": 150.0,
+          "weights": [
+            1.0,
+            0.8,
+            0.8
+          ],
+          "peak_age": 25.0,
+          "age_slope_young": 0.0,
+          "age_slope_old": -0.004,
+          "league_mode": "last",
+          "league_damp": 0.0
+        }
       },
       "kept_stock": true,
+      "level": {
+        "stock": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.08522011398424809,
+            "mean_projected": 0.08810731599079494,
+            "realized_scored": 0.09439225732991745,
+            "level_error": -0.00628494133912251,
+            "realized_league": 0.09160075782636153,
+            "level_error_vs_league": -0.003493441835566588
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.09160075782636153,
+            "mean_projected": 0.08886556746857154,
+            "realized_scored": 0.08888518867982707,
+            "level_error": -1.9621211255538284e-05,
+            "realized_league": 0.08686708686708687,
+            "level_error_vs_league": 0.0019984806014846646
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.08686708686708687,
+            "mean_projected": 0.08851940050507717,
+            "realized_scored": 0.08225493625003974,
+            "level_error": 0.006264464255037433,
+            "realized_league": 0.08158657965855909,
+            "level_error_vs_league": 0.006932820846518084
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.08158657965855909,
+            "mean_projected": 0.08554352766117268,
+            "realized_scored": 0.08665059413168437,
+            "level_error": -0.001107066470511689,
+            "realized_league": 0.0859242602007561,
+            "level_error_vs_league": -0.00038073253958341435
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.0859242602007561,
+            "mean_projected": 0.0859179892121705,
+            "realized_scored": 0.0825397017600155,
+            "level_error": 0.0033782874521550016,
+            "realized_league": 0.08182560605977561,
+            "level_error_vs_league": 0.004092383152394893
+          }
+        ],
+        "tuned": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.08522011398424809,
+            "mean_projected": 0.08810731599079494,
+            "realized_scored": 0.09439225732991745,
+            "level_error": -0.00628494133912251,
+            "realized_league": 0.09160075782636153,
+            "level_error_vs_league": -0.003493441835566588
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.09160075782636153,
+            "mean_projected": 0.08886556746857154,
+            "realized_scored": 0.08888518867982707,
+            "level_error": -1.9621211255538284e-05,
+            "realized_league": 0.08686708686708687,
+            "level_error_vs_league": 0.0019984806014846646
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.08686708686708687,
+            "mean_projected": 0.08851940050507717,
+            "realized_scored": 0.08225493625003974,
+            "level_error": 0.006264464255037433,
+            "realized_league": 0.08158657965855909,
+            "level_error_vs_league": 0.006932820846518084
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.08158657965855909,
+            "mean_projected": 0.08554352766117268,
+            "realized_scored": 0.08665059413168437,
+            "level_error": -0.001107066470511689,
+            "realized_league": 0.0859242602007561,
+            "level_error_vs_league": -0.00038073253958341435
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.0859242602007561,
+            "mean_projected": 0.0859179892121705,
+            "realized_scored": 0.0825397017600155,
+            "level_error": 0.0033782874521550016,
+            "realized_league": 0.08182560605977561,
+            "level_error_vs_league": 0.004092383152394893
+          }
+        ]
+      },
       "final_pass": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.017477497873502886
+        },
         {
           "pass": 3,
           "axis": "ballast",
@@ -265,6 +1120,11 @@
         2023,
         2024
       ],
+      "league_mode": {
+        "mode": "last",
+        "damp": 0.0,
+        "chosen_on": "inner validation"
+      },
       "n_scored_by_year": {
         "2020": 310,
         "2021": 463,
@@ -278,38 +1138,38 @@
         "log_loss": 0.14330302052689037
       },
       "tuned": {
-        "mae": 0.010288218339252583,
-        "rmse": 0.013176000898601891,
-        "log_loss": 0.14323105280833928
+        "mae": 0.010368601359801017,
+        "rmse": 0.013172009337344009,
+        "log_loss": 0.14323951332613513
       },
       "tuned_ballast_weights_only": {
         "mae": 0.010643734953696086,
         "rmse": 0.013346124851064855,
         "log_loss": 0.14329591854586857
       },
-      "mae_gain_pct": -3.656124621497637,
+      "mae_gain_pct": -2.903378960500267,
       "mae_gain_pct_ballast_weights_only": -0.3268943050830779,
-      "log_loss_gain_pct": -0.05022065709883717,
+      "log_loss_gain_pct": -0.04431672167253395,
       "mae_by_year": {
         "2020": {
           "stock": 0.01273504159897272,
-          "tuned": 0.01261812576411423
+          "tuned": 0.012712324500301327
         },
         "2021": {
           "stock": 0.010723566992699024,
-          "tuned": 0.01040540124804414
+          "tuned": 0.010565719496452167
         },
         "2022": {
           "stock": 0.011240335793074353,
-          "tuned": 0.009983943271916436
+          "tuned": 0.010105151192527329
         },
         "2023": {
           "stock": 0.009734263049512288,
-          "tuned": 0.00979863680521564
+          "tuned": 0.009778230463429995
         },
         "2024": {
           "stock": 0.008960006710562267,
-          "tuned": 0.00863498460697247
+          "tuned": 0.008681581146294259
         }
       },
       "inner_validation": {
@@ -322,38 +1182,162 @@
           2024
         ],
         "stock_mae": 0.009347134880037277,
-        "tuned_mae": 0.009216810706094055,
+        "tuned_mae": 0.009229905804862127,
         "tuned_ballast_weights_only_mae": 0.009336357651658612,
-        "tuned_pct": -1.3942686782187772,
+        "tuned_pct": -1.2541712158826068,
         "tuned_ballast_weights_only_pct": -0.11529980595103989,
-        "generalises": true
+        "generalises": true,
+        "params": {
+          "ballast": 300.0,
+          "weights": [
+            1.0,
+            0.6,
+            0.4
+          ],
+          "peak_age": 25.0,
+          "age_slope_young": 0.012,
+          "age_slope_old": -0.012,
+          "league_mode": "last",
+          "league_damp": 0.0
+        }
       },
       "kept_stock": false,
+      "level": {
+        "stock": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.03632912817598396,
+            "mean_projected": 0.03776838331570091,
+            "realized_scored": 0.037062339880444065,
+            "level_error": 0.0007060434352568479,
+            "realized_league": 0.03464349081285899,
+            "level_error_vs_league": 0.003124892502841925
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.03464349081285899,
+            "mean_projected": 0.03597685491413121,
+            "realized_scored": 0.03441194427485153,
+            "level_error": 0.0015649106392796805,
+            "realized_league": 0.03269203269203269,
+            "level_error_vs_league": 0.00328482222209852
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.03269203269203269,
+            "mean_projected": 0.035912169615742874,
+            "realized_scored": 0.029334520365012242,
+            "level_error": 0.006577649250730632,
+            "realized_league": 0.0286456616790807,
+            "level_error_vs_league": 0.007266507936662173
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.0286456616790807,
+            "mean_projected": 0.03209873927763571,
+            "realized_scored": 0.03304684959910681,
+            "level_error": -0.0009481103214711017,
+            "realized_league": 0.03187328901055925,
+            "level_error_vs_league": 0.0002254502670764602
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.03187328901055925,
+            "mean_projected": 0.03298930360813316,
+            "realized_scored": 0.03083508406541179,
+            "level_error": 0.00215421954272137,
+            "realized_league": 0.029887804263109143,
+            "level_error_vs_league": 0.003101499345024017
+          }
+        ],
+        "tuned": [
+          {
+            "predict_year": 2020,
+            "n_players": 291,
+            "regressed_toward": 0.03632912817598396,
+            "mean_projected": 0.036367308152291375,
+            "realized_scored": 0.037062339880444065,
+            "level_error": -0.0006950317281526897,
+            "realized_league": 0.03464349081285899,
+            "level_error_vs_league": 0.0017238173394323875
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 431,
+            "regressed_toward": 0.03464349081285899,
+            "mean_projected": 0.034404633588913144,
+            "realized_scored": 0.03441194427485153,
+            "level_error": -7.310685938385908e-06,
+            "realized_league": 0.03269203269203269,
+            "level_error_vs_league": 0.0017126008968804535
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 407,
+            "regressed_toward": 0.03269203269203269,
+            "mean_projected": 0.03379437033699658,
+            "realized_scored": 0.029334520365012242,
+            "level_error": 0.004459849971984339,
+            "realized_league": 0.0286456616790807,
+            "level_error_vs_league": 0.00514870865791588
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 410,
+            "regressed_toward": 0.0286456616790807,
+            "mean_projected": 0.030194793048112626,
+            "realized_scored": 0.03304684959910681,
+            "level_error": -0.002852056550994183,
+            "realized_league": 0.03187328901055925,
+            "level_error_vs_league": -0.001678495962446621
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 416,
+            "regressed_toward": 0.03187328901055925,
+            "mean_projected": 0.03152664837957792,
+            "realized_scored": 0.03083508406541179,
+            "level_error": 0.0006915643141661328,
+            "realized_league": 0.029887804263109143,
+            "level_error_vs_league": 0.0016388441164687795
+          }
+        ]
+      },
       "final_pass": [
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.010368601359801017
+        },
         {
           "pass": 3,
           "axis": "ballast",
-          "mae": 0.010305793304776862
+          "mae": 0.010368601359801017
         },
         {
           "pass": 3,
           "axis": "weights",
-          "mae": 0.010288218339252583
+          "mae": 0.010368601359801017
         },
         {
           "pass": 3,
           "axis": "peak_age",
-          "mae": 0.010288218339252583
+          "mae": 0.010368601359801017
         },
         {
           "pass": 3,
           "axis": "age_slope_old",
-          "mae": 0.010288218339252583
+          "mae": 0.010368601359801017
         },
         {
           "pass": 3,
           "axis": "age_slope_young",
-          "mae": 0.010288218339252583
+          "mae": 0.010368601359801017
         }
       ]
     },
@@ -365,6 +1349,11 @@
         2023,
         2024
       ],
+      "league_mode": {
+        "mode": "last",
+        "damp": 0.0,
+        "chosen_on": "inner validation"
+      },
       "n_scored_by_year": {
         "2020": 182,
         "2021": 395,
@@ -378,38 +1367,38 @@
         "log_loss": 0.6071879412259434
       },
       "tuned": {
-        "mae": 0.026850558423150307,
-        "rmse": 0.03429584529842982,
-        "log_loss": 0.6070200050132376
+        "mae": 0.026921690628837862,
+        "rmse": 0.034290573517607004,
+        "log_loss": 0.6070204104710483
       },
       "tuned_ballast_weights_only": {
         "mae": 0.026907402702594924,
         "rmse": 0.03428452222668114,
         "log_loss": 0.607019178264406
       },
-      "mae_gain_pct": -3.2842267949034554,
+      "mae_gain_pct": -3.028008426389959,
       "mae_gain_pct_ballast_weights_only": -3.0794735695838424,
-      "log_loss_gain_pct": -0.027658028314389908,
+      "log_loss_gain_pct": -0.02759125198648051,
       "mae_by_year": {
         "2020": {
           "stock": 0.03556885702212637,
-          "tuned": 0.03472581815107746
+          "tuned": 0.034860276155841204
         },
         "2021": {
           "stock": 0.02578828470353226,
-          "tuned": 0.02531300260383389
+          "tuned": 0.025530227481738804
         },
         "2022": {
           "stock": 0.025245404387551382,
-          "tuned": 0.024708240746236978
+          "tuned": 0.024581015545297673
         },
         "2023": {
           "stock": 0.02572558066323871,
-          "tuned": 0.024731559890958762
+          "tuned": 0.024830792902035524
         },
         "2024": {
           "stock": 0.026483555813374107,
-          "tuned": 0.024774170723644434
+          "tuned": 0.02480614105927611
         }
       },
       "inner_validation": {
@@ -422,38 +1411,162 @@
           2024
         ],
         "stock_mae": 0.026104568238306407,
-        "tuned_mae": 0.02501492480697897,
-        "tuned_ballast_weights_only_mae": 0.025060022486827135,
-        "tuned_pct": -4.1741484531756035,
-        "tuned_ballast_weights_only_pct": -4.001390645283622,
-        "generalises": true
+        "tuned_mae": 0.025116661551210284,
+        "tuned_ballast_weights_only_mae": 0.025098946112066464,
+        "tuned_pct": -3.7844207116455872,
+        "tuned_ballast_weights_only_pct": -3.852284079398301,
+        "generalises": true,
+        "params": {
+          "ballast": 400.0,
+          "weights": [
+            1.0,
+            0.8,
+            1.0
+          ],
+          "peak_age": 25.0,
+          "age_slope_young": 0.0,
+          "age_slope_old": -0.003,
+          "league_mode": "last",
+          "league_damp": 0.0
+        }
       },
       "kept_stock": false,
+      "level": {
+        "stock": [
+          {
+            "predict_year": 2020,
+            "n_players": 176,
+            "regressed_toward": 0.2983282854774031,
+            "mean_projected": 0.3040863535553205,
+            "realized_scored": 0.30350920856147334,
+            "level_error": 0.0005771449938471451,
+            "realized_league": 0.29211400510326896,
+            "level_error_vs_league": 0.011972348452051529
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 376,
+            "regressed_toward": 0.29211400510326896,
+            "mean_projected": 0.2983028189550783,
+            "realized_scored": 0.2952652938523974,
+            "level_error": 0.0030375251026809047,
+            "realized_league": 0.2916648549936954,
+            "level_error_vs_league": 0.006637963961382942
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 365,
+            "regressed_toward": 0.2916648549936954,
+            "mean_projected": 0.2964036359823097,
+            "realized_scored": 0.2915656616247621,
+            "level_error": 0.00483797435754757,
+            "realized_league": 0.2903962515379818,
+            "level_error_vs_league": 0.006007384444327857
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 362,
+            "regressed_toward": 0.2903962515379818,
+            "mean_projected": 0.29314966722806807,
+            "realized_scored": 0.29795031362671015,
+            "level_error": -0.004800646398642083,
+            "realized_league": 0.2965227197571585,
+            "level_error_vs_league": -0.0033730525290904256
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 371,
+            "regressed_toward": 0.2965227197571585,
+            "mean_projected": 0.29538145589384723,
+            "realized_scored": 0.29236749932643086,
+            "level_error": 0.003013956567416376,
+            "realized_league": 0.29053745625454364,
+            "level_error_vs_league": 0.004843999639303598
+          }
+        ],
+        "tuned": [
+          {
+            "predict_year": 2020,
+            "n_players": 176,
+            "regressed_toward": 0.2983282854774031,
+            "mean_projected": 0.3008744043099309,
+            "realized_scored": 0.30350920856147334,
+            "level_error": -0.002634804251542444,
+            "realized_league": 0.29211400510326896,
+            "level_error_vs_league": 0.00876039920666194
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 376,
+            "regressed_toward": 0.29211400510326896,
+            "mean_projected": 0.294892598041187,
+            "realized_scored": 0.2952652938523974,
+            "level_error": -0.0003726958112104106,
+            "realized_league": 0.2916648549936954,
+            "level_error_vs_league": 0.003227743047491627
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 365,
+            "regressed_toward": 0.2916648549936954,
+            "mean_projected": 0.29392206252904857,
+            "realized_scored": 0.2915656616247621,
+            "level_error": 0.0023564009042864598,
+            "realized_league": 0.2903962515379818,
+            "level_error_vs_league": 0.0035258109910667468
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 362,
+            "regressed_toward": 0.2903962515379818,
+            "mean_projected": 0.29110576888832407,
+            "realized_scored": 0.29795031362671015,
+            "level_error": -0.0068445447383860825,
+            "realized_league": 0.2965227197571585,
+            "level_error_vs_league": -0.005416950868834425
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 371,
+            "regressed_toward": 0.2965227197571585,
+            "mean_projected": 0.2946939821400146,
+            "realized_scored": 0.29236749932643086,
+            "level_error": 0.002326482813583719,
+            "realized_league": 0.29053745625454364,
+            "level_error_vs_league": 0.004156525885470941
+          }
+        ]
+      },
       "final_pass": [
+        {
+          "pass": 1,
+          "axis": "age_slope_young",
+          "mae": 0.026921690628837862
+        },
         {
           "pass": 2,
           "axis": "ballast",
-          "mae": 0.026850558423150307
+          "mae": 0.026921690628837862
         },
         {
           "pass": 2,
           "axis": "weights",
-          "mae": 0.026850558423150307
+          "mae": 0.026921690628837862
         },
         {
           "pass": 2,
           "axis": "peak_age",
-          "mae": 0.026850558423150307
+          "mae": 0.026921690628837862
         },
         {
           "pass": 2,
           "axis": "age_slope_old",
-          "mae": 0.026850558423150307
+          "mae": 0.026921690628837862
         },
         {
           "pass": 2,
           "axis": "age_slope_young",
-          "mae": 0.026850558423150307
+          "mae": 0.026921690628837862
         }
       ]
     },
@@ -465,6 +1578,11 @@
         2023,
         2024
       ],
+      "league_mode": {
+        "mode": "weighted3",
+        "damp": 0.0,
+        "chosen_on": "inner validation"
+      },
       "n_scored_by_year": {
         "2020": 281,
         "2021": 450,
@@ -478,38 +1596,38 @@
         "log_loss": NaN
       },
       "tuned": {
-        "mae": 0.03716737978366478,
-        "rmse": 0.04731525073602156,
+        "mae": 0.0373984161567287,
+        "rmse": 0.04728588377277089,
         "log_loss": NaN
       },
       "tuned_ballast_weights_only": {
-        "mae": 0.03838511218033093,
-        "rmse": 0.04787448925975852,
+        "mae": 0.03838382889425308,
+        "rmse": 0.04795332470600848,
         "log_loss": NaN
       },
-      "mae_gain_pct": -3.787155054198864,
-      "mae_gain_pct_ballast_weights_only": -0.6348882291532062,
+      "mae_gain_pct": -3.189085809936206,
+      "mae_gain_pct_ballast_weights_only": -0.6382101906459889,
       "log_loss_gain_pct": null,
       "mae_by_year": {
         "2020": {
           "stock": 0.045788266311809656,
-          "tuned": 0.04558297329792438
+          "tuned": 0.045577599997015265
         },
         "2021": {
           "stock": 0.03794869348055725,
-          "tuned": 0.037201170269633856
+          "tuned": 0.037288291567537483
         },
         "2022": {
           "stock": 0.03976603087342205,
-          "tuned": 0.03385789206104884
+          "tuned": 0.03576797640457656
         },
         "2023": {
           "stock": 0.03531784173138982,
-          "tuned": 0.03639923116242604
+          "tuned": 0.0353824275895897
         },
         "2024": {
           "stock": 0.03433102692369462,
-          "tuned": 0.03279563212729077
+          "tuned": 0.0329757852249245
         }
       },
       "inner_validation": {
@@ -522,38 +1640,162 @@
           2024
         ],
         "stock_mae": 0.03482443432754222,
-        "tuned_mae": 0.03474858486002533,
-        "tuned_ballast_weights_only_mae": 0.034794367291651654,
-        "tuned_pct": -0.21780531107407172,
-        "tuned_ballast_weights_only_pct": -0.08633890677955215,
-        "generalises": true
+        "tuned_mae": 0.03449422521268393,
+        "tuned_ballast_weights_only_mae": 0.0347282135047401,
+        "tuned_pct": -0.9482109939030056,
+        "tuned_ballast_weights_only_pct": -0.27630261527613464,
+        "generalises": true,
+        "params": {
+          "ballast": 300.0,
+          "weights": [
+            1.0,
+            0.4,
+            0.4
+          ],
+          "peak_age": 25.0,
+          "age_slope_young": 0.012,
+          "age_slope_old": -0.012,
+          "league_mode": "weighted3",
+          "league_damp": 0.0
+        }
       },
       "kept_stock": false,
+      "level": {
+        "stock": [
+          {
+            "predict_year": 2020,
+            "n_players": 264,
+            "regressed_toward": 0.18259116356937552,
+            "mean_projected": 0.19151757561886648,
+            "realized_scored": 0.18510633479038796,
+            "level_error": 0.0064112408284785205,
+            "realized_league": 0.17308148399119092,
+            "level_error_vs_league": 0.018436091627675566
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 420,
+            "regressed_toward": 0.17308148399119092,
+            "mean_projected": 0.18118220878400845,
+            "realized_scored": 0.1744150375101096,
+            "level_error": 0.006767171273898864,
+            "realized_league": 0.16695586664278966,
+            "level_error_vs_league": 0.01422634214121879
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 401,
+            "regressed_toward": 0.16695586664278966,
+            "mean_projected": 0.17937227388750507,
+            "realized_scored": 0.15515462083199885,
+            "level_error": 0.024217653055506216,
+            "realized_league": 0.1521487780258771,
+            "level_error_vs_league": 0.027223495861627978
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 402,
+            "regressed_toward": 0.1521487780258771,
+            "mean_projected": 0.16535033481563613,
+            "realized_scored": 0.17073827914496137,
+            "level_error": -0.005387944329325239,
+            "realized_league": 0.16577260397280102,
+            "level_error_vs_league": -0.0004222691571648951
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 404,
+            "regressed_toward": 0.16577260397280102,
+            "mean_projected": 0.16975149380770235,
+            "realized_scored": 0.15985350279447505,
+            "level_error": 0.009897991013227303,
+            "realized_league": 0.15593174778693483,
+            "level_error_vs_league": 0.01381974602076752
+          }
+        ],
+        "tuned": [
+          {
+            "predict_year": 2020,
+            "n_players": 264,
+            "regressed_toward": 0.1739571321472766,
+            "mean_projected": 0.18300001657427092,
+            "realized_scored": 0.18510633479038796,
+            "level_error": -0.002106318216117037,
+            "realized_league": 0.17308148399119092,
+            "level_error_vs_league": 0.009918532583080009
+          },
+          {
+            "predict_year": 2021,
+            "n_players": 420,
+            "regressed_toward": 0.1738931958041399,
+            "mean_projected": 0.17416912301538454,
+            "realized_scored": 0.1744150375101096,
+            "level_error": -0.00024591449472505245,
+            "realized_league": 0.16695586664278966,
+            "level_error_vs_league": 0.007213256372594873
+          },
+          {
+            "predict_year": 2022,
+            "n_players": 401,
+            "regressed_toward": 0.1717252595831973,
+            "mean_projected": 0.1719728987305962,
+            "realized_scored": 0.15515462083199885,
+            "level_error": 0.016818277898597356,
+            "realized_league": 0.1521487780258771,
+            "level_error_vs_league": 0.019824120704719117
+          },
+          {
+            "predict_year": 2023,
+            "n_players": 402,
+            "regressed_toward": 0.15894928821115556,
+            "mean_projected": 0.1595651492928234,
+            "realized_scored": 0.17073827914496137,
+            "level_error": -0.011173129852137975,
+            "realized_league": 0.16577260397280102,
+            "level_error_vs_league": -0.006207454679977631
+          },
+          {
+            "predict_year": 2024,
+            "n_players": 404,
+            "regressed_toward": 0.1619239449341132,
+            "mean_projected": 0.1625966457180951,
+            "realized_scored": 0.15985350279447505,
+            "level_error": 0.0027431429236200455,
+            "realized_league": 0.15593174778693483,
+            "level_error_vs_league": 0.006664897931160263
+          }
+        ]
+      },
       "final_pass": [
         {
-          "pass": 3,
-          "axis": "ballast",
-          "mae": 0.03716737978366478
-        },
-        {
-          "pass": 3,
-          "axis": "weights",
-          "mae": 0.03716737978366478
-        },
-        {
-          "pass": 3,
-          "axis": "peak_age",
-          "mae": 0.03716737978366478
-        },
-        {
-          "pass": 3,
-          "axis": "age_slope_old",
-          "mae": 0.03716737978366478
-        },
-        {
-          "pass": 3,
+          "pass": 1,
           "axis": "age_slope_young",
-          "mae": 0.03716737978366478
+          "mae": 0.0373984161567287
+        },
+        {
+          "pass": 2,
+          "axis": "ballast",
+          "mae": 0.0373984161567287
+        },
+        {
+          "pass": 2,
+          "axis": "weights",
+          "mae": 0.0373984161567287
+        },
+        {
+          "pass": 2,
+          "axis": "peak_age",
+          "mae": 0.0373984161567287
+        },
+        {
+          "pass": 2,
+          "axis": "age_slope_old",
+          "mae": 0.0373984161567287
+        },
+        {
+          "pass": 2,
+          "axis": "age_slope_young",
+          "mae": 0.0373984161567287
         }
       ]
     }
@@ -569,7 +1811,9 @@
         ],
         "peak_age": 27.0,
         "age_slope_young": 0.002,
-        "age_slope_old": 0.005
+        "age_slope_old": 0.005,
+        "league_mode": "last",
+        "league_damp": 0.0
       },
       "bb_rate": {
         "ballast": 200.0,
@@ -580,7 +1824,9 @@
         ],
         "peak_age": 27.0,
         "age_slope_young": -0.001,
-        "age_slope_old": -0.003
+        "age_slope_old": -0.003,
+        "league_mode": "last",
+        "league_damp": 0.0
       },
       "hr_rate": {
         "ballast": 300.0,
@@ -591,7 +1837,9 @@
         ],
         "peak_age": 27.0,
         "age_slope_young": 0.0,
-        "age_slope_old": 0.0
+        "age_slope_old": 0.0,
+        "league_mode": "last",
+        "league_damp": 0.0
       },
       "babip": {
         "ballast": 600.0,
@@ -602,18 +1850,22 @@
         ],
         "peak_age": 27.0,
         "age_slope_young": -0.001,
-        "age_slope_old": -0.003
+        "age_slope_old": -0.003,
+        "league_mode": "last",
+        "league_damp": 0.0
       },
       "iso": {
         "ballast": 400.0,
         "weights": [
           1.0,
           0.6,
-          0.4
+          0.2
         ],
         "peak_age": 27.0,
         "age_slope_young": -0.001,
-        "age_slope_old": -0.003
+        "age_slope_old": -0.003,
+        "league_mode": "weighted3",
+        "league_damp": 0.0
       }
     }
   },
@@ -623,11 +1875,13 @@
       "weights": [
         1.0,
         0.4,
-        0.2
+        0.4
       ],
-      "peak_age": 31.0,
-      "age_slope_young": 0.006,
-      "age_slope_old": 0.012
+      "peak_age": 30.0,
+      "age_slope_young": 0.0,
+      "age_slope_old": 0.008,
+      "league_mode": "last",
+      "league_damp": 0.0
     },
     "bb_rate": {
       "ballast": 200.0,
@@ -638,18 +1892,22 @@
       ],
       "peak_age": 27.0,
       "age_slope_young": -0.001,
-      "age_slope_old": -0.003
+      "age_slope_old": -0.003,
+      "league_mode": "last",
+      "league_damp": 0.0
     },
     "hr_rate": {
-      "ballast": 200.0,
+      "ballast": 300.0,
       "weights": [
         1.0,
         0.6,
-        0.6
+        0.4
       ],
-      "peak_age": 23.0,
-      "age_slope_young": -0.012,
-      "age_slope_old": -0.012
+      "peak_age": 25.0,
+      "age_slope_young": 0.012,
+      "age_slope_old": -0.012,
+      "league_mode": "last",
+      "league_damp": 0.0
     },
     "babip": {
       "ballast": 600.0,
@@ -659,19 +1917,23 @@
         1.0
       ],
       "peak_age": 26.0,
-      "age_slope_young": -0.012,
-      "age_slope_old": -0.003
+      "age_slope_young": 0.0,
+      "age_slope_old": -0.003,
+      "league_mode": "last",
+      "league_damp": 0.0
     },
     "iso": {
       "ballast": 300.0,
       "weights": [
         1.0,
-        0.8,
-        0.6
+        0.6,
+        0.4
       ],
-      "peak_age": 23.0,
-      "age_slope_young": -0.012,
-      "age_slope_old": -0.012
+      "peak_age": 25.0,
+      "age_slope_young": 0.0,
+      "age_slope_old": -0.012,
+      "league_mode": "weighted3",
+      "league_damp": 0.0
     }
   }
 }

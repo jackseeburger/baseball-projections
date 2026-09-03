@@ -16,11 +16,15 @@ model's numbers and the site serves them.
 **Which Marcel.** `marcel_tuned` — the same estimator with its ballast,
 recency weights and age curve fitted walk-forward on 2020–2024 and frozen in
 `src/eval/marcel_params.json`. It cleared the gate out of sample on 2025, 2026
-and the three 2026 cutoffs (15/25 component × cell cells, pooled −1.10% ± 0.36
-of stock Marcel's MAE; the tuning section of
+and the three 2026 cutoffs (17/25 component × cell cells, pooled −1.10% ± 0.30
+of stock Marcel's MAE; the tuning sections of
 [backtest-baselines.md](../../docs/backtest-baselines.md)), so the gate rule
-puts it in production. The gain is BABIP (−3.3%) and K% (−2.4%); BB% keeps
-Tango's constants, and HR/PA and ISO come out even.
+puts it in production. The gain is BABIP (−3.0%), K% (−1.4%), ISO (−1.1%) and
+HR/PA (−0.5%), and no component is worse than stock; BB% keeps Tango's
+constants. Those are the numbers for the **constrained refit** of Sept 3, in
+which the age term is required to peak inside 25–31 with slopes of opposite
+signs so it cannot double as a level correction — the first fit's HR/PA and
+ISO gains were entirely in-sample and are the ones that now survive.
 
 Nothing here re-implements Marcel. `src/eval/baselines.marcel_tuned` is called
 with exactly the training frame the harness builds at a cutoff
