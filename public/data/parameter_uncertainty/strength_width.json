@@ -1,0 +1,128 @@
+[
+ {
+  "width": "bootstrap",
+  "bucket": "0-15%",
+  "n": 31,
+  "games_played": 15.8860215054,
+  "games_left": 146.0709677419,
+  "talent_sd": 0.0225348971,
+  "wins_sd": 3.2717490239
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "15-30%",
+  "n": 36,
+  "games_played": 36.8814814815,
+  "games_left": 125.0833333333,
+  "talent_sd": 0.0284969298,
+  "wins_sd": 3.5597451661
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "30-45%",
+  "n": 38,
+  "games_played": 59.9842105263,
+  "games_left": 101.9736842105,
+  "talent_sd": 0.0293378997,
+  "wins_sd": 2.9912266374
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "45-60%",
+  "n": 47,
+  "games_played": 85.8680851064,
+  "games_left": 76.0907801418,
+  "talent_sd": 0.0288856514,
+  "wins_sd": 2.1989426562
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "60-75%",
+  "n": 37,
+  "games_played": 110.2324324324,
+  "games_left": 51.7315315315,
+  "talent_sd": 0.0281945356,
+  "wins_sd": 1.4606624552
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "75-90%",
+  "n": 39,
+  "games_played": 134.1162393162,
+  "games_left": 27.8427350427,
+  "talent_sd": 0.0272361774,
+  "wins_sd": 0.7601330459
+ },
+ {
+  "width": "bootstrap",
+  "bucket": "90-100%",
+  "n": 21,
+  "games_played": 152.9714285714,
+  "games_left": 8.9904761905,
+  "talent_sd": 0.0265304664,
+  "wins_sd": 0.2390149144
+ },
+ {
+  "width": "posterior",
+  "bucket": "0-15%",
+  "n": 31,
+  "games_played": 15.8860215054,
+  "games_left": 146.0709677419,
+  "talent_sd": 0.0504878275,
+  "wins_sd": 7.3794521434
+ },
+ {
+  "width": "posterior",
+  "bucket": "15-30%",
+  "n": 36,
+  "games_played": 36.8814814815,
+  "games_left": 125.0833333333,
+  "talent_sd": 0.0464322744,
+  "wins_sd": 5.8185649891
+ },
+ {
+  "width": "posterior",
+  "bucket": "30-45%",
+  "n": 38,
+  "games_played": 59.9842105263,
+  "games_left": 101.9736842105,
+  "talent_sd": 0.041555769,
+  "wins_sd": 4.245854235
+ },
+ {
+  "width": "posterior",
+  "bucket": "45-60%",
+  "n": 47,
+  "games_played": 85.8680851064,
+  "games_left": 76.0907801418,
+  "talent_sd": 0.037668366,
+  "wins_sd": 2.8729532309
+ },
+ {
+  "width": "posterior",
+  "bucket": "60-75%",
+  "n": 37,
+  "games_played": 110.2324324324,
+  "games_left": 51.7315315315,
+  "talent_sd": 0.0350351802,
+  "wins_sd": 1.817630894
+ },
+ {
+  "width": "posterior",
+  "bucket": "75-90%",
+  "n": 39,
+  "games_played": 134.1162393162,
+  "games_left": 27.8427350427,
+  "talent_sd": 0.0327631297,
+  "wins_sd": 0.916345983
+ },
+ {
+  "width": "posterior",
+  "bucket": "90-100%",
+  "n": 21,
+  "games_played": 152.9714285714,
+  "games_left": 8.9904761905,
+  "talent_sd": 0.0312912041,
+  "wins_sd": 0.2823126887
+ }
+]
