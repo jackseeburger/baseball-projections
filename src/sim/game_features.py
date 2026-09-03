@@ -31,6 +31,11 @@ What is on a row:
     is, the league's own run environment that day, the season-to-date home
     field advantage, and the game's month, weekday, venue and day/night.
 
+There is no home indicator on a row, because every row is written from the
+home club's point of view and the label is `home_win`: the indicator would be
+a constant column, and the home-field edge itself is on the row as `hfa_obs`,
+the season-to-date value the chain's log5 conversion uses.
+
 The three quantities the chain itself computes from those — `chain_p`
 (`pythag_C_sp_bpa_ip`, the model the nightly serves and the gate baseline),
 `chain_p_lu` (the same with the posted card applied) and `pythag_60` — ride
