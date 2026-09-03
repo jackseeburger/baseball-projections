@@ -28,6 +28,16 @@ answered it:
 comparison and shipped on Sept 2. The engine was tuned later the same day;
 the next section has the current numbers.)
 
+**`bayes_preseason` here is a fixed preseason file, not a refit.** It had
+never seen a 2026 plate appearance; `marcel` had seen every one before the
+cutoff. The `marcel` − `marcel_preseason` column below prices that difference
+at 4.6–6.1% of K% MAE, which is the same order as the gap in this table, so
+the numbers here are not on their own a verdict on the Bayesian model. The
+model-against-model comparison — the same estimator refit at each cutoff on
+the same plate appearances — is
+[the fair fight](backtest-baselines.md#the-fair-fight--the-bayesian-arm-refit-at-the-cutoff-bas-59),
+run Sept 3.
+
 | Component | Cutoff | `marcel` (stock) | `bayes_preseason` (was live) | Gap |
 |---|---|---|---|---|
 | k_rate | May 1 | **.0278** | .0296 | −6.3% |
@@ -39,11 +49,12 @@ the next section has the current numbers.)
 
 Marcel with the current season folded in won 11 of the 12 component-cutoff
 cells the accuracy page shows, and beat *Marcel with 2026 withheld* on the
-same 11 — so the gain is in-season information, not a better prior. Our
-Bayesian components never beat `marcel_preseason` on K% either: on the same
-information they buy nothing, and they were giving up the information
-advantage on top of it. Shipping them as the live number
-was the one thing the gate rule forbids.
+same 11 — so the gain is in-season information, not a better prior. The
+comparison that does hold the information fixed is `bayes_preseason` against
+`marcel_preseason`, and our components never beat it on K% there either (a tie
+at May 1, 5% behind at Jul 1 and Aug 1): on the same information they bought
+nothing, and they were giving up the information advantage on top of it.
+Shipping them as the live number was the one thing the gate rule forbids.
 
 BABIP is the exception in both directions: in-season data adds nothing to
 it, and league average roughly ties Marcel on it. It is projected because

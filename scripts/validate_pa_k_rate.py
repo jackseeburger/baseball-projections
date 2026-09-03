@@ -146,6 +146,10 @@ def main() -> None:
                         help="also fit without the pitcher term and LOO-compare")
     parser.add_argument("--no-ppc", action="store_true",
                         help="skip the posterior predictive check (memory)")
+    parser.add_argument("--prior-only", action="store_true",
+                        help="stop after the prior predictive check — seconds, "
+                             "and it is the check worth doing before spending "
+                             "Modal time on a prior that is wrong")
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args()
 
@@ -195,6 +199,12 @@ def main() -> None:
     report["prior_predictive"] = summarize_prior_predictive(model, data)
     print("prior predictive (implied K rate):",
           json.dumps(report["prior_predictive"], indent=1))
+    if args.prior_only:
+        if args.json_out:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(json.dumps(report, indent=1, default=str) + "\n")
+            print(f"\nwrote {args.json_out}")
+        return
 
     t0 = time.time()
     trace = sample_model(model, **{**config.sampler_kwargs(),
