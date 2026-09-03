@@ -1223,8 +1223,10 @@ fight rather than another handicap. Ages come from the Chadwick register
 ## K% MAE by arm and cutoff (bold = best arm at that cutoff)
 
 **Scale: 4 chains × 1500 draws (tune 1500), PyMC's own NUTS, opposing-pitcher
-term off, full hitter coverage.** See [the pitcher term](#the-opposing-pitcher-term--loo-says-yes-and-loo-is-not-a-gate)
-for why it is off here and what it is worth.
+term off, full hitter coverage.** See
+[the pitcher term](#the-opposing-pitcher-term--loo-says-yes-and-loo-is-not-a-gate)
+for why it is off here — and for the one cutoff scored with it on, where it
+turns out to make the projection *worse* despite LOO preferring it by 11 dSE.
 
 | Arm | Sees 2026? | MAE May 1 | MAE Jul 1 | MAE Aug 1 |
 |---|---|---|---|---|
@@ -1400,10 +1402,45 @@ the busiest-batter subsample it is 15% / 19% / 31%. Everyone else falls back to
 a population-level projection, so a subsampled arm's MAE would be measuring
 that fallback rather than the model.
 
-**So the honest statement is:** the pitcher term is strongly favoured for
-predicting held-out plate appearances within the fitted window, and it has
-never been walk-forward scored on a rest-of-season projection. Those are
-different claims and only the second is a gate.
+### One walk-forward cell, and it disagrees with LOO
+
+One cutoff was affordable with the term on at full hitter coverage: **Aug 1,
+248,195 cells, 1,260 pitchers, 2,031 parameters, 4 chains × 600 draws (tune
+600), 2 hours 44 minutes** — r-hat 1.0160, min ESS 221, 0 divergences, BFMI
+.62–.75.
+
+| Aug 1 arm | K% MAE | paired vs `marcel_tuned` | t |
+|---|---|---|---|
+| `marcel_tuned` (live) | .03412 | — | — |
+| `bayes`, pitcher term **off** | .03415 | +.00003 | 0.04 |
+| `bayes`, pitcher term **on** | .03615 | +.00203 | 1.28 |
+
+**The term makes the rest-of-season projection worse** — .0020 of MAE, 5.9%,
+against run-to-run sampling noise of 4×10⁻⁵. It moves the arm from a dead heat
+with the live engine to visibly behind it. The two fits are not matched on
+sampling effort (600 draws against 1,500, because the with-pitcher problem is
+115× the cells), so treat the exact size as soft; the direction is not soft,
+and it is the opposite of what LOO said by 11.3 dSE.
+
+That is worth stating plainly, because it is the concrete version of the rule
+[methods.md §5](methods.md#5-workflow-by-family) states in the abstract.
+Leaving out a *cell* — two plate appearances against a pitcher whose effect is
+estimated from the surrounding cells — is an easy prediction, and the pitcher
+term is very good at it. Projecting the rest of a season is a different
+question: the projection is made at a neutral pitcher, so everything the term
+learned is deliberately discarded at exactly the moment it would be used, while
+the extra 1,260 partially pooled parameters take estimation noise out of the
+batter terms and put it nowhere useful. **LOO measured the thing the term is
+good at and the gate measured the thing we need.**
+
+**So the honest statement is:** the opposing-pitcher term is decisively
+favoured by LOO for predicting held-out plate appearances inside the fitted
+window, and the one rest-of-season cell we could afford to score walk-forward
+says it costs 5.9% of K% MAE. Those are different claims about different
+quantities; only the second is a gate, and on the gate the term currently
+fails. It should not go into a served projection on the LOO evidence alone.
+A full Modal refit should score it at all three cutoffs before the question is
+called either way.
 
 ## Caveats
 
@@ -1468,6 +1505,11 @@ python scripts/run_intraseason_backtest.py \
 python scripts/run_intraseason_backtest.py --components k_rate \
        --bayes --bayes-no-pitcher --bayes-seasons 2024 2025 \
        --bayes-sampler pymc --bayes-draws 1500 --bayes-tune 1500 --bayes-chains 4
+
+# the one with-pitcher walk-forward cell (2h44m on 4 cores — Modal for the rest)
+python scripts/run_intraseason_backtest.py --components k_rate \
+       --cutoffs 2026-08-01 --bayes --bayes-seasons 2024 2025 2026 \
+       --bayes-sampler pymc --bayes-draws 600 --bayes-tune 600 --bayes-chains 4
 
 # the accuracy page, from that run
 python scripts/build_accuracy_json.py --ros-json <the --json-out from above>
