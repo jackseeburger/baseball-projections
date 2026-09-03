@@ -102,6 +102,21 @@ watchdog is what makes the next silent failure loud, whatever causes it. Nothing
 caught this one on its own — it was found by hand, a day late, because the promised
 alarm had been written down and never built.
 
+**What the alarm does not do.** It infers a dropped run from the *age of the
+output*, which means it is slow by construction. Run the numbers on the outage it
+was built for: the last good board was written 09-02 13:41Z, so a 36-hour budget
+would not have fired until 09-04 01:41Z — roughly sixteen hours after the board
+actually went stale on the morning of the 3rd. The budget cannot simply be
+tightened to close that gap: the nightly's three slots span 09:23 to 14:53, so the
+worst *legitimate* gap between successful runs is about 29h30m, and a budget much
+under 36h starts crying wolf on a schedule that is merely late rather than broken.
+
+The direct fix is to stop inferring. `GITHUB_TOKEN` can read the Actions API, so a
+check can ask "did this workflow run since its last due slot?" and answer in
+minutes instead of hours, with no external credentials and no guessing at budgets.
+That is the better alarm and it is filed as follow-up work; the age check ships
+first because it is stdlib-only and cannot itself fail for want of a dependency.
+
 ### Layer 2 — Development factory (Claude Code cloud)
 
 Agentic sessions do what cron cannot: implement roadmap items, diagnose why last
