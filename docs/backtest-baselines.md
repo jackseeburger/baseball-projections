@@ -1392,7 +1392,10 @@ gate** ([methods.md §5](methods.md#5-workflow-by-family)). Leaving out a cell
 is not leaving out the rest of a season. The K% table above was run with the
 term *off*, because the term joins the cell key — it is the one effect that
 varies inside the old (batter, season, team, stand) cell — and that takes the
-Aug 1 problem from 2,156 cells to 248,195. Hitter coverage is the one the
+Aug 1 problem from 2,156 cells to 248,195, which is 2h44m of sampling for a
+single cutoff on 4 cores against about 8 minutes without it. One such cutoff
+was affordable here and is scored below; three, plus the withheld control, were
+not. Hitter coverage is the one the
 walk-forward comparison cannot do without: subsampling batters cuts cells
 roughly linearly but barely touches the parameter count (the pitchers stay —
 1,152 of them at 40 batters against 1,236 at all 719), and a fit restricted to
