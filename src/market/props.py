@@ -72,10 +72,17 @@ STARTER_BF = 23.0
 # Is the opposing pitcher in the hitter's price? The gate rule
 # (architecture.md §3) decides: the matchup arm (`src/market/matchup.py`) is
 # the default only if it beats the current price out of sample, on the half of
-# the archive its one free constant was not chosen on. `scripts/props_exam.py
-# --matchup` scores it either way; this flag is what `--matchup auto` reads and
-# what any other caller of `price` gets when it does not ask.
-MATCHUP_DEFAULT = False
+# the archive its one free constant was not chosen on.
+#
+# **It does, and since Sept 3 2026 it is on.** On the second half of the
+# archive (2026-08-17 to 09-02, 30,423 settled contracts) the matchup price
+# beats the current one by 0.00095 of Brier paired per contract, t = -4.4 with
+# the standard error clustered by game, and it wins every stat separately —
+# strikeouts by 0.0057, hits by 0.0006, total bases by 0.0005, home runs by
+# 0.0001. The weight was chosen on the first half and is the boundary of its
+# own grid, which is to say the first half asked for the identity undiluted.
+# See docs/props-exam-2026.md.
+MATCHUP_DEFAULT = True
 MATCHUP_WEIGHT = 1.0
 
 PRICEABLE = ("hits", "hr", "tb", "k")
