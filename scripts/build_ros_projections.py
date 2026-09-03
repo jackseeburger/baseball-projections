@@ -25,13 +25,32 @@ document carries `playing_time_method`, the station B method that filled
 Snapshots written before that stamp existed carry no key at all, and were
 built with the trailing-30-day share and a hard injured-list zero.
 
+**Pitchers ride along in the same file, additively.** `pitchers` is the
+pitcher block (`src/projections/pitcher_ros.py`): the tuned pitcher Marcel's
+K%, BB%, HR/BF and BABIP-against times a projected count of batters faced,
+stamped `pitcher_engine` and `batters_faced_method`. Nothing above it moved —
+`players`, `n_hitters`, `engine`, `arms` and `components` are exactly what
+they were, because the page's hitter views were written against them.
+
+The two halves of the pitcher block are held to different standards and the
+document says which is which. The **rates** cleared the serving gate against
+league average, the previous season and season to date
+(`scripts/run_pitcher_backtest.py`). The **batters faced** did not go through
+a gate at all — there is no station B for pitchers — so
+`batters_faced_method` reads `structural` and `pitcher_method` spells out the
+arithmetic. It also fails on its own: a missing pitcher season table leaves
+`pitchers` empty and the hitter projection fresh, rather than taking the
+site's established product stale with it.
+
 Inputs, and what happens when one is missing:
 
     2026 PA outcomes      R2 (`pa_outcomes/pa_outcomes_2026.parquet`), cached
                           in data/parquet/. Needs R2_* credentials the first
                           time; the nightly runner may not have them.
-    2015-2025 seasons     data/parquet/hitter_seasons_api.parquet (gitignored;
-                          rebuildable from the Stats API).
+    2015-2025 seasons     data/parquet/hitter_seasons_api.parquet and
+                          data/parquet/pitcher_seasons_api.parquet (both
+                          committed; rebuildable from the Stats API with
+                          scripts/build_pitcher_seasons.py).
     playing time          built here from the MLB Stats API as of --as-of,
                           reusing scripts/build_playing_time.py. Needs the
                           transactions feed too, for the expected returns.
@@ -61,6 +80,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import pandas as pd
 
+from src.projections import pitcher_ros
 from src.projections.playing_time import PRODUCTION_METHOD
 from src.projections.ros import (
     ARMS,
@@ -75,6 +95,7 @@ from src.projections.ros import (
 SEASON = 2026
 OUT_DIR = ROOT / "public/data/projections"
 SEASONS_PARQUET = ROOT / "data/parquet/hitter_seasons_api.parquet"
+PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
 PROJECTIONS_DIR = ROOT / "data/projections"
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
@@ -83,6 +104,8 @@ BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 # src/projections/playing_time.py for the playing-time method — so the
 # document cannot claim a model the modules do not run.
 ENGINE = LIVE_ENGINE
+PITCHER_ENGINE = pitcher_ros.LIVE_ENGINE
+BATTERS_FACED_METHOD = pitcher_ros.BF_METHOD
 PLAYING_TIME_METHOD = PRODUCTION_METHOD
 METHOD = ("Tuned Marcel (per-component ballast, recency weights and age curve "
           "fitted walk-forward on 2020-2024 and frozen in "
@@ -92,6 +115,14 @@ METHOD = ("Tuned Marcel (per-component ballast, recency weights and age curve "
           "(horizon-blended 30-day and season PA share, one-lineup-slot cap, "
           "and the injured and optioned projected at their pre-injury share "
           "times their expected return fraction).")
+PITCHER_METHOD = (
+    "Tuned pitcher Marcel (per-component ballast, recency weights and a "
+    "constrained age curve fitted walk-forward on 2020-2024 and frozen in "
+    "src/eval/marcel_pitcher_params.json) trained on 2015-2025 pitcher season "
+    "totals plus 2026 through the day before the as-of date. The rate columns "
+    "cleared the serving gate against league average, the previous season and "
+    "season to date; the projected batters faced did not go through a gate at "
+    "all and are structural. " + pitcher_ros.BF_METHOD_NOTE)
 FRAMING = ("Live projection: tuned Marcel with 2026 through {through}. "
            "Preseason Bayesian shown for comparison — see Model Accuracy.")
 
@@ -172,6 +203,96 @@ def build_playing_time(as_of: str, refresh: bool = False):
     return projection, teams
 
 
+def pitcher_inputs(as_of: str, refresh: bool = False) -> dict:
+    """Everything the pitcher block needs that is not in the PA parquet.
+
+    The 40-man snapshot for `as_of` (who is on a staff, and hurt or optioned),
+    the club games played and remaining either side of the cutoff, and station
+    B's expected-return fractions applied to pitchers. All of it comes from the
+    same cached Stats API calls station B already makes, so this adds one
+    roster request per club and nothing else.
+
+    The return-time distribution station B fits is estimated from *all*
+    injured-list and option spells, not hitters' only, so reading it for
+    pitchers is the same estimate rather than a borrowed one — but nothing has
+    scored it on pitchers, which is part of why the workload half of this block
+    is labelled structural.
+    """
+    import build_playing_time as bpt
+    from src.data.mlb_stats_api import (
+        fetch_rosters, fetch_schedule, fetch_team_hitting_game_logs, fetch_teams,
+    )
+
+    teams = fetch_teams(SEASON, refresh=refresh)
+    team_ids = teams["team_id"].tolist()
+    roster = fetch_rosters(team_ids, as_of, refresh=refresh)
+    pitchers = roster[~roster["is_hitter"]].copy()
+
+    schedule = fetch_schedule(as_of, bpt.SEASON_END)
+    remaining = bpt.games_remaining(schedule, as_of, bpt.SEASON_END)
+
+    team_logs = fetch_team_hitting_game_logs(team_ids, SEASON, refresh=refresh)
+    dates = pd.to_datetime(team_logs["date"])
+    cutoff = pd.Timestamp(as_of).normalize()
+    played = team_logs[dates < cutoff]
+    recent = team_logs[(dates < cutoff)
+                       & (dates >= cutoff - pd.Timedelta(days=pitcher_ros.RECENT_DAYS))]
+
+    try:
+        fractions = bpt.production_fractions(pitchers, as_of, bpt.SEASON_END,
+                                             refresh=refresh)
+    except Exception as exc:                                  # noqa: BLE001
+        logger.warning("expected-return fractions unavailable for pitchers: %s", exc)
+        fractions = None
+    active = pd.Series(dtype="float64")
+    if fractions is not None and len(fractions):
+        active = (fractions.set_index(fractions["batter"].astype("int64"))
+                  ["active_fraction"].astype(float))
+    # An unavailable pitcher the distribution cannot date is projected at zero,
+    # the same fallback station B uses. An active one is simply absent from the
+    # mapping, which `projected_batters_faced` reads as a full horizon.
+    unavailable = set(pitchers.loc[pitchers["status_code"].ne("A"),
+                                   "batter"].astype("int64"))
+    undated = sorted(unavailable - set(active.index))
+    active = pd.concat([active, pd.Series(0.0, index=undated, dtype="float64")])
+
+    return {
+        "teams": teams,
+        "team_of": pitchers.set_index(pitchers["batter"].astype("int64"))["team_id"],
+        "games_remaining": remaining.set_index("team_id")["games_remaining"],
+        "team_games_played": played.groupby("team_id")["game_pk"].nunique(),
+        "team_games_recent": recent.groupby("team_id")["game_pk"].nunique(),
+        "active_fraction": active,
+        "n_on_staff": int(len(pitchers)),
+    }
+
+
+def build_pitchers(as_of: str, pa: pd.DataFrame, names: pd.Series,
+                   seasons_path: Path = PITCHER_SEASONS_PARQUET,
+                   refresh: bool = False) -> pd.DataFrame:
+    """The pitcher block, or an empty frame if its own inputs are missing.
+
+    Deliberately non-fatal on its own: the hitter projection is the site's
+    established product and a missing pitcher season table must not take it
+    down with it. An empty frame renders as "not built" on the page.
+    """
+    from src.eval import pitchers as pitcher_eval
+
+    if not Path(seasons_path).exists():
+        logger.warning("%s not found — no pitcher block", seasons_path)
+        return pd.DataFrame(columns=list(pitcher_ros.OUTPUT_COLUMNS))
+    seasons = pitcher_eval.normalize_pitcher_seasons(pd.read_parquet(seasons_path))
+    inputs = pitcher_inputs(as_of, refresh=refresh)
+    return pitcher_ros.build_pitcher_projections(
+        as_of, seasons, pa,
+        team_of=inputs["team_of"],
+        team_games_played=inputs["team_games_played"],
+        team_games_recent=inputs["team_games_recent"],
+        games_remaining=inputs["games_remaining"],
+        active_fraction=inputs["active_fraction"],
+        names=names, teams=inputs["teams"], season=SEASON)
+
+
 # ─── the document ─────────────────────────────────────────────────
 
 def rate_columns() -> list[dict]:
@@ -189,20 +310,36 @@ def round_for_json(projections: pd.DataFrame) -> pd.DataFrame:
     """
     frame = projections.copy()
     for column in frame.columns:
-        if column.endswith("_ros") and column != "woba_ros":
-            frame[column] = pd.to_numeric(frame[column], errors="coerce").round(2)
-        elif column == "woba_ros" or "_rate_" in column:
+        if column in ("woba_ros", "fip_ros") or "_rate_" in column:
             frame[column] = pd.to_numeric(frame[column], errors="coerce").round(5)
+        elif column.endswith("_ros"):
+            frame[column] = pd.to_numeric(frame[column], errors="coerce").round(2)
     return frame
 
 
-def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = None,
-                season: int = SEASON, season_end: str | None = None) -> dict:
-    """The site's JSON: metadata the page can render without knowing the model."""
-    through = (pd.Timestamp(as_of) - pd.Timedelta(days=1)).date().isoformat()
-    frame = round_for_json(projections)
+def records(frame: pd.DataFrame) -> list[dict]:
+    """One JSON record per row, rounded and with NaN as null."""
+    frame = round_for_json(frame)
     frame = frame.where(pd.notnull(frame), None)
-    players = json.loads(frame.to_json(orient="records"))
+    return json.loads(frame.to_json(orient="records"))
+
+
+def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = None,
+                season: int = SEASON, season_end: str | None = None,
+                pitchers: pd.DataFrame | None = None) -> dict:
+    """The site's JSON: metadata the page can render without knowing the model.
+
+    The hitter half of the contract is exactly what it was — `players`,
+    `n_hitters`, `engine`, `arms`, `components` all unchanged — because the
+    page's hitter views were written against it and there is no reason to move
+    them. The pitcher block is additive: `pitchers`, `n_pitchers`, and a
+    parallel set of keys prefixed `pitcher_`, so a reader that has never heard
+    of pitchers still finds everything it looks for.
+    """
+    through = (pd.Timestamp(as_of) - pd.Timedelta(days=1)).date().isoformat()
+    players = records(projections)
+    pitchers = (pitchers if pitchers is not None
+                else pd.DataFrame(columns=list(pitcher_ros.OUTPUT_COLUMNS)))
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": as_of,
@@ -237,6 +374,26 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
         "stale": False,
         "stale_reason": None,
         "players": players,
+        # ─── the pitcher block (additive; nothing above it moved) ───
+        "n_pitchers": int(len(pitchers)),
+        "pitcher_engine": PITCHER_ENGINE,
+        "batters_faced_method": BATTERS_FACED_METHOD,
+        "pitcher_method": PITCHER_METHOD,
+        "pitcher_arms": [
+            {"key": "marcel", "label": "Live (tuned Marcel + 2026)", "is_live": True,
+             "note": "Tuned pitcher Marcel — fitted ballast, recency and age "
+                     "curve, src/eval/marcel_pitcher_params.json — with the "
+                     "season through " + through + " folded in."},
+            {"key": "marcel_preseason", "label": "Preseason tuned Marcel",
+             "is_live": False,
+             "note": "the same tuned Marcel with 2026 withheld; the difference "
+                     "from the live column is what the current season is worth."},
+        ],
+        "pitcher_components": [
+            {"key": c, "prefix": pitcher_ros.COMPONENT_PREFIX[c]}
+            for c in pitcher_ros.SERVED_COMPONENTS
+        ],
+        "pitchers": records(pitchers),
     }
 
 
@@ -265,6 +422,10 @@ def empty_document(reason: str, as_of: str) -> dict:
         "stale": True,
         "stale_reason": f"{reason}. No previous projection to fall back to.",
         "players": [],
+        "n_pitchers": 0, "pitcher_engine": PITCHER_ENGINE,
+        "batters_faced_method": BATTERS_FACED_METHOD,
+        "pitcher_method": PITCHER_METHOD, "pitcher_arms": [],
+        "pitcher_components": [], "pitchers": [],
     }
 
 
@@ -307,6 +468,7 @@ def write_document(doc: dict, out_dir: Path) -> list[Path]:
 
 def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_PARQUET,
           pa_dir: Path | None = None, projections_dir: Path = PROJECTIONS_DIR,
+          pitcher_seasons_path: Path = PITCHER_SEASONS_PARQUET,
           refresh: bool = False) -> dict:
     """Assemble the document. Never raises for a missing input."""
     from src.data.pa_outcomes import load_pa_outcomes
@@ -317,11 +479,12 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
 
         seasons = pd.read_parquet(seasons_path)
         pa = load_pa_outcomes(SEASON, data_dir=pa_dir or (ROOT / "data/parquet"))
+        names = load_names()
         playing_time, teams = build_playing_time(as_of, refresh=refresh)
         projections = build_ros_projections(
             as_of, seasons, pa, playing_time,
             bayes_frames=load_bayes_frames(projections_dir),
-            names=load_names(), teams=teams, season=SEASON)
+            names=names, teams=teams, season=SEASON)
     except Exception as exc:                                  # noqa: BLE001
         reason = f"could not rebuild the projection: {type(exc).__name__}: {exc}"
         logger.warning(reason)
@@ -329,7 +492,20 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
             return stale_document(previous, previous_name, reason, as_of)
         return empty_document(reason, as_of)
 
-    return to_document(projections, as_of, season_end=bpt.SEASON_END)
+    # The pitcher block is younger than the hitter one and fails on its own:
+    # the site's established product must not go stale because a pitcher input
+    # is missing. An empty frame renders as "not built" on the page.
+    try:
+        pitchers = build_pitchers(as_of, pa, names,
+                                  seasons_path=pitcher_seasons_path,
+                                  refresh=refresh)
+    except Exception as exc:                                  # noqa: BLE001
+        logger.warning("could not build the pitcher block: %s: %s",
+                       type(exc).__name__, exc)
+        pitchers = pd.DataFrame(columns=list(pitcher_ros.OUTPUT_COLUMNS))
+
+    return to_document(projections, as_of, season_end=bpt.SEASON_END,
+                       pitchers=pitchers)
 
 
 def main() -> None:
@@ -342,6 +518,8 @@ def main() -> None:
     parser.add_argument("--seasons", type=Path, default=SEASONS_PARQUET)
     parser.add_argument("--pa-dir", type=Path, default=ROOT / "data/parquet")
     parser.add_argument("--projections-dir", type=Path, default=PROJECTIONS_DIR)
+    parser.add_argument("--pitcher-seasons", type=Path,
+                        default=PITCHER_SEASONS_PARQUET)
     parser.add_argument("--refresh", action="store_true",
                         help="re-pull cached Stats API responses")
     parser.add_argument("--top", type=int, default=10,
@@ -351,17 +529,23 @@ def main() -> None:
 
     doc = build(args.as_of, out_dir=args.out_dir, seasons_path=args.seasons,
                 pa_dir=args.pa_dir, projections_dir=args.projections_dir,
-                refresh=args.refresh)
+                pitcher_seasons_path=args.pitcher_seasons, refresh=args.refresh)
 
     state = "STALE" if doc["stale"] else "fresh"
     print(f"\nrest-of-season projection {state}: {doc['n_hitters']} hitters, "
-          f"as of {doc['as_of']}"
+          f"{doc.get('n_pitchers', 0)} pitchers, as of {doc['as_of']}"
           + (f"  — {doc['stale_reason']}" if doc["stale_reason"] else ""))
     if args.top and doc["players"]:
         top = pd.DataFrame(doc["players"]).head(args.top)
         cols = ["name", "team_abbrev", "pa_ros", "k_ros", "bb_ros", "hr_ros",
                 "woba_ros", "k_rate_marcel", "k_rate_bayes"]
         print(f"\nTop {len(top)} by projected rest-of-season wOBA:")
+        print(top[[c for c in cols if c in top.columns]].round(3).to_string(index=False))
+    if args.top and doc.get("pitchers"):
+        top = pd.DataFrame(doc["pitchers"]).head(args.top)
+        cols = ["name", "team_abbrev", "role", "bf_ros", "k_ros", "bb_ros",
+                "hr_ros", "fip_ros", "k_rate_marcel", "bb_rate_marcel"]
+        print(f"\nTop {len(top)} pitchers by projected rest-of-season FIP:")
         print(top[[c for c in cols if c in top.columns]].round(3).to_string(index=False))
     for path in write_document(doc, args.out_dir):
         print(f"wrote {path}")

@@ -106,6 +106,17 @@
     <!-- Player Lookup Page -->
     <section id="page-player" class="page">
       <h1>Player Projection Card</h1>
+      <!-- Hitters or pitchers. The pitcher side is the rest-of-season block
+           alone (public/data/projections/latest.json); there is no preseason
+           pitcher projection on this site. Disabled by app.js when the file
+           carries no pitchers. -->
+      <div class="control-row">
+        <label>Show: </label>
+        <select id="player-side">
+          <option value="hitters" selected>Hitters</option>
+          <option value="pitchers">Pitchers</option>
+        </select>
+      </div>
       <div class="search-bar">
         <input type="text" id="player-search" placeholder="Search player..." autocomplete="off">
         <div id="player-suggestions" class="suggestions"></div>
@@ -198,7 +209,14 @@
         <h3>Rest of season — live projection</h3>
         <div id="ros-framing"></div>
         <div class="control-row">
+          <label>Show: </label>
+          <select id="ros-side">
+            <option value="hitters" selected>Hitters</option>
+            <option value="pitchers">Pitchers</option>
+          </select>
           <label>Compare: </label>
+          <!-- Repopulated by app.js when the side changes: the two sides do not
+               project the same components. -->
           <select id="ros-component">
             <option value="k" selected>K%</option>
             <option value="bb">BB%</option>
@@ -206,7 +224,7 @@
             <option value="iso">ISO</option>
             <option value="babip">BABIP</option>
           </select>
-          <label>Min PA: </label>
+          <label id="ros-minpa-label">Min PA: </label>
           <select id="ros-minpa">
             <option value="0">Any</option>
             <option value="25">25+</option>
