@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -61,6 +62,7 @@ from src.data.mlb_stats_api import (
     fetch_season_hitting, fetch_season_pitching, fetch_standings,
 )
 from src.sim import game_model as gm
+from src.sim import park as pk_model
 from src.sim import starters as sp_model
 from src.sim.bracket import DEFAULT_ROTATION_SIZE, Rotations
 from src.sim.odds import run_playoff_odds
@@ -89,6 +91,17 @@ CHAIN_METHOD = (
 # Probables are posted ~2-5 days ahead, so a week covers every game that has
 # them and costs one extra schedule call for the empty tail.
 STARTER_WINDOW_DAYS = 7
+# Park and team defence are built (`src/sim/park.py`, `src/sim/defence.py`),
+# scored on the market game set and on both full seasons, and **neither one
+# cleared its gate**: on 2025 both grids improve monotonically as the term is
+# turned off, and on 2026 the park term is worth 0.00006 of Brier and the
+# defence term is worth less than nothing (docs/market-benchmark-2026.md).
+# The gate rule (docs/architecture.md §3) says the baseline runs until a model
+# beats it out of sample, so the nightly asks the chain for the gated model
+# exactly: an infinite ballast on either term is that term switched off, to the
+# last bit. The harness still scores both columns, and the day one of them
+# clears, this is the line that changes.
+NOT_SERVED = float("inf")
 # How many pitchers beyond the rotation to rank by FIP. Two is enough to let
 # the rank pick around a swingman without reaching into September call-ups.
 ROTATION_POOL_EXTRA = 2
@@ -247,7 +260,8 @@ def starter_terms(
 
 
 def fetch_chain_data(season: int, as_of: date, window_days: int, *,
-                     refresh: bool = True, workers: int = CHAIN_WORKERS) -> dict:
+                     refresh: bool = True, workers: int = CHAIN_WORKERS,
+                     schedule: pd.DataFrame | None = None) -> dict:
     """Everything the per-game chain reads, fetched once for one date.
 
     The starter term needed the announced starters' rates and nothing else; the
@@ -286,9 +300,17 @@ def fetch_chain_data(season: int, as_of: date, window_days: int, *,
                          for y in range(season - PRIOR_SEASONS, season)],
                         ignore_index=True)
     prior_h = build_seasons_table(season - PRIOR_SEASONS, season - 1)
+    # Where each game is played (this season) and what the parks did (the
+    # completed seasons before it). Both are schedule calls, so the whole park
+    # and defence apparatus costs three requests and no per-player fetch.
+    if schedule is None:
+        schedule = fetch_schedule(f"{season}-03-01", f"{season}-10-15")
+    park_games = pk_model.fetch_prior_games(season, PRIOR_SEASONS)
     return {"probables": probables,
             "inputs": gm.ChainInputs.from_logs(season, p_logs, h_logs,
-                                               prior_p, prior_h)}
+                                               prior_p, prior_h,
+                                               schedule=schedule,
+                                               park_games=park_games)}
 
 
 def posted_cards(game_pks, *, refresh: bool, workers: int = CHAIN_WORKERS
@@ -356,7 +378,7 @@ def chain_terms(
     window_days: int = STARTER_WINDOW_DAYS,
     rotation_size: int = DEFAULT_ROTATION_SIZE, refresh: bool = True,
     workers: int = CHAIN_WORKERS, use_lineups: bool = True,
-    data: dict | None = None,
+    data: dict | None = None, config: gm.ChainConfig | None = None,
 ) -> tuple[dict[int, float], Rotations, pd.Series, dict]:
     """The whole chain for today: strength, game overrides and rotations.
 
@@ -390,7 +412,7 @@ def chain_terms(
     """
     if data is None:
         data = fetch_chain_data(season, as_of, window_days, refresh=refresh,
-                                workers=workers)
+                                workers=workers, schedule=schedule)
     probables, inputs = data["probables"], data["inputs"]
 
     # Only games the simulator is actually still drawing. This drops spring and
@@ -421,8 +443,29 @@ def chain_terms(
     lg_rs9, lg_ra9 = gm.league_run_rates(float(standings["runs_scored"].sum()),
                                          float(standings["runs_allowed"].sum()),
                                          games)
+    # The same clubs' unregressed totals, which is what the park term needs to
+    # neutralise a club's ballpark before the league ballast is added. With no
+    # park factors on the slate this rebuilds `top_down` bit for bit.
+    totals = pd.DataFrame({
+        "rs": standings["runs_scored"].astype(float).to_numpy(),
+        "ra": standings["runs_allowed"].astype(float).to_numpy(),
+        "g": (standings["wins"] + standings["losses"]).astype(float).to_numpy(),
+    }, index=pd.Index(standings["team_id"].astype(int).to_numpy(),
+                      name="team_id"))
+    cfg = config or gm.ChainConfig(park_ballast=NOT_SERVED,
+                                   def_ballast=NOT_SERVED)
+    # The ballast the top-down half is regressed with is this function's
+    # argument, always: `build_slate` rebuilds that regression when it
+    # neutralises the park, and a config carrying a different number would
+    # quietly change the strength model rather than the park term.
+    cfg = replace(cfg, regress_games=float(regress_games))
     slate = gm.build_slate(as_of.isoformat(), inputs, top_down, lg_rs9, lg_ra9,
-                           cards=history)
+                           cards=history, config=cfg, totals=totals)
+    # Where each remaining game is played. The park is the one thing about a
+    # game that is known before anybody is announced.
+    venues = ({int(pk): v for pk, v in zip(schedule["game_pk"],
+                                           schedule["venue_id"])}
+              if "venue_id" in schedule.columns else {})
     strength = gm.strength_series(slate, state.team_ids)
 
     diag = {"n_games_with_starters": 0, "starter_window_days": window_days,
@@ -434,7 +477,10 @@ def chain_terms(
             "n_batters_rated": slate.diagnostics["n_batters_rated"],
             "n_limited_arms": slate.diagnostics["n_limited_arms"],
             "n_clubs_top_down_only": len(set(slate.diagnostics["rs_missing"])
-                                         | set(slate.diagnostics["ra_missing"]))}
+                                         | set(slate.diagnostics["ra_missing"])),
+            "n_parks": slate.diagnostics["n_parks"],
+            "park_ballast": slate.diagnostics["park_ballast"],
+            "def_ballast": slate.diagnostics["def_ballast"]}
 
     overrides = {}
     for game_pk, sp_ids in pmap.items():
@@ -442,7 +488,8 @@ def chain_terms(
         if home_id not in slate.team.index or away_id not in slate.team.index:
             continue
         p_home, flags = gm.home_win_probability(
-            slate, home_id, away_id, sp_ids, hfa, lineups=cards.get(game_pk))
+            slate, home_id, away_id, sp_ids, hfa, lineups=cards.get(game_pk),
+            venue_id=venues.get(int(game_pk)))
         overrides[game_pk] = p_home
         diag["sp_no_history"] += int(flags["sp_no_history"])
         diag["n_lineup_slots"] += int(flags["lineup_slots"])

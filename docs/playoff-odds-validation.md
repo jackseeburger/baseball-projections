@@ -573,3 +573,41 @@ the same order as the starter term on its own.
    why it is blended rather than swapped in, and Atlanta is what it looks like
    when the top-down half is carrying real information the components cannot
    see. `--c-weight` is a knob on that trade, chosen walk-forward on 2025.
+   **Two of those three have since been measured, and neither is worth
+   wiring** — see the section below.
+
+## Sept 3, 2026 — what the residual in that table is actually made of
+
+The run-environment table above is a list of clubs whose two halves disagree,
+and the biggest disagreements are on the runs-allowed side: Atlanta allows 4.02
+a game against a component 4.38, Milwaukee 4.00 against 4.37. Park factors and a
+club-level defence residual were built to take that apart
+(`src/sim/park.py`, `src/sim/defence.py`); **neither term beats the served chain
+out of sample**, so the board above is unchanged, but the attribution is now
+known rather than assumed. Per club, in runs per game, as of the same date
+(`python scripts/attribute_run_environment.py --season 2026 --as-of 2026-09-03`):
+
+| Club | RA gap | park | defence | left | RS gap | park | left |
+|---|---|---|---|---|---|---|---|
+| **MIL** | +0.374 | +0.040 | −0.100 | **+0.234** | −0.236 | +0.053 | −0.289 |
+| **ATL** | +0.353 | +0.022 | −0.084 | **+0.247** | +0.058 | +0.026 | +0.032 |
+| PHI | −0.214 | −0.051 | +0.080 | −0.084 | +0.267 | −0.054 | +0.321 |
+| LAD | +0.073 | −0.023 | −0.148 | −0.052 | +0.408 | −0.030 | +0.438 |
+| CWS | +0.094 | +0.033 | +0.039 | +0.100 | −0.034 | +0.035 | −0.070 |
+| SEA | −0.188 | +0.149 | +0.134 | −0.203 | +0.559 | +0.134 | +0.426 |
+
+Read it in one line: **park explains almost none of it, and it never could.** A
+park multiplies a club's runs scored and runs allowed by the same number — look
+at the two `park` columns, which agree to within a hundredth of a run for every
+club here — while Atlanta's and Milwaukee's residuals are one-sided, sitting
+almost entirely on runs allowed. Defence explains about a quarter of the two
+big ones (0.08 of Atlanta's 0.35, 0.10 of Milwaukee's 0.37) and 16% of the mean
+absolute runs-allowed gap across the league. What is left — 0.23 to 0.25 runs a
+game for those two clubs — is sequencing, bullpen leverage, baserunning
+prevention and luck, and the half-and-half blend is still the only thing
+holding it.
+
+Neither term is served. Park is worth −0.00006 of Brier on the 756 market games
+and +0.00002 on 2025; defence is worth +0.00007 and +0.00003, i.e. worse than
+not having it on both. The scoreboard, the grids and the mechanism are in
+[market-benchmark-2026.md](market-benchmark-2026.md#sept-3-2026--park-and-team-defence-both-measured-neither-one-clears).

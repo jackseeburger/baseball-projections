@@ -41,6 +41,19 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       club's own recent cards. Identical to the row above on
                       any game whose lineup is not posted, which is every
                       future game the nightly prices
+    pythag_C_sp_bpa_ip_pk
+                    — ...and the ballpark: per-venue run multipliers from the
+                      *prior* seasons' home/road splits, with the park divided
+                      out of the top-down half first (src/sim/park.py)
+    pythag_C_sp_bpa_ip_def
+                    — ...and team defence instead: the club's BABIP allowed on
+                      the road against the league, converted to runs and added
+                      to the runs-allowed side FIP cannot see (src/sim/defence.py)
+    pythag_C_sp_bpa_ip_pk_def
+                    — both of them, and `_pk_def_lu` with the card as well.
+                      **Neither term cleared its gate** (docs/market-benchmark-2026.md),
+                      so the nightly serves pythag_C_sp_bpa_ip and these are
+                      scoreboard columns only
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -65,8 +78,10 @@ from src.data.mlb_stats_api import (
     fetch_season_pitching,
 )
 from src.sim import bullpen as bp_model
+from src.sim import defence as df_model
 from src.sim import game_model as gm
 from src.sim import lineups as lu_model
+from src.sim import park as pk_model
 from src.sim import reliever_usage as ru_model
 from src.sim import run_environment as rn_model
 from src.sim import starters as sp_model
@@ -83,6 +98,14 @@ C_SP_MODEL = "pythag_C_sp"
 C_SP_BPA_MODEL = "pythag_C_sp_bpa"
 C_SP_BPA_IP_MODEL = "pythag_C_sp_bpa_ip"
 C_SP_BPA_IP_LU_MODEL = "pythag_C_sp_bpa_ip_lu"
+# The two terms this ticket adds, one at a time and then together, each on top
+# of the chain the nightly serves. `_pk` prices the ballpark (and neutralises
+# the park out of the top-down half); `_def` adds the club's balls-in-play
+# residual to the runs-allowed side FIP is blind to.
+C_PK_MODEL = "pythag_C_sp_bpa_ip_pk"
+C_DEF_MODEL = "pythag_C_sp_bpa_ip_def"
+C_PK_DEF_MODEL = "pythag_C_sp_bpa_ip_pk_def"
+C_PK_DEF_LU_MODEL = "pythag_C_sp_bpa_ip_pk_def_lu"
 SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
@@ -114,6 +137,16 @@ SP_IP_BALLAST = sp_model.IP_BALLAST_STARTS
 C_WEIGHT = rn_model.BLEND_WEIGHT
 C_SHARE_WINDOW = rn_model.SHARE_WINDOW_DAYS or 0   # 0 = the season to date
 C_ROTATION_DAYS = rn_model.ROTATION_WINDOW_DAYS
+# Park and team defence. The park factors are built from the completed seasons
+# *before* the one being scored — no game of this season can reach them — and
+# regressed toward 1 with a games ballast; the defence residual is this club's
+# balls in play on the road, strictly before the date, regressed toward the
+# league with a balls-in-play ballast. Both ballasts were chosen walk-forward
+# on 2025 only, and `inf` on either one reproduces the model without that term
+# exactly (docs/market-benchmark-2026.md).
+PARK_BALLAST = pk_model.BALLAST_GAMES
+PARK_PRIOR_SEASONS = pk_model.PRIOR_SEASONS
+DEF_BALLAST = df_model.BALLAST_BIP
 
 
 def team_totals(games: pd.DataFrame, team_ids) -> pd.DataFrame:
@@ -173,6 +206,7 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
         for g in day.itertuples(index=False):
             row = {"date": date, "game_pk": int(g.game_pk),
                    "home_id": g.home_id, "away_id": g.away_id,
+                   "venue_id": getattr(g, "venue_id", None),
                    "home_win": bool(g.home_win),
                    "home_constant": hfa_obs,
                    "win_pct_log5": float(home_win_prob(wp[g.home_id], wp[g.away_id], hfa_obs))}
@@ -502,7 +536,8 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
                      hard_1d: float = BPA_HARD_1D,
                      hard_2d: float = BPA_HARD_2D,
                      taper: float = BPA_TAPER,
-                     ip_ballast: float = SP_IP_BALLAST) -> dict:
+                     ip_ballast: float = SP_IP_BALLAST,
+                     home_by_game: dict | None = None) -> dict:
     """Fetch every pitcher's appearances once for the whole backtest.
 
     `sp_ctx` already holds the prior-season pitching totals and league rates —
@@ -523,6 +558,10 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
             # The other half of the same appearances: station C's rotation,
             # and how many innings each of those starts actually lasted.
             "starts": rn_model.start_appearances(logs),
+            # The balls in play those same appearances allowed, by club and
+            # date, road games only — the one rate FIP throws away
+            # (src/sim/defence.py). No extra fetch: it is the same log frame.
+            "bip": df_model.bip_counts(logs, home_by_game or {}),
             "start_ip": sp_model.start_innings(logs), "league": league,
             "season": season, "ballast": ballast, "baseline": baseline,
             "roster_days": roster_days, "rest_days": rest_days,
@@ -555,6 +594,24 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     top_down = team_rates(tot, SP_BALLAST_GAMES)
     lg_ra9, lg_rs9 = sp_day["lg_ra9"], lu_day["lg_rs9"]
 
+    # ── park: prior seasons' factors, this season's exposure to them ──
+    # The factors read no game of this season at all; the exposure reads games
+    # strictly before `date`. `park.neutral_run_rates` with no exposure is
+    # `team_rates` to the last bit, so the park-free column is untouched.
+    park_factors = c_ctx.get("park_factors") or {}
+    played = c_ctx.get("season_games")
+    exposure = None
+    top_down_pk = top_down
+    if park_factors and played is not None and len(played):
+        before = played[played["date"].astype(str) < str(date)]
+        exposure = pk_model.team_exposure(before, park_factors, top_down.index)
+        top_down_pk = pk_model.neutral_run_rates(
+            tot["rs"], tot["ra"], tot["g"], SP_BALLAST_GAMES, exposure=exposure)
+
+    # ── defence: the club's balls in play, strictly before the date ──
+    def_deltas, def_diag = df_model.team_defence(
+        c_ctx.get("bip"), date, ballast=c_ctx.get("def_ballast", DEF_BALLAST))
+
     shares = rn_model.team_pa_shares(c_ctx["hitter_logs"], date,
                                      window_days=c_ctx["share_window"])
     rs9 = rn_model.team_rs9(shares, lu_day["runs_lookup"], lg_rs9,
@@ -571,9 +628,18 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     if c_ctx.get("control") == "league":
         # The shrinkage control: same blend, no player information in it.
         bottom_up = rn_model.league_constant_rates(top_down.index, lg_rs9, lg_ra9)
+        bottom_up_def = bottom_up
     else:
         bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=top_down.index)
+        bottom_up_def = rn_model.bottom_up_rates(
+            rs9, df_model.apply_deltas(ra9, def_deltas), team_ids=top_down.index)
     blended = rn_model.blend_run_env(bottom_up, top_down, c_ctx["weight"])
+    # The three variants: the park out of the top-down half, the defence into
+    # the bottom-up half, and both. Each is the same blend at the same weight.
+    blended_pk = rn_model.blend_run_env(bottom_up, top_down_pk, c_ctx["weight"])
+    blended_def = rn_model.blend_run_env(bottom_up_def, top_down, c_ctx["weight"])
+    blended_pk_def = rn_model.blend_run_env(bottom_up_def, top_down_pk,
+                                            c_ctx["weight"])
     # The same date's inputs in the shape the *live* job assembles them, so the
     # best model's probability is computed by one function for both callers
     # (src/sim/game_model.py). Everything in it was built above from games
@@ -581,25 +647,50 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     # Only the models that price the pen need it, and only those read the
     # slate; a caller handing in a pen-free day context gets None here and the
     # `pythag_C` / `pythag_C_sp` columns, which do not use it.
-    slate = None
+    slate = slates = None
     if "available" in bp_day:
-        slate = gm.Slate(
-            as_of=str(date), team=blended, sp_ra9=sp_day["sp_ra9"], lg_ra9=lg_ra9,
-            lg_rs9=lg_rs9, expected_ip=bp_day["sp_ip"],
-            available_pen=bp_day["available"],
-            pen_baseline=(bp_day["lg_bpa_ra9"] if c_ctx["bpa_baseline"] == "league"
-                          else {int(t): full
-                                for t, (_a, full) in bp_day["pen"].items()}),
-            runs_lookup=lu_day["runs_lookup"],
-            lineup_baseline=({} if c_ctx.get("lu_baseline") == "league"
-                             else lu_day["baseline"]),
-            pa_per_game=c_ctx["pa_per_game"],
-            config=gm.ChainConfig(starter_ip=sp_day["starter_ip"],
-                                  lineup_weight=c_ctx["lu_weight"],
-                                  blend_weight=c_ctx["weight"]))
+        def _slate(team_frame, factors):
+            return gm.Slate(
+                as_of=str(date), team=team_frame, sp_ra9=sp_day["sp_ra9"],
+                lg_ra9=lg_ra9,
+                lg_rs9=lg_rs9, expected_ip=bp_day["sp_ip"],
+                available_pen=bp_day["available"],
+                pen_baseline=(bp_day["lg_bpa_ra9"]
+                              if c_ctx["bpa_baseline"] == "league"
+                              else {int(t): full
+                                    for t, (_a, full) in bp_day["pen"].items()}),
+                runs_lookup=lu_day["runs_lookup"],
+                lineup_baseline=({} if c_ctx.get("lu_baseline") == "league"
+                                 else lu_day["baseline"]),
+                pa_per_game=c_ctx["pa_per_game"], park_factors=factors,
+                config=gm.ChainConfig(starter_ip=sp_day["starter_ip"],
+                                      lineup_weight=c_ctx["lu_weight"],
+                                      blend_weight=c_ctx["weight"],
+                                      park_ballast=c_ctx.get("park_ballast",
+                                                             PARK_BALLAST),
+                                      def_ballast=c_ctx.get("def_ballast",
+                                                            DEF_BALLAST)))
+
+        slate = _slate(blended, {})
+        # One slate per combination of the two new terms, each differing from
+        # the one above only in what it is meant to differ in: the park slates
+        # carry the neutralised top-down half and the venue factors, the
+        # defence slates a bottom-up runs-allowed rate with the club's
+        # balls-in-play residual added.
+        slates = {
+            "": slate,
+            "pk": _slate(blended_pk, park_factors),
+            "def": _slate(blended_def, {}),
+            "pk_def": _slate(blended_pk_def, park_factors),
+        }
     return {
         "team": blended,
         "slate": slate,
+        "slates": slates,
+        "def_deltas": def_deltas,
+        "def_diag": def_diag,
+        "park_factors": park_factors,
+        "park_exposure": exposure,
         "lineups": c_ctx.get("lineups", {}),
         "lg_ra9": lg_ra9,
         "starter_ip": sp_day["starter_ip"],
@@ -679,13 +770,37 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
         out["c_lineup_slots"] = 0 if sp_ids is None else lu_flags["lineup_slots"]
         out["c_bpa_shift"] = shift
         out["c_starter_ip"] = ip_used
+        # ── park and defence, one at a time and then together ──
+        # The venue is the one thing about a game that is known before anything
+        # else about it, so it is passed even when nobody is announced; with no
+        # park factors on the slate it multiplies by exactly 1.
+        venue = getattr(g, "venue_id", None)
+        slates = c_day.get("slates") or {}
+        for tag, model in (("pk", C_PK_MODEL), ("def", C_DEF_MODEL),
+                           ("pk_def", C_PK_DEF_MODEL)):
+            sl = slates.get(tag)
+            if sl is None:
+                continue
+            p, f = gm.home_win_probability(sl, g.home_id, g.away_id, sp_ids,
+                                           hfa, venue_id=venue)
+            out[model] = p
+            if tag == "pk":
+                out["c_park_factor"] = f["park_factor"]
+        if "pk_def" in slates:
+            p_lu, _ = gm.home_win_probability(
+                slates["pk_def"], g.home_id, g.away_id, sp_ids, hfa,
+                lineups=cards, venue_id=venue)
+            out[C_PK_DEF_LU_MODEL] = p_lu
     return out
 
 
 def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
                     share_window: int | None, rotation_days: int | None,
                     rotation_top_n: int, pa_per_game: float,
-                    control: str = "none") -> dict:
+                    control: str = "none", schedule: pd.DataFrame | None = None,
+                    park_ballast: float = PARK_BALLAST,
+                    park_prior_seasons: int = PARK_PRIOR_SEASONS,
+                    def_ballast: float = DEF_BALLAST) -> dict:
     """Fetch the club-attributed hitting logs station C needs, once.
 
     `lu_ctx["game_logs"]` cannot be reused for this: `fetch_batter_game_logs`
@@ -705,10 +820,20 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
     batters = pd.unique(lu_ctx["game_logs"]["batter"]) if len(lu_ctx["game_logs"]) else []
     logs = fetch_hitter_game_logs(batters, season)
     logs = logs.loc[:, ["batter", "team_id", "date", "pa"]].dropna(subset=["team_id"])
+    # Park factors from the completed seasons *before* this one — one schedule
+    # call each, and no game of the season being scored is in the pool, which
+    # is a stronger guard than the strictly-before-the-date cut everything else
+    # gets. An infinite ballast returns a factor of 1.0 for every venue, i.e.
+    # the model without the term.
+    park_factors = pk_model.fetch_prior_factors(
+        season, prior_seasons=park_prior_seasons, ballast=park_ballast)
     return {"hitter_logs": logs, "starts": bp_ctx["starts"], "weight": weight,
             "share_window": share_window, "rotation_days": rotation_days,
             "rotation_top_n": rotation_top_n, "pa_per_game": pa_per_game,
             "control": control,
+            "park_factors": park_factors, "park_ballast": park_ballast,
+            "season_games": pk_model.completed_venue_games(schedule),
+            "bip": bp_ctx.get("bip"), "def_ballast": def_ballast,
             # Carried through so the shared per-game function reads the same
             # lineup knobs the `_lu` ladder above it does.
             "lu_weight": lu_ctx["weight"], "lu_baseline": lu_ctx["baseline"],
@@ -893,6 +1018,18 @@ def main() -> None:
     parser.add_argument("--c-rotation-top-n", type=int,
                         default=rn_model.ROTATION_TOP_N,
                         help="how many starters make a rotation")
+    parser.add_argument("--park-ballast", type=float, default=PARK_BALLAST,
+                        help="games of ballast regressing a venue's home/road "
+                             "run split toward 1 ('inf' is the model with no "
+                             "park term in it)")
+    parser.add_argument("--park-prior-seasons", type=int,
+                        default=PARK_PRIOR_SEASONS,
+                        help="completed seasons before this one pooled into a "
+                             "park factor (never this one)")
+    parser.add_argument("--def-ballast", type=float, default=DEF_BALLAST,
+                        help="balls in play of ballast regressing a club's "
+                             "BABIP allowed toward the league ('inf' is the "
+                             "model with no defence term in it)")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game prediction frame here (parquet) "
                              "for follow-up analysis")
@@ -941,7 +1078,9 @@ def main() -> None:
             sp_ctx["league"], sp_ctx["prior_counts"],
             bpa_baseline=args.bpa_baseline, hard_1d=args.bpa_hard_1d,
             hard_2d=args.bpa_hard_2d, taper=args.bpa_taper,
-            ip_ballast=args.sp_ip_ballast)
+            ip_ballast=args.sp_ip_ballast,
+            home_by_game={int(pk): int(t) for pk, t
+                          in zip(sched["game_pk"], sched["home_id"])})
 
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:
@@ -949,7 +1088,10 @@ def main() -> None:
             args.season, lu_ctx, bp_ctx, args.c_weight,
             args.c_share_window if args.c_share_window > 0 else None,
             args.c_rotation_days if args.c_rotation_days > 0 else None,
-            args.c_rotation_top_n, lu_ctx["pa_per_game"], args.c_control)
+            args.c_rotation_top_n, lu_ctx["pa_per_game"], args.c_control,
+            schedule=sched, park_ballast=args.park_ballast,
+            park_prior_seasons=args.park_prior_seasons,
+            def_ballast=args.def_ballast)
 
     preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
                          ballasts, sp_ctx, lu_ctx, bp_ctx, c_ctx)
@@ -964,7 +1106,8 @@ def main() -> None:
         models += [C_MODEL, C_SP_MODEL]
         if bp_ctx is not None:
             models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL,
-                       C_SP_BPA_IP_LU_MODEL]
+                       C_SP_BPA_IP_LU_MODEL, C_PK_MODEL, C_DEF_MODEL,
+                       C_PK_DEF_MODEL, C_PK_DEF_LU_MODEL]
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -994,6 +1137,15 @@ def main() -> None:
               f"{preds['c_starter_ip'].sum() / (2 * len(preds)):.2f} innings "
               f"against the flat {sp_model.STARTER_IP}; "
               f"ip_ballast={args.sp_ip_ballast:.0f} starts.")
+        if C_PK_MODEL in preds.columns:
+            pf = preds["c_park_factor"].astype(float)
+            print(f"{C_PK_MODEL}: {int((pf != 1.0).sum())} of {len(preds)} games "
+                  f"were played in a park the prior seasons priced; factors "
+                  f"{pf.min():.3f}–{pf.max():.3f} (mean {pf.mean():.3f}); "
+                  f"ballast={args.park_ballast:.0f} games over "
+                  f"{args.park_prior_seasons} prior seasons.")
+            print(f"{C_DEF_MODEL}: club BABIP-allowed residual on road balls in "
+                  f"play, regressed with def_ballast={args.def_ballast:.0f} BIP.")
         print(f"{C_SP_BPA_IP_LU_MODEL}: "
               f"{int((preds['c_lineup_slots'] > 0).sum())} of {len(preds)} games "
               f"had a card posted for at least one side "
@@ -1052,7 +1204,14 @@ def main() -> None:
             pairs += [(C_SP_BPA_MODEL, C_SP_MODEL),
                       (C_SP_BPA_IP_MODEL, C_SP_BPA_MODEL),
                       # The posted card on top of the chain the nightly serves.
-                      (C_SP_BPA_IP_LU_MODEL, C_SP_BPA_IP_MODEL)]
+                      (C_SP_BPA_IP_LU_MODEL, C_SP_BPA_IP_MODEL),
+                      # The park and defence gates: each term on its own
+                      # against the served chain, then the two together.
+                      (C_PK_MODEL, C_SP_BPA_IP_MODEL),
+                      (C_DEF_MODEL, C_SP_BPA_IP_MODEL),
+                      (C_PK_DEF_MODEL, C_SP_BPA_IP_MODEL),
+                      (C_PK_DEF_MODEL, C_PK_MODEL),
+                      (C_PK_DEF_MODEL, C_DEF_MODEL)]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 

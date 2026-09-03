@@ -52,6 +52,14 @@ REGRESS_GAMES = 60.0
 # team_id, abbrev, league, division
 CLUBS = [(1, "AAA", 103, 201), (2, "BBB", 103, 201),
          (3, "CCC", 104, 204), (4, "DDD", 104, 204)]
+# One park per club, numbered apart from the club ids so a fallback to the home
+# team's id would be visible rather than silently right.
+VENUE_OF = {1: 7001, 2: 7002, 3: 7003, 4: 7004}
+# Ballasts that leave both new terms visibly on. The shipped constants are not
+# used here: what this file tests is that the two callers agree *when a term is
+# on*, which is a question about the assembly and not about the constant.
+PARK_BALLAST = 100.0
+DEF_BALLAST = 1000.0
 STARTERS_PER_CLUB = 5
 RELIEVERS_PER_CLUB = 5
 HITTERS_PER_CLUB = 9
@@ -126,7 +134,13 @@ def build_season() -> dict:
                 "outs": float(outs), "bf": float(bf),
                 "k": float(rng.integers(2, 9)), "bb": float(rng.integers(0, 4)),
                 "hbp": 0.0, "hr": float(rng.integers(0, 3)),
-                "er": 3.0, "gs": 1, "pitches": float(outs * 5 + 15)})
+                "er": 3.0, "gs": 1, "pitches": float(outs * 5 + 15),
+                # Hits, at-bats and sacrifice flies: the balls-in-play half of
+                # the line, which is what the defence term reads. Club 1's
+                # pitchers give up fewer hits on the same contact, so the term
+                # has something to find.
+                "h": float(rng.integers(3, 8) - (2 if team_id == 1 else 0)),
+                "ab": float(bf - 2), "sf": 0.0})
             for j in range(3):
                 rp = relievers[(g.day_index + j) % RELIEVERS_PER_CLUB]
                 r_outs = int(rng.integers(1, 5))
@@ -137,7 +151,9 @@ def build_season() -> dict:
                     "k": float(rng.integers(0, 3)), "bb": float(rng.integers(0, 2)),
                     "hbp": 0.0, "hr": float(rng.integers(0, 2)),
                     "er": 1.0, "gs": 0,
-                    "pitches": float(r_outs * 6 + int(rng.integers(2, 20)))})
+                    "pitches": float(r_outs * 6 + int(rng.integers(2, 20))),
+                    "h": float(rng.integers(0, 3)), "ab": float(r_outs + 1),
+                    "sf": 0.0})
     pitching = pd.DataFrame(p_rows)
 
     # ── hitting lines: the nine who started, and the cards they started in
@@ -206,19 +222,47 @@ def build_season() -> dict:
 
 
 def schedule_frame(season: dict, target_final: bool) -> pd.DataFrame:
-    """The Stats API schedule shape, with the target date played or scheduled."""
+    """The Stats API schedule shape, with the target date played or scheduled.
+
+    `venue_id` is each home club's own park (`VENUE_OF`), which is what the
+    park term keys its run multipliers on and what the defence term reads to
+    tell a road game from a home one.
+    """
     s = season["schedule"]
     final = (s["date"] < season["target_date"]) | target_final
+    home_ids = [CLUBS[i][0] for i in s["home_i"]]
     return pd.DataFrame({
         "game_pk": s["game_pk"], "date": s["date"],
         "game_datetime": s["date"] + "T23:00:00Z",
+        "venue_id": [VENUE_OF[t] for t in home_ids],
+        "venue_name": [f"Park {VENUE_OF[t]}" for t in home_ids],
         "status": np.where(final, "Final", "Preview"),
         "game_type": "R",
-        "home_id": [CLUBS[i][0] for i in s["home_i"]],
+        "home_id": home_ids,
         "away_id": [CLUBS[i][0] for i in s["away_i"]],
         "home_score": np.where(final, s["home_score"], np.nan),
         "away_score": np.where(final, s["away_score"], np.nan),
     })
+
+
+def prior_season_schedule(season: dict, year: str) -> pd.DataFrame:
+    """A completed prior season for the park factors to be built from.
+
+    The same four clubs and the same four parks, with one of them (club 1's)
+    a hitters' park, so the factors that come out are not all 1.0 and the two
+    callers have something to disagree about.
+    """
+    rows, pk = [], 500_000
+    for i, (home, away) in enumerate([(a, b) for a in CLUBS for b in CLUBS
+                                      if a[0] != b[0]] * 6):
+        pk += 1
+        venue = VENUE_OF[home[0]]
+        runs = 12.0 if venue == VENUE_OF[CLUBS[0][0]] else 8.0
+        rows.append({"game_pk": pk, "date": f"{year}-05-{i % 28 + 1:02d}",
+                     "venue_id": venue, "status": "Final", "game_type": "R",
+                     "home_id": home[0], "away_id": away[0],
+                     "home_score": runs / 2, "away_score": runs / 2})
+    return pd.DataFrame(rows)
 
 
 def teams_frame() -> pd.DataFrame:
@@ -260,6 +304,18 @@ def _fake_fetchers(season: dict, cards_for_target: bool):
 
     def probables(start_date, end_date, refresh=False):
         return season["probables"].copy()
+
+    def schedule(start_date, end_date):
+        """This season's games, or a completed prior one for the park factors.
+
+        The park term asks for the seasons *before* the one being priced, and
+        this is where that is served: anything but `SEASON` comes back as a
+        finished season at the same four parks.
+        """
+        year = str(start_date)[:4]
+        if year != str(SEASON):
+            return prior_season_schedule(season, year)
+        return schedule_frame(season, target_final=False)
 
     def season_pitching(year, page_size=1000, refresh=False):
         if year == SEASON:
@@ -308,7 +364,8 @@ def _fake_fetchers(season: dict, cards_for_target: bool):
             for side, ti in (("home", g.home_i), ("away", g.away_i)):
                 season["cards"][int(g.game_pk)][side] = _batter_ids(ti)
 
-    return {"fetch_probables": probables, "fetch_season_pitching": season_pitching,
+    return {"fetch_probables": probables, "fetch_schedule": schedule,
+            "fetch_season_pitching": season_pitching,
             "fetch_pitcher_game_logs": pitcher_logs,
             "fetch_season_hitting": season_hitting,
             "fetch_hitter_game_logs": hitter_logs,
@@ -331,8 +388,15 @@ def _patch(mp, module, fakes: dict) -> None:
             mp.setattr(module, name, fn)
 
 
-def backtest_probabilities(season: dict, fakes: dict, mp) -> pd.DataFrame:
-    """The harness's own walk-forward frame for the target date."""
+def backtest_probabilities(season: dict, fakes: dict, mp, *,
+                           park_ballast: float = float("inf"),
+                           def_ballast: float = float("inf")) -> pd.DataFrame:
+    """The harness's own walk-forward frame for the target date.
+
+    The two ballasts default to infinite, which is the park and defence terms
+    switched off — what the nightly serves, and therefore what the columns
+    above them have to keep matching.
+    """
     bt = _load("backtest_game_odds_chain", ROOT / "scripts/backtest_game_odds.py")
     _patch(mp, bt, fakes)
 
@@ -350,17 +414,22 @@ def backtest_probabilities(season: dict, fakes: dict, mp) -> pd.DataFrame:
     bp_ctx = bt.build_bp_context(
         SEASON, sp_model.BALLAST_BF, bp_model.BASELINE,
         bp_model.ROSTER_WINDOW_DAYS, bp_model.REST_DAYS, bp_model.REST_MIN_DAYS,
-        bp_model.RELIEF_IP, sp_ctx["league"], sp_ctx["prior_counts"])
+        bp_model.RELIEF_IP, sp_ctx["league"], sp_ctx["prior_counts"],
+        home_by_game={int(pk): int(t) for pk, t
+                      in zip(sched["game_pk"], sched["home_id"])})
     c_ctx = bt.build_c_context(
         SEASON, lu_ctx, bp_ctx, rn_model.BLEND_WEIGHT,
         rn_model.SHARE_WINDOW_DAYS, rn_model.ROTATION_WINDOW_DAYS,
-        rn_model.ROTATION_TOP_N, lu_ctx["pa_per_game"])
+        rn_model.ROTATION_TOP_N, lu_ctx["pa_per_game"], schedule=sched,
+        park_ballast=park_ballast, def_ballast=def_ballast)
     preds = bt.walk_forward(scored, teams_frame()["team_id"].to_numpy(),
                             0, [REGRESS_GAMES], sp_ctx, lu_ctx, bp_ctx, c_ctx)
     return preds[preds["date"] == season["target_date"]].set_index("game_pk")
 
 
-def nightly_probabilities(season: dict, fakes: dict, use_lineups: bool, mp) -> dict:
+def nightly_probabilities(season: dict, fakes: dict, use_lineups: bool, mp, *,
+                          park_ballast: float = float("inf"),
+                          def_ballast: float = float("inf")) -> dict:
     """The odds job's overrides for the target date, from the same season."""
     rp = _load("run_playoff_odds_chain", ROOT / "scripts/run_playoff_odds.py")
     _patch(mp, rp, fakes)
@@ -370,9 +439,13 @@ def nightly_probabilities(season: dict, fakes: dict, use_lineups: bool, mp) -> d
     standings = standings_frame(season)
     hfa = estimate_hfa(state.completed)
     as_of = date.fromisoformat(season["target_date"])
+    from src.sim import game_model as gm
     overrides, rotations, strength, diag = rp.chain_terms(
         SEASON, state, standings, sched, hfa, REGRESS_GAMES, as_of,
-        refresh=False, workers=1, use_lineups=use_lineups)
+        refresh=False, workers=1, use_lineups=use_lineups,
+        config=gm.ChainConfig(regress_games=REGRESS_GAMES,
+                              park_ballast=park_ballast,
+                              def_ballast=def_ballast))
     return {"overrides": overrides, "rotations": rotations,
             "strength": strength, "diagnostics": diag, "hfa": hfa,
             "state": state}
@@ -444,10 +517,90 @@ class TestOneGameTwoPaths:
         from src.sim.strength import regressed_run_rates
         slate = gm.build_slate(season["target_date"], data["inputs"],
                                regressed_run_rates(standings, REGRESS_GAMES),
-                               lg_rs9, lg_ra9)
+                               lg_rs9, lg_ra9,
+                               # The config the job serves: park and defence
+                               # switched off, because neither cleared its gate.
+                               config=gm.ChainConfig(
+                                   regress_games=REGRESS_GAMES,
+                                   park_ballast=rp.NOT_SERVED,
+                                   def_ballast=rp.NOT_SERVED))
         priced, _ = gm.home_win_probability(slate, int(g.home_id), int(g.away_id),
                                             None, hfa)
         assert priced == pytest.approx(drawn, abs=1e-12)
+
+
+class TestParkAndDefenceAgreeToo:
+    """The two new terms, through both callers, on the same game.
+
+    They are the first terms that change the *top-down* half (the park is
+    neutralised out of a club's own totals before they are regressed) and the
+    first that need a fact about the game other than who is playing (which
+    park). Both are places the two assemblies could drift apart while every
+    older column stayed identical, so both are pinned here.
+    """
+
+    def test_the_nightly_and_the_backtest_agree_with_both_terms_on(self, season,
+                                                                   monkeypatch):
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch,
+                                        park_ballast=PARK_BALLAST,
+                                        def_ballast=DEF_BALLAST)
+        live = nightly_probabilities(season, fakes, False, monkeypatch,
+                                     park_ballast=PARK_BALLAST,
+                                     def_ballast=DEF_BALLAST)
+        assert len(scored) and live["overrides"], "the fixture priced nothing"
+        for game_pk, row in scored.iterrows():
+            assert int(game_pk) in live["overrides"], game_pk
+            assert live["overrides"][int(game_pk)] == pytest.approx(
+                row["pythag_C_sp_bpa_ip_pk_def"], abs=1e-12)
+
+    def test_the_terms_actually_moved_the_price(self, season, monkeypatch):
+        """...or the test above would pass on two identical models."""
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch,
+                                        park_ballast=PARK_BALLAST,
+                                        def_ballast=DEF_BALLAST)
+        assert (scored["pythag_C_sp_bpa_ip_pk"]
+                != scored["pythag_C_sp_bpa_ip"]).any()
+        assert (scored["pythag_C_sp_bpa_ip_def"]
+                != scored["pythag_C_sp_bpa_ip"]).any()
+        # The fixture's hitters' park is priced above one and the others below.
+        assert (scored["c_park_factor"] != 1.0).any()
+
+    def test_switching_both_terms_off_is_the_gated_chain_to_the_last_bit(
+            self, season, monkeypatch):
+        """The nesting the gate comparison rests on, end to end.
+
+        An infinite ballast on either term has to give back exactly the model
+        without it — including through the top-down half, where the park term
+        rebuilds a regression the caller would otherwise have done itself.
+        """
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch)
+        assert (scored["pythag_C_sp_bpa_ip_pk_def"]
+                == scored["pythag_C_sp_bpa_ip"]).all()
+        assert (scored["pythag_C_sp_bpa_ip_pk"]
+                == scored["pythag_C_sp_bpa_ip"]).all()
+
+    def test_the_nightly_serves_the_gated_chain_and_not_the_new_terms(
+            self, season, monkeypatch):
+        """What the gate rule means in code: the baseline runs until it loses.
+
+        Neither term cleared, so the odds job asks for them switched off, and
+        its answer is the scored `pythag_C_sp_bpa_ip` — not the park-and-
+        defence column beside it.
+        """
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch)
+        live = nightly_probabilities(season, fakes, False, monkeypatch)
+        with_terms = backtest_probabilities(season, fakes, monkeypatch,
+                                            park_ballast=PARK_BALLAST,
+                                            def_ballast=DEF_BALLAST)
+        for game_pk, row in scored.iterrows():
+            assert live["overrides"][int(game_pk)] == pytest.approx(
+                row["pythag_C_sp_bpa_ip"], abs=1e-12)
+            assert live["overrides"][int(game_pk)] != pytest.approx(
+                with_terms.loc[game_pk, "pythag_C_sp_bpa_ip_pk_def"], abs=1e-12)
 
 
 class TestTheStrengthTheSimDraws:
