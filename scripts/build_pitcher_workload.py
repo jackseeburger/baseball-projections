@@ -61,6 +61,9 @@ SCORE_SEASONS = (2022, 2023, 2024, 2025, 2026)
 # Seasons the injured-list return-time distribution may be fitted from. Each
 # score season reads the three before it, minus 2020.
 FIT_SEASONS = (2019, 2021, 2022, 2023, 2024, 2025)
+# Seasons whose appearance log is pulled purely so the `last_season` baseline
+# has something to read in the first scored season.
+PRIOR_ONLY_SEASONS = (2021,)
 ALL_SEASONS = tuple(sorted(set(SCORE_SEASONS) | set(FIT_SEASONS)))
 
 # Walk-forward as-of dates: the 1st and the 15th, May through September. A
@@ -162,6 +165,27 @@ def fetch_season(season: int, refresh: bool = False, workers: int = 12) -> dict:
             "appearances": len(appearances), "rosters": len(rosters)}
 
 
+def fetch_appearances_only(season: int, refresh: bool = False,
+                           workers: int = 12) -> int:
+    """Just the appearance log, for a season nothing is scored at.
+
+    2021 is here for one reason: it is the prior season the `last_season`
+    baseline reads when 2022 is scored, and without it that baseline would be
+    a column of zeros in 2022 — indistinguishable from the no-model floor, and
+    an unfairly easy thing to beat.
+    """
+    WORKLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    ids = sorted(fetch_season_pitching(season, refresh=refresh)["pitcher"].astype(int))
+    logs = fetch_pitcher_game_logs(ids, season, refresh=refresh, workers=workers)
+    logs = logs[logs["game_type"] == "R"]
+    keep = ["pitcher", "date", "game_pk", "team", "bf", "outs", "gs",
+            "k", "bb", "hr", "pitches"]
+    out = logs.loc[:, [c for c in keep if c in logs.columns]].copy()
+    out.to_parquet(_path("pitcher_appearances", season), index=False)
+    logger.info("%s: %d appearances (prior-season baseline only)", season, len(out))
+    return len(out)
+
+
 def fetch_transactions_only(season: int, refresh: bool = False) -> int:
     """A fit-only season needs its transactions and nothing else."""
     WORKLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -189,6 +213,9 @@ def main() -> None:
             print(fetch_season(season, refresh=args.refresh, workers=args.workers))
         else:
             fetch_transactions_only(season, refresh=args.refresh)
+            if season in PRIOR_ONLY_SEASONS:
+                fetch_appearances_only(season, refresh=args.refresh,
+                                       workers=args.workers)
 
 
 if __name__ == "__main__":
