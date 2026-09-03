@@ -151,7 +151,12 @@ def window_counts(
     """
     cutoff = pd.Timestamp(cutoff)
     assert_month_boundary(cutoff)
-    w = {predict_year - i: float(x) for i, x in enumerate(weights)}
+    # A weight of zero means the season is *not in the window*, so it is
+    # dropped rather than multiplied by nothing: its batted balls would
+    # otherwise still count toward `bbe_raw`, which is the exposure the
+    # standardization weights by and the sample-size split is cut on.
+    w = {predict_year - i: float(x) for i, x in enumerate(weights)
+         if float(x) != 0.0}
 
     rows = monthly[(monthly["side"] == side)
                    & monthly["season"].isin(w)].copy()
@@ -304,6 +309,7 @@ def _wls(X: np.ndarray, y: np.ndarray, w: np.ndarray) -> np.ndarray:
 
 def fit_contact(
     cells: pd.DataFrame, component: str, features=FEATURES,
+    fixed_base: bool = False,
 ) -> ContactFit:
     """Weighted least squares of the realized rest-of-season rate on the
     baseline projection and the contact covariates.
@@ -311,17 +317,33 @@ def fit_contact(
     Rows are (player, cutoff-cell) pairs from *earlier seasons only*; the
     weight is the realized trials, which is the harness's own scoring weight.
     Pass `features=()` for the recalibration control.
+
+    `fixed_base` pins the coefficient on the baseline at exactly 1 and
+    regresses the *residual* on the covariates instead. That is the deployable
+    shape of this idea — the served projection is left alone and contact
+    quality is a correction added to it — and separating it from the free fit
+    says how much of the gain needs the baseline rescaled and how much does
+    not.
     """
     g = cells[cells["component"] == component]
     if g.empty:
         raise ValueError(f"no training cells for {component!r}")
-    cols = ["base", *features]
-    X = np.column_stack([np.ones(len(g))] + [g[c].to_numpy(dtype="float64")
-                                             for c in cols])
-    beta = _wls(X, g["realized_rate"].to_numpy(dtype="float64"),
-                g["trials"].to_numpy(dtype="float64"))
-    coef = {"intercept": float(beta[0]), "base": float(beta[1])}
-    coef.update({f: float(b) for f, b in zip(features, beta[2:])})
+    y = g["realized_rate"].to_numpy(dtype="float64")
+    w = g["trials"].to_numpy(dtype="float64")
+    base = g["base"].to_numpy(dtype="float64")
+    feat = [g[f].to_numpy(dtype="float64") for f in features]
+
+    if fixed_base:
+        X = np.column_stack([np.ones(len(g))] + feat) if feat else \
+            np.ones((len(g), 1))
+        beta = _wls(X, y - base, w)
+        coef = {"intercept": float(beta[0]), "base": 1.0}
+        coef.update({f: float(b) for f, b in zip(features, beta[1:])})
+    else:
+        X = np.column_stack([np.ones(len(g)), base] + feat)
+        beta = _wls(X, y, w)
+        coef = {"intercept": float(beta[0]), "base": float(beta[1])}
+        coef.update({f: float(b) for f, b in zip(features, beta[2:])})
     return ContactFit(component=component, features=tuple(features), coef=coef,
                       n_cells=int(g[["season", "cutoff"]].drop_duplicates().shape[0]),
                       n_rows=int(len(g)),

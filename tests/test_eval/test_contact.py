@@ -205,6 +205,25 @@ def test_fit_recovers_a_planted_coefficient():
     assert fit.coef["barrel"] == pytest.approx(0.0, abs=1e-6)
 
 
+def test_a_zero_recency_weight_drops_the_season_rather_than_scaling_it(
+        synthetic_monthly):
+    """A season out of the window must not count toward the exposure either."""
+    counts = window_counts(synthetic_monthly, "hitter", "2026-05-01", 2026,
+                           weights=(1.0, 0.0, 0.0))
+    assert counts["bbe"].tolist() == [50.0, 50.0]
+    assert counts["bbe_raw"].tolist() == [50.0, 50.0]
+
+
+def test_fixed_base_pins_the_baseline_and_fits_the_residual():
+    cells = cells_with_known_signal()
+    fit = fit_contact(cells, "k_rate", fixed_base=True)
+    assert fit.coef["base"] == 1.0
+    # The planted model is 0.05 + 0.8*base + 0.005*z, so with the baseline
+    # pinned at 1 the residual carries the covariate unchanged and the
+    # leftover -0.2*base lands in the intercept.
+    assert fit.coef["ev_mean"] == pytest.approx(0.005, abs=2e-4)
+
+
 def test_the_recalibration_control_carries_no_covariate():
     fit = fit_contact(cells_with_known_signal(), "k_rate", features=())
     assert fit.features == ()

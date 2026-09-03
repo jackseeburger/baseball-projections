@@ -198,14 +198,18 @@ def shuffle_z(cells: pd.DataFrame, seed: int = 0) -> pd.DataFrame:
 
 
 def walk_forward(cells: pd.DataFrame, components, score_seasons,
-                 features=FEATURES, shuffled: pd.DataFrame | None = None
-                 ) -> pd.DataFrame:
+                 features=FEATURES, shuffled: pd.DataFrame | None = None,
+                 hsgp: dict | None = None) -> pd.DataFrame:
     """Predictions for every arm, refitting coefficients on prior seasons only.
 
     Returns the harness's long results frame — [component, model, player,
     predicted, realized_successes, realized_rate, trials] plus the season,
     cutoff and exposure columns the splits are cut on — so `score()` and
     `paired_abs_error_diff` read it unchanged.
+
+    `hsgp` maps a scored season to the same cells carrying an `xcon` column
+    from a surface fitted on seasons before it — a separate frame per scored
+    season, because the surface itself is refitted at every fold.
     """
     frames = []
     for component in components:
@@ -217,28 +221,111 @@ def walk_forward(cells: pd.DataFrame, components, score_seasons,
                 continue
             recal = fit_contact(past, component, features=())
             full = fit_contact(past, component, features=features)
+            add = fit_contact(past, component, features=features,
+                              fixed_base=True)
             base = here["base"].to_numpy(dtype="float64")
             preds = {
                 "marcel_tuned": base,
                 "contact_recal": np.clip(recal.predict(base, None), 1e-4, 0.999),
                 "contact": np.clip(full.predict(base, here), 1e-4, 0.999),
+                "contact_additive": np.clip(add.predict(base, here), 1e-4, 0.999),
             }
+            rows = {}
             if shuffled is not None:
                 sg = shuffled[shuffled["component"] == component]
-                sp = sg[sg["season"] < season]
                 sh = sg[sg["season"] == season]
-                sfit = fit_contact(sp, component, features=features)
+                sfit = fit_contact(sg[sg["season"] < season], component,
+                                   features=features)
                 preds["contact_shuffled"] = np.clip(
                     sfit.predict(sh["base"].to_numpy(dtype="float64"), sh),
                     1e-4, 0.999)
+                rows["contact_shuffled"] = sh
+            if hsgp is not None and season in hsgp:
+                hg = hsgp[season]
+                hg = hg[hg["component"] == component]
+                hp, hh = hg[hg["season"] < season], hg[hg["season"] == season]
+                for name, feats in (("contact_hsgp", ("xcon",)),
+                                    ("contact_both", (*features, "xcon"))):
+                    hfit = fit_contact(hp, component, features=feats)
+                    preds[name] = np.clip(
+                        hfit.predict(hh["base"].to_numpy(dtype="float64"), hh),
+                        1e-4, 0.999)
+                    rows[name] = hh
             for name, p in preds.items():
-                f = (sh if name == "contact_shuffled" else here).copy()
+                f = rows.get(name, here).copy()
                 f["model"] = name
                 f["predicted"] = p
                 f["coef"] = json.dumps(full.coef if name == "contact" else
                                        recal.coef if name == "contact_recal" else {})
                 frames.append(f)
     return pd.concat(frames, ignore_index=True)
+
+
+def build_hsgp(cells: pd.DataFrame, side: str, pa_dir: Path, score_seasons,
+               weights, ballast: float, cache: Path | None = None,
+               **fit_kwargs) -> tuple[dict, list[dict]]:
+    """One HSGP contact-quality surface per scored season, and the covariate
+    it produces for every cell.
+
+    The surface for season Y is fitted on batted balls from every cell season
+    before Y and on nothing else, so the fold's own season is outside the fit
+    as well as outside the regression. `xcon` for a cell is then the
+    surface-weighted mean over that player's pre-cutoff batted balls, shrunk
+    and standardized exactly as the stage-1 covariates are.
+    """
+    from src.eval.hsgp_contact import (
+        BATTED_BALL_COLUMNS,
+        Surface,
+        batted_balls_from_pa,
+        fit_surface,
+        grid_cells,
+        player_values,
+        shrink_and_standardize,
+        window_batted_balls,
+    )
+
+    id_col = SIDE_CONFIG[side]["id_col"]
+    bb = pd.concat(
+        [batted_balls_from_pa(pd.read_parquet(
+            pa_dir / f"pa_outcomes_{s}.parquet", columns=BATTED_BALL_COLUMNS))
+         for s in CELL_SEASONS], ignore_index=True)
+    logger.info("%d tracked batted balls over %s", len(bb), list(CELL_SEASONS))
+
+    out, fits = {}, []
+    for season in score_seasons:
+        fit_seasons = tuple(s for s in CELL_SEASONS if s < season)
+        npz = (cache / f"surface_{season}.npz") if cache else None
+        if npz is not None and npz.exists():
+            blob = np.load(npz, allow_pickle=True)
+            surface = Surface(values=blob["values"],
+                              diagnostics=dict(blob["diagnostics"].item()),
+                              seasons=fit_seasons)
+            logger.info("surface %d: cached", season)
+        else:
+            train = bb[bb["game_year"].isin(fit_seasons)]
+            surface = fit_surface(grid_cells(train), seasons=fit_seasons,
+                                  **fit_kwargs)
+            if npz is not None:
+                cache.mkdir(parents=True, exist_ok=True)
+                np.savez(npz, values=surface.values,
+                         diagnostics=np.array(surface.diagnostics, dtype=object))
+        logger.info("surface %d fitted on %s: %s", season, fit_seasons,
+                    surface.diagnostics)
+        fits.append({"season": season, "fit_seasons": list(fit_seasons),
+                     **surface.diagnostics})
+
+        frames = []
+        for (cell_season, cutoff), g in cells.groupby(["season", "cutoff"]):
+            w = {cell_season - i: float(x) for i, x in enumerate(weights)}
+            window = window_batted_balls(bb, cutoff, cell_season, weights)
+            vals = player_values(window, surface, id_col, w)
+            z = shrink_and_standardize(vals, ballast).set_index("player")
+            g = g.copy()
+            g["xcon"] = z["xcon"].reindex(g["player"].to_numpy()).fillna(
+                0.0).to_numpy()
+            frames.append(g)
+        out[season] = pd.concat(frames, ignore_index=True)
+    return out, fits
 
 
 def paired(results: pd.DataFrame, arm: str, base: str, mask=None) -> dict:
@@ -323,6 +410,19 @@ def main() -> None:
     ap.add_argument("--shuffle-control", action="store_true",
                     help="add the permuted-covariate arm (must land at recal)")
     ap.add_argument("--shuffle-seed", type=int, default=0)
+    g2 = ap.add_argument_group(
+        "stage 2: the HSGP surface",
+        "Replace the six hand-chosen aggregates with a nonparametric contact-"
+        "quality surface over (EV, LA), refitted at every fold. Needs pymc.")
+    g2.add_argument("--hsgp", action="store_true")
+    g2.add_argument("--hsgp-draws", type=int, default=500)
+    g2.add_argument("--hsgp-tune", type=int, default=500)
+    g2.add_argument("--hsgp-chains", type=int, default=4)
+    g2.add_argument("--hsgp-m", type=int, nargs=2, default=[12, 12])
+    g2.add_argument("--hsgp-c", type=float, default=1.5)
+    g2.add_argument("--hsgp-sampler", default="numpyro")
+    g2.add_argument("--hsgp-cache", type=Path, default=None,
+                    help="directory to cache fitted surfaces in")
     args = ap.parse_args()
 
     cfg = SIDE_CONFIG[args.side]
@@ -360,7 +460,15 @@ def main() -> None:
 
     z = attach_z(cells, monthly, weights, ballast)
     shuffled = shuffle_z(z, args.shuffle_seed) if args.shuffle_control else None
-    results = walk_forward(z, components, score_seasons, shuffled=shuffled)
+    hsgp, surface_fits = None, []
+    if args.hsgp:
+        hsgp, surface_fits = build_hsgp(
+            z, args.side, args.pa_dir, score_seasons, weights, ballast,
+            cache=args.hsgp_cache, m=tuple(args.hsgp_m), c=args.hsgp_c,
+            draws=args.hsgp_draws, tune=args.hsgp_tune,
+            chains=args.hsgp_chains, sampler=args.hsgp_sampler)
+    results = walk_forward(z, components, score_seasons, shuffled=shuffled,
+                           hsgp=hsgp)
 
     print(f"\n=== {args.side}: holdout seasons {score_seasons}, "
           f"cutoffs {CUTOFF_MONTHS} ===")
@@ -374,10 +482,20 @@ def main() -> None:
     for component in components:
         m = results["component"] == component
         arms = [("contact", "marcel_tuned"), ("contact_recal", "marcel_tuned"),
-                ("contact", "contact_recal")]
+                ("contact", "contact_recal"),
+                ("contact_additive", "marcel_tuned")]
         if args.shuffle_control:
             arms += [("contact_shuffled", "marcel_tuned"),
                      ("contact_shuffled", "contact_recal")]
+        if args.hsgp:
+            # The stage-2 question is not "does the surface beat the
+            # baseline" — it is "does the surface beat the six hand-chosen
+            # aggregates it was built to replace".
+            arms += [("contact_hsgp", "marcel_tuned"),
+                     ("contact_hsgp", "contact_recal"),
+                     ("contact_hsgp", "contact"),
+                     ("contact_both", "marcel_tuned"),
+                     ("contact_both", "contact")]
         for arm, base in arms:
             prows.append({"component": component, "arm": arm, "base": base,
                           "scope": "all", **paired(results, arm, base, m)})
@@ -452,6 +570,7 @@ def main() -> None:
             "grid": (json.loads(grid.assign(weights=grid["weights"].astype(str))
                                 .to_json(orient="records")) if grid is not None
                      else []),
+            "surface_fits": surface_fits,
         }
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
