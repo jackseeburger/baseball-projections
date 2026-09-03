@@ -50,7 +50,10 @@ from src.sim import game_model as gm
 from src.sim.bracket import DEFAULT_ROTATION_SIZE, PlayoffFormat, format_for_season
 from src.sim.odds import run_playoff_odds
 from src.sim.season import SeasonState
-from src.sim.strength import estimate_hfa, regressed_strength
+from src.sim.strength import (
+    StrengthDistribution, estimate_hfa, regressed_strength,
+    strength_distribution,
+)
 
 REGULAR_SEASON = "R"
 # Wild card, division series, league championship, World Series.
@@ -472,7 +475,26 @@ def _projection_frame(split: TeamSplit, odds: pd.DataFrame,
     return out
 
 
-def project(split: TeamSplit, strength: pd.Series, arm: str, *,
+def with_uncertainty(split: TeamSplit, strength: pd.Series, *,
+                     scale: float = 1.0,
+                     sampling: str = "posterior",
+                     regress_games: float = DEFAULT_REGRESS_GAMES,
+                     ) -> StrengthDistribution:
+    """Wrap a served strength vector in the width its own ballast implies.
+
+    Built from `split.played` — the games strictly before the cutoff, the same
+    frame `split.standings` is summed from — so a club's width at an as-of date
+    reads exactly the games its point estimate read. `assert_team_split_clean`
+    already guarantees that frame ends before the cutoff, which is what makes
+    the uncertainty arm walk-forward for free rather than needing its own
+    guard.
+    """
+    return strength_distribution(strength, split.played, split.standings,
+                                 regress_games=regress_games, scale=scale,
+                                 sampling=sampling)
+
+
+def project(split: TeamSplit, strength, arm: str, *,
             n_sims: int = 5_000, seed: int = 0,
             p_home_overrides: dict[int, float] | None = None,
             rotations=None) -> pd.DataFrame:
@@ -486,6 +508,31 @@ def project(split: TeamSplit, strength: pd.Series, arm: str, *,
                             seed=seed, p_home_overrides=p_home_overrides,
                             rotations=rotations, fmt=split.fmt)
     return _projection_frame(split, odds, arm)
+
+
+def chain_strength(split: TeamSplit, inputs: gm.ChainInputs,
+                   probables: pd.DataFrame, schedule: pd.DataFrame, *,
+                   window_days: int = STARTER_WINDOW_DAYS,
+                   rotation_size: int = DEFAULT_ROTATION_SIZE,
+                   regress_games: float = DEFAULT_REGRESS_GAMES,
+                   ) -> tuple[dict[int, float], object, pd.Series, dict]:
+    """The chain's own `(overrides, rotations, strength, diagnostics)`.
+
+    Split out of `project_chain` so a single build of the chain can feed
+    several arms — the point-estimate one and every width of the
+    parameter-uncertainty one — at one cutoff. Rebuilding it per arm would
+    cost the expensive half of the harness again and, worse, would leave the
+    arms comparable only up to whatever the rebuild happened to reproduce.
+    """
+    from scripts import run_playoff_odds as rp   # noqa: PLC0415 — see below
+
+    as_of = date_cls.fromisoformat(split.as_of)
+    data = {"probables": probables, "inputs": inputs,
+            "cards": {}, "card_history": {}}
+    return rp.chain_terms(
+        split.season, split.state, split.standings, schedule, split.hfa,
+        regress_games, as_of, window_days=window_days,
+        rotation_size=rotation_size, use_lineups=False, data=data)
 
 
 def project_chain(split: TeamSplit, inputs: gm.ChainInputs,
@@ -510,15 +557,9 @@ def project_chain(split: TeamSplit, inputs: gm.ChainInputs,
     cards of games that had not been played would be leakage of a different
     kind, since lineups go up two to four hours before first pitch.
     """
-    from scripts import run_playoff_odds as rp   # noqa: PLC0415 — see docstring
-
-    as_of = date_cls.fromisoformat(split.as_of)
-    data = {"probables": probables, "inputs": inputs,
-            "cards": {}, "card_history": {}}
-    overrides, rotations, strength, diag = rp.chain_terms(
-        split.season, split.state, split.standings, schedule, split.hfa,
-        regress_games, as_of, window_days=window_days,
-        rotation_size=rotation_size, use_lineups=False, data=data)
+    overrides, rotations, strength, diag = chain_strength(
+        split, inputs, probables, schedule, window_days=window_days,
+        rotation_size=rotation_size, regress_games=regress_games)
     frame = project(split, strength, "chain", n_sims=n_sims, seed=seed,
                     p_home_overrides=overrides or None,
                     rotations=rotations if rotations.by_team else None)
@@ -610,7 +651,8 @@ __all__ = [
     "TeamSplit", "split_season_at", "standings_from_games",
     "regular_season_games", "weekly_cutoffs", "assert_team_split_clean",
     "chain_inputs_before", "probables_to_window", "strength_even",
-    "strength_own_rate", "strength_preseason", "project", "project_chain",
+    "strength_own_rate", "strength_preseason", "with_uncertainty",
+    "chain_strength", "project", "project_chain",
     "final_records", "postseason_outcomes", "season_outcomes",
     "PROB_COLUMNS", "OUTCOME_OF", "STARTER_WINDOW_DAYS",
 ]

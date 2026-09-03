@@ -351,6 +351,66 @@ class TestExtremePostCutoff:
         assert (merged["final_wins_c"] != merged["final_wins_w"]).any()
 
 
+class TestUncertaintyArmLeakage:
+    """The parameter-uncertainty arm reads the same games and no others.
+
+    The width is built from `split.played`, so a leak would show up as a
+    *width* that knows the future rather than as a mean that does — a quieter
+    failure than the point arm's, and one that would look like a well-tuned
+    prior. These tests attack it the same way `TestExtremePostCutoff` attacks
+    the mean: mirror the rest of the season and assert nothing moves.
+    """
+
+    @staticmethod
+    def _dist(mirror: bool, scale: float = 1.0, sampling: str = "posterior"):
+        teams = teams_frame()
+        sched = schedule_frame(mirror_after=CUTOFF if mirror else None)
+        split = ts.split_season_at(sched, teams, CUTOFF, SEASON)
+        ts.assert_team_split_clean(split)
+        return split, ts.with_uncertainty(split, ts.strength_even(split),
+                                          scale=scale, sampling=sampling)
+
+    def test_the_width_is_identical_when_the_rest_is_extreme(self):
+        _, calm = self._dist(False)
+        _, wild = self._dist(True)
+        np.testing.assert_array_equal(calm.sampling.cov, wild.sampling.cov)
+        np.testing.assert_array_equal(calm.sampling.games, wild.sampling.games)
+        np.testing.assert_array_equal(calm.sampling.rs_pg, wild.sampling.rs_pg)
+
+    def test_the_whole_projection_is_identical_when_the_rest_is_extreme(self):
+        out = []
+        for mirror in (False, True):
+            split, dist = self._dist(mirror)
+            out.append(ts.project(split, dist, "chain_pu", n_sims=80, seed=3))
+        pd.testing.assert_frame_equal(out[0], out[1])
+
+    def test_the_width_reads_only_pre_cutoff_games(self):
+        """Games counted per club equal the club's pre-cutoff game count."""
+        split, dist = self._dist(False)
+        played = split.played
+        for i, t in enumerate(dist.sampling.team_ids):
+            n = int(((played["home_id"] == t) | (played["away_id"] == t)).sum())
+            assert dist.sampling.games[i] == n
+        assert int(dist.sampling.games.sum()) == 2 * split.games_played
+
+    def test_zero_width_reproduces_the_point_arm_exactly(self):
+        split, _ = self._dist(False)
+        point = ts.strength_even(split)
+        a = ts.project(split, point, "x", n_sims=80, seed=3)
+        b = ts.project(split, ts.with_uncertainty(split, point, scale=0.0),
+                       "x", n_sims=80, seed=3)
+        pd.testing.assert_frame_equal(a, b)
+
+    def test_a_nonzero_width_actually_changes_the_board(self):
+        """The control on the control: scale 0 vs 1 is not a no-op."""
+        split, _ = self._dist(False)
+        point = ts.strength_even(split)
+        a = ts.project(split, point, "x", n_sims=400, seed=3)
+        b = ts.project(split, ts.with_uncertainty(split, point, scale=3.0),
+                       "x", n_sims=400, seed=3)
+        assert not np.allclose(a["proj_final_wins"], b["proj_final_wins"])
+
+
 class TestBaselineArms:
     def test_even_strength_is_a_coin_flip(self, schedule, teams):
         split = ts.split_season_at(schedule, teams, CUTOFF, SEASON)

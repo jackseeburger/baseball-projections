@@ -5,7 +5,9 @@ import numpy as np
 import pandas as pd
 
 from src.sim.bracket import MODERN, PlayoffFormat, Rotations, play_postseason
-from src.sim.season import SeasonState, simulate_remaining, tally
+from src.sim.season import (
+    SeasonState, resolve_strength, simulate_remaining, tally,
+)
 from src.sim.standings import TiebreakContext, seed_league
 from src.sim.teams import AL, NL
 
@@ -13,7 +15,7 @@ PERCENTILES = (5, 25, 50, 75, 95)
 
 
 def run_playoff_odds(
-    state: SeasonState, strength: pd.Series, hfa: float,
+    state: SeasonState, strength, hfa: float,
     n_sims: int = 20_000, seed: int = 0,
     p_home_overrides: dict[int, float] | None = None,
     rotations: Rotations | None = None,
@@ -29,13 +31,22 @@ def run_playoff_odds(
 
     `fmt` is the postseason field (`bracket.PlayoffFormat`); the default is the
     six-club-per-league bracket in force since 2022, which is the live board.
-    The walk-forward team backtest passes the season's own format."""
+    The walk-forward team backtest passes the season's own format.
+
+    `strength` is either a point estimate (`pd.Series`, the original path) or a
+    `strength.StrengthDistribution`. In the second case each simulated season
+    is drawn with **one** strength vector that prices both its remaining
+    schedule and its bracket, so a club that is strong in a simulated season is
+    strong in that season's October too — the correlation is the whole point,
+    and drawing the two independently would wash it out."""
     rng = np.random.default_rng(seed)
-    home_wins = simulate_remaining(state, strength, hfa, n_sims, rng,
-                                   p_home_overrides=p_home_overrides)
+    point, draws = resolve_strength(strength, state.team_ids, n_sims, rng)
+    home_wins = simulate_remaining(state, point, hfa, n_sims, rng,
+                                   p_home_overrides=p_home_overrides,
+                                   strength_draws=draws)
     records = tally(state, home_wins)
     ctx = TiebreakContext.build(state, records, home_wins, rng)
-    strength_arr = strength.reindex(state.team_ids).to_numpy()
+    strength_arr = point.to_numpy(dtype=float)
 
     n = len(state.team_ids)
     counts = {k: np.zeros(n) for k in
@@ -54,7 +65,9 @@ def run_playoff_odds(
                 counts["playoffs"][t] += 1
         post = play_postseason(
             {lg: sd.seeds for lg, sd in seeds.items()},
-            records.wins[s], strength_arr, hfa, rng, rotations, fmt,
+            records.wins[s],
+            strength_arr if draws is None else draws[s],
+            hfa, rng, rotations, fmt,
         )
         for t in post.pennant.values():
             counts["pennant"][t] += 1

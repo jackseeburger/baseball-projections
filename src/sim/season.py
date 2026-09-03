@@ -5,6 +5,15 @@ results) and remaining games. `simulate_remaining` draws every remaining
 game for every simulation at once; per-sim win totals, intradivision
 records, and intraleague-last-half records (the tiebreaker inputs) are then
 matrix products of that draw with one-hot team indicators.
+
+`simulate_remaining` takes either a **point estimate** of team strength (one
+number per club, the original path) or a **distribution** over it
+(`strength.StrengthDistribution`), in which case every simulated season is
+drawn with its own strength vector and parameter uncertainty composes with
+game-outcome noise instead of being asserted away. The two paths are the same
+code when the distribution has zero width, down to the bit — `resolve_strength`
+returns no draws at all in that case and takes nothing from `rng`, so the game
+stream is untouched.
 """
 from __future__ import annotations
 
@@ -13,7 +22,15 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
-from src.sim.strength import home_win_prob
+from src.sim.strength import (
+    StrengthDistribution, expit, logit, home_win_prob,
+)
+
+# Simulated seasons priced at once when strength varies per sim. The per-game
+# probability matrix is (n_sims, n_remaining) and April has ~2,300 remaining
+# games, so a 20,000-sim board would allocate several hundred megabytes in one
+# go; chunking bounds it without changing a single drawn number.
+SIM_CHUNK = 1024
 
 
 @dataclass
@@ -59,10 +76,66 @@ def from_schedule(schedule: pd.DataFrame, teams: pd.DataFrame) -> SeasonState:
     )
 
 
+def strength_point(strength) -> pd.Series:
+    """The point estimate behind either kind of strength argument."""
+    return (strength.point if isinstance(strength, StrengthDistribution)
+            else strength)
+
+
+def resolve_strength(strength, team_ids, n_sims: int,
+                     rng: np.random.Generator) -> tuple[pd.Series, np.ndarray | None]:
+    """`(point estimate, per-sim draws or None)`, aligned to `team_ids`.
+
+    A plain `pd.Series` is a point estimate and yields no draws. A
+    `StrengthDistribution` yields an `(n_sims, n_teams)` matrix — except when
+    its width is zero, where it yields `None` and the caller runs the original
+    path, which is what makes the degenerate case *identical* rather than
+    merely equivalent.
+
+    The draws come from a **spawned** generator, not from `rng` itself.
+    `Generator.spawn` derives an independent stream from the parent's seed
+    sequence without consuming any of the parent's bits, so adding parameter
+    uncertainty does not shift the game-outcome draws that follow it: the two
+    sources of noise are independent by construction rather than interleaved,
+    and a zero-width run reproduces the point-estimate board exactly.
+    """
+    point = strength_point(strength).reindex(
+        pd.Index([int(t) for t in team_ids]))
+    if not isinstance(strength, StrengthDistribution) or not strength.scale:
+        return point, None
+    draws = strength.draw(int(n_sims), rng.spawn(1)[0])
+    where = {int(t): i for i, t in enumerate(strength.point.index)}
+    order = np.asarray([where[int(t)] for t in team_ids], dtype=int)
+    return point, draws[:, order]
+
+
+def _p_home_point(state: SeasonState, strength: pd.Series,
+                  hfa: float) -> np.ndarray:
+    return home_win_prob(
+        strength.reindex(state.remaining["home_id"]).to_numpy(),
+        strength.reindex(state.remaining["away_id"]).to_numpy(),
+        hfa=hfa,
+    )
+
+
+def _override_positions(state: SeasonState,
+                        p_home_overrides: dict[int, float]) -> tuple[np.ndarray, np.ndarray]:
+    if "game_pk" not in state.remaining.columns:
+        raise KeyError("p_home_overrides needs a game_pk column on state.remaining")
+    pos = {int(pk): i for i, pk in enumerate(state.remaining["game_pk"])}
+    idx, vals = [], []
+    for game_pk, p in p_home_overrides.items():
+        i = pos.get(int(game_pk))
+        if i is not None:
+            idx.append(i); vals.append(float(p))
+    return np.asarray(idx, dtype=int), np.asarray(vals, dtype=float)
+
+
 def simulate_remaining(
-    state: SeasonState, strength: pd.Series, hfa: float,
+    state: SeasonState, strength, hfa: float,
     n_sims: int, rng: np.random.Generator,
     p_home_overrides: dict[int, float] | None = None,
+    strength_draws: np.ndarray | None = None,
 ) -> np.ndarray:
     """Boolean (n_sims, n_remaining): True where the home team wins.
 
@@ -75,25 +148,52 @@ def simulate_remaining(
     A game_pk that is not in the remaining schedule — it finished between the
     probables fetch and now — is ignored.
 
-    The draw stays one vectorized comparison against a per-game probability
-    vector, so the same seed gives the same outcome on every game the
-    overrides do not touch.
+    `strength` is a `pd.Series` (a point estimate) or a
+    `strength.StrengthDistribution`; `strength_draws` is an already-drawn
+    `(n_sims, n_teams)` matrix aligned to `state.team_ids`, which
+    `odds.run_playoff_odds` passes so the bracket and the regular season are
+    drawn from the *same* strength vector in each simulated season rather than
+    from two independent ones.
+
+    When strength varies per sim, an **override keeps its starter information
+    and moves with the draw**: the deviation the draw puts on the game in
+    logit space is added to the override, rather than the override being held
+    at a point value that would quietly re-assert certainty on exactly the
+    games the chain knows most about.
+
+    With a point estimate the draw stays one vectorized comparison against a
+    per-game probability vector, so the same seed gives the same outcome on
+    every game the overrides do not touch.
     """
-    p_home = home_win_prob(
-        strength.reindex(state.remaining["home_id"]).to_numpy(),
-        strength.reindex(state.remaining["away_id"]).to_numpy(),
-        hfa=hfa,
-    )
-    if p_home_overrides:
-        p_home = np.array(p_home, dtype=float, copy=True)
-        if "game_pk" not in state.remaining.columns:
-            raise KeyError("p_home_overrides needs a game_pk column on state.remaining")
-        pos = {int(pk): i for i, pk in enumerate(state.remaining["game_pk"])}
-        for game_pk, p in p_home_overrides.items():
-            i = pos.get(int(game_pk))
-            if i is not None:
-                p_home[i] = float(p)
-    return rng.random((n_sims, len(state.remaining))) < p_home
+    point = strength_point(strength)
+    if strength_draws is None:
+        point, strength_draws = resolve_strength(strength, state.team_ids,
+                                                 n_sims, rng)
+    p_point = _p_home_point(state, point, hfa)
+    ov_idx, ov_val = (_override_positions(state, p_home_overrides)
+                      if p_home_overrides else (np.empty(0, int), np.empty(0)))
+
+    if strength_draws is None:
+        p_home = np.array(p_point, dtype=float, copy=True)
+        if len(ov_idx):
+            p_home[ov_idx] = ov_val
+        return rng.random((n_sims, len(state.remaining))) < p_home
+
+    idx = state.index_of()
+    home_col = state.remaining["home_id"].map(idx).to_numpy()
+    away_col = state.remaining["away_id"].map(idx).to_numpy()
+    logit_point = logit(p_point)
+    logit_ov = logit(ov_val) if len(ov_idx) else ov_val
+    out = np.empty((n_sims, len(state.remaining)), dtype=bool)
+    for lo in range(0, n_sims, SIM_CHUNK):
+        hi = min(lo + SIM_CHUNK, n_sims)
+        block = strength_draws[lo:hi]
+        p = home_win_prob(block[:, home_col], block[:, away_col], hfa=hfa)
+        if len(ov_idx):
+            shift = logit(p[:, ov_idx]) - logit_point[ov_idx]
+            p[:, ov_idx] = expit(logit_ov + shift)
+        out[lo:hi] = rng.random((hi - lo, len(state.remaining))) < p
+    return out
 
 
 def _one_hot(ids: pd.Series, index: dict[int, int], n_teams: int, mask=None) -> np.ndarray:
