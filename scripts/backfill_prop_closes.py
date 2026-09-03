@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -67,6 +68,12 @@ class Checkpoint:
         self.done_path = self.dir / "done.txt"
         self.rows: list[dict] = []          # every close row, this run and prior
         self.part = 0
+        # Part files are named for the run as well as the batch. Two runs
+        # sharing a checkpoint directory — easy to start by accident, and it
+        # happened — would otherwise write `closes_00001.parquet` over each
+        # other while both appended to done.txt, leaving tickers marked done
+        # whose rows no longer exist anywhere.
+        self.run = f"{os.getpid():06d}"
         self._rows: list[dict] = []         # since the last flush
         self._candles: list[dict] = []
         self._tickers: list[str] = []
@@ -80,7 +87,6 @@ class Checkpoint:
     def resume(self) -> None:
         """Load the closes a previous run checkpointed."""
         parts = sorted(self.dir.glob("closes_*.parquet"))
-        self.part = len(parts)
         frames = [pd.read_parquet(p) for p in parts]
         frames = [f for f in frames if len(f)]
         self.rows = pd.concat(frames, ignore_index=True).to_dict("records") \
@@ -98,7 +104,7 @@ class Checkpoint:
         if not self._tickers:
             return
         self.part += 1
-        tag = f"{self.part:05d}"
+        tag = f"{self.run}_{self.part:05d}"
         pd.DataFrame(self._rows, columns=None if self._rows else ["market_id"]) \
             .to_parquet(self.dir / f"closes_{tag}.parquet", index=False)
         pd.DataFrame(self._candles, columns=backfill.CANDLE_COLUMNS) \
@@ -168,7 +174,12 @@ def main() -> None:
     if done:
         logger.info("%d markets already fetched (%d closes); resuming",
                     len(done), len(ckpt.rows))
-    todo = [m for m in markets if m["ticker"] not in done]
+    # Newest first. The archive is one candlestick request per contract and a
+    # season is hours of them, so a run that has to be stopped early should
+    # leave a *complete recent window* rather than a complete June and nothing
+    # since. Resuming is by ticker and does not care about the order.
+    todo = sorted((m for m in markets if m["ticker"] not in done),
+                  key=lambda m: str(m.get("close_time") or ""), reverse=True)
 
     backfill.kalshi_prop_closes(args.season, markets=todo, workers=args.workers,
                                 candle_hours=args.candle_hours,
