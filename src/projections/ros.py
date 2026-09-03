@@ -327,8 +327,11 @@ def build_ros_projections(
             (`src/data/pa_outcomes.load_pa_outcomes`).
         playing_time: station B's output — batter, team_id,
             projected_pa_ros. Only hitters with `projected_pa_ros > 0` are
-            projected; a hitter on the IL projects to zero PA and has no
-            rest-of-season line to show.
+            projected. Under the production method that now means almost
+            everyone on a 40-man: an injured or optioned hitter carries the
+            share he would take healthy times the fraction of the horizon he
+            is expected back for, so he gets a small line rather than none.
+            A zero is left only where the model has nothing to say about him.
         bayes_frames: component → preseason Bayesian projection frame, for the
             comparison column. Optional.
         names: batter → display name.

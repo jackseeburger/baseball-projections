@@ -16,6 +16,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -126,6 +127,57 @@ def test_the_method_says_what_the_model_is(doc):
     assert "plate appearances" in doc["method"]
 
 
+def test_the_document_names_the_playing_time_method(doc):
+    """Two models fill this file — a rate engine and a playing-time method —
+    and `pa_ros` moved by more than the rates ever have when station B last
+    changed. A snapshot that names only the engine cannot be told apart from
+    one built with a different multiplier."""
+    from src.projections.playing_time import PRODUCTION_METHOD
+
+    assert doc["playing_time_method"] == PRODUCTION_METHOD
+    assert "expected return fraction" in doc["method"]
+
+
+def test_the_builder_asks_station_b_for_the_production_method(monkeypatch):
+    """The literal guard: whatever station B's gate last put into production is
+    what the site serves, without this file being edited again."""
+    import build_playing_time as bpt
+
+    import src.data.mlb_stats_api as api
+    import src.projections.playing_time as pt
+
+    roster = pd.DataFrame({"batter": [1], "team_id": [100], "status_code": ["A"]})
+    fractions = pd.DataFrame({"batter": [1], "elapsed_days": [3],
+                              "active_fraction": [0.5]})
+    monkeypatch.setattr(bpt, "load", lambda cutoffs, **kw: (
+        {cutoffs[0]: roster}, pd.DataFrame(), pd.DataFrame(), pd.DataFrame()))
+    monkeypatch.setattr(api, "fetch_schedule", lambda *a, **kw: pd.DataFrame())
+    monkeypatch.setattr(bpt, "games_remaining", lambda *a, **kw: pd.DataFrame(
+        {"team_id": [100], "games_remaining": [20]}))
+    monkeypatch.setattr(bpt, "production_fractions", lambda *a, **kw: fractions)
+
+    seen = {}
+
+    def spy(*args, **kwargs):
+        seen.update(kwargs)
+        return pd.DataFrame()
+
+    monkeypatch.setattr(pt, "project_playing_time", spy)
+    build.build_playing_time("2026-09-02")
+    assert seen["method"] == pt.PRODUCTION_METHOD
+    assert seen["active_fractions"] is fractions
+
+
+def test_the_builder_hard_codes_no_playing_time_method():
+    """The same guard from the other side, because a literal would still pass
+    the test above if someone changed both."""
+    source = (ROOT / "scripts/build_ros_projections.py").read_text()
+    assert "method=PRODUCTION_METHOD" in source
+    assert not re.search(r"""method\s*=\s*[\"']""", source), (
+        "station B's method belongs to playing_time.PRODUCTION_METHOD, not to "
+        "a string literal in the site builder")
+
+
 def test_the_committed_projection_was_built_by_the_live_engine():
     """The file the site loads, not a synthetic one."""
     from src.projections.ros import LIVE_ENGINE
@@ -136,6 +188,18 @@ def test_the_committed_projection_was_built_by_the_live_engine():
     if doc.get("stale"):
         pytest.skip("carried-over projection; its engine is whatever built it")
     assert doc.get("engine") == LIVE_ENGINE
+
+
+def test_the_committed_projection_names_the_playing_time_method():
+    """The file the site loads has to say which station B filled its PA."""
+    from src.projections.playing_time import PRODUCTION_METHOD
+
+    if not LATEST.exists():
+        pytest.skip("public/data/projections/latest.json not present")
+    doc = json.loads(LATEST.read_text())
+    if doc.get("stale"):
+        pytest.skip("carried-over projection; its method is whatever built it")
+    assert doc.get("playing_time_method") == PRODUCTION_METHOD
 
 
 def test_the_arms_are_labelled_with_the_live_one_marked(doc):

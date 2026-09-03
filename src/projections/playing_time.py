@@ -465,7 +465,11 @@ def project_playing_time(
     method
         "blend_il" or "blend" (the model, with and without expected returns
         from the injured list), "last_30" (the model's short-horizon half),
-        "season_share" or "uniform" (the baselines).
+        "season_share" or "uniform" (the baselines). **The default is a
+        baseline, not the model** — it is what the older tests and the
+        scoring harness ask for by name. Anything building a projection for
+        production passes `PRODUCTION_METHOD` and lets the flag above decide,
+        rather than naming a method that the next gate will make stale.
     active_fractions
         For `method="blend_il"`: `batter, elapsed_days, active_fraction` for
         the hitters who are unavailable at the cutoff, from

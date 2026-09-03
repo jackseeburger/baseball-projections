@@ -103,21 +103,72 @@ Both halves are code that already existed and was already scored:
   `scripts/build_accuracy_json.py` reads it to decide which arm the accuracy
   page marks live, so the scoreboard cannot end up scoring a model the site
   does not serve.
-* **Playing time.** Station B (`src/projections/playing_time.py`): 30-day
-  PA share, IL zeroed, one-lineup-slot cap, MAE 22.1 PA at the ~26-game
-  horizon it serves ([playing-time.md](playing-time.md)).
+* **Playing time.** Station B (`src/projections/playing_time.py`): the
+  horizon blend of the 30-day and season PA shares, a one-lineup-slot cap,
+  and the injured and optioned projected at their pre-injury share times
+  their expected return fraction — MAE 20.3 PA at one month and 37.0 at two
+  ([playing-time.md](playing-time.md)). The method is named once, in
+  `playing_time.PRODUCTION_METHOD`, exactly as the engine is named once in
+  `ros.LIVE_ENGINE`; the builder asks for it rather than naming a method, so
+  whatever station B's gate last put into production is what the site
+  serves, and stamps it into the document as `playing_time_method`.
 
 **The cutoff is exclusive.** A game played *on* the as-of date has not
 finished when the morning's projection is made, so the partial season runs
 through `as_of − 1 day` — the same convention station B uses, and the same
 one the harness enforces with `assert_split_clean`.
 
-**Who gets a projection.** Every hitter with `projected_pa_ros > 0`: 420 of
-the 602 hitters on a 40-man roster at 2026-09-02. The rest are on the IL,
-optioned, or otherwise unavailable and have no rest-of-season line at all.
+**Who gets a projection.** Every hitter with `projected_pa_ros > 0`: 599 of
+the 602 hitters on a 40-man roster at 2026-09-03. That used to be 420 — only
+the active ones — and the difference is station B's expected returns: a
+hitter on the injured list or optioned to the minors now carries the share he
+would take healthy, discounted by how much of the horizon he is expected to
+miss, so he gets a small line instead of none. 109 of the 599 are under five
+plate appearances and 243 are over fifty; the page's leaderboard defaults to
+a 50-PA floor and the player card picks its default hitter the same way, so
+a man projected for two plate appearances does not head the table.
 A hitter with projected PA and no professional record gets the league rate,
 which is what Marcel with zero trials *is*; his preseason-Marcel comparison
 column stays empty, because there is no completed season to withhold.
+
+## What station B's switch changed (Sept 3, 2026)
+
+The site had been multiplying tuned Marcel by station B's *previous* method —
+the trailing-30-day share with a hard injured-list zero — for a week after
+station B replaced it. Rebuilt on the same as-of date so nothing but the
+playing time moves (2026-09-02, tuned Marcel both sides):
+
+| | before | after |
+|---|---|---|
+| hitters in the document | 420 | 598 |
+| hitters whose `pa_ros` went 0 → positive | — | 178, 1,480 PA between them |
+| hitters dropped | — | 0 |
+| club total PA | 808 (WSH) – 918 (LAD) | **unchanged**, 808 – 918 |
+| hitters per club | 14 | 15–23 |
+| largest rate difference, 15 columns × 420 common hitters | — | **0.000** |
+
+Read the last two rows together: **the club totals do not move at all, and no
+rate moves at all.** Station B normalizes within a club, so the 1,480 plate
+appearances the injured and optioned now take are 1,480 the healthy regulars
+no longer take — Ohtani 114.8 → 113.8, Yordan Alvarez 101.3 → 97.3, Corbin
+Carroll 98.0 → 93.7, mean −3.5 PA across the 420 who were already there.
+Judge, on the 60-day list, goes from absent to 1.7. The counting stats
+(`k_ros`, `bb_ros`, `hr_ros`) move with the plate appearances because they are
+the rate times the playing time; the rates themselves are bit-identical, which
+is the check worth making — a playing-time change that moved a rate would mean
+something was wired wrong.
+
+The committed `latest.json` is a day later than that comparison (as-of
+2026-09-03, 599 hitters, club totals 769–880 over 21–23 remaining games), and
+the rates are identical there too: the local PA parquet ends 2026-09-01, so
+the extra day of cutoff adds no data to the rate side.
+
+**The accuracy page is unaffected.** Its rest-of-season section
+(`scripts/build_accuracy_json.py`, `section_ros`) scores component *rate* MAE
+from `scripts/run_intraseason_backtest.py`, on hitters with a minimum count of
+realized trials. Neither script reads playing time or reports a plate
+appearance or a counting stat, so there is nothing there to keep in step with
+the served method.
 
 ## Rates to a line
 
@@ -161,10 +212,18 @@ discipline as the playoff odds and the accuracy page. Per hitter:
     {k,bb,hr,babip,iso}_rate_{marcel,marcel_preseason,bayes},
     k_ros, bb_ros, hr_ros, woba_ros
 
-Document level: `as_of`, `through`, `n_hitters`, `engine`, `method`,
-`framing`, `stale`, `stale_reason`, the arm labels the page renders, and the
-wOBA weights, so the file says which wOBA it means rather than the page
-assuming.
+Document level: `as_of`, `through`, `n_hitters`, `engine`,
+`playing_time_method`, `method`, `framing`, `stale`, `stale_reason`, the arm
+labels the page renders, and the wOBA weights, so the file says which wOBA it
+means rather than the page assuming.
+
+**Two models fill this file, so it names both.** `engine` says which Marcel
+filled the rate columns and `playing_time_method` says which station B filled
+`pa_ros` — `"blend_il"` from Sept 3, 2026 on, and absent in the snapshots
+before it, which were built with the trailing-30-day share and a hard
+injured-list zero. Both are read from the module that owns them
+(`ros.LIVE_ENGINE`, `playing_time.PRODUCTION_METHOD`) rather than typed here,
+so the document cannot claim a model the code does not run.
 
 **The arm keys did not change with the engine.** `..._rate_marcel` is a slot
 on the page — "the live arm" — not a set of constants, so the switch to
@@ -187,7 +246,7 @@ tells them apart. From Sept 3 the two agree again.
 | `pa_outcomes_2026.parquet` and the `R2_*` credentials | The last committed file is served with `stale: true`, a reason naming the missing variables, and an orange badge on the page. |
 | MLB Stats API unreachable | Same — station B cannot be rebuilt, so the previous day's projection carries. |
 | `latest.json` absent entirely | The player and leaderboard pages render as before and say the projection has not been built in this checkout. |
-| A hitter's preseason Bayesian file has no row for him | That comparison cell is a dash. 323 of 420 hitters had one on 2026-09-02. |
+| A hitter's preseason Bayesian file has no row for him | That comparison cell is a dash. 434 of 599 hitters had one on 2026-09-03. |
 
 The nightly workflow runs the build before the accuracy page and commits
 `public/data/projections/` alongside the other snapshots.

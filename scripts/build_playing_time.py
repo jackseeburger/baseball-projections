@@ -138,6 +138,27 @@ def active_fractions(roster: pd.DataFrame, events: pd.DataFrame,
                                                 horizon_days)
 
 
+def production_fractions(roster: pd.DataFrame, cutoff: str, horizon_end: str,
+                         season: int = SEASON, refresh: bool = False):
+    """The expected-return fractions `PRODUCTION_METHOD` needs, or None.
+
+    The one place that says how the *live* projection is built, so the ROS
+    document the site serves and this script's own `--cutoff` build cannot
+    drift apart. Returns None when the flag is off, which is exactly what
+    `project_playing_time` wants in order to fall back to the hard roster
+    gate.
+    """
+    if not USE_IL_RETURNS:
+        return None
+    events = il_returns.parse_events(fetch_transactions(season, refresh=refresh))
+    fractions = active_fractions(roster, events, il_survival(season, refresh),
+                                 cutoff, horizon_end)
+    logger.info(f"expected returns: {len(fractions)} unavailable hitters dated, "
+                f"mean expected active fraction "
+                f"{fractions['active_fraction'].mean():.3f}")
+    return fractions
+
+
 def games_remaining(schedule: pd.DataFrame, cutoff: str, end: str) -> pd.DataFrame:
     """Regular-season games each club still has to play in [cutoff, end]."""
     dates = pd.to_datetime(schedule["date"]).dt.normalize()
@@ -186,14 +207,7 @@ def build(cutoff: str, refresh: bool = False) -> pd.DataFrame:
     schedule = fetch_schedule(cutoff, SEASON_END)
     remaining = games_remaining(schedule, cutoff, SEASON_END)
     roster = rosters[cutoff]
-    fractions = None
-    if USE_IL_RETURNS:
-        events = il_returns.parse_events(fetch_transactions(SEASON, refresh=refresh))
-        fractions = active_fractions(roster, events, il_survival(SEASON, refresh),
-                                     cutoff, SEASON_END)
-        logger.info(f"expected returns: {len(fractions)} unavailable hitters dated, "
-                    f"mean expected active fraction "
-                    f"{fractions['active_fraction'].mean():.3f}")
+    fractions = production_fractions(roster, cutoff, SEASON_END, refresh=refresh)
     proj = project_playing_time(roster, logs, remaining, cutoff,
                                 team_logs=team_logs, method=PRODUCTION_METHOD,
                                 active_fractions=fractions)
