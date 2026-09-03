@@ -56,7 +56,9 @@ from dataclasses import dataclass, field
 import pandas as pd
 
 from src.sim import bullpen as bp_model
+from src.sim import defence as df_model
 from src.sim import lineups as lu_model
+from src.sim import park as pk_model
 from src.sim import reliever_usage as ru_model
 from src.sim import run_environment as rn_model
 from src.sim import starters as sp_model
@@ -97,6 +99,15 @@ class ChainConfig:
     share_window: int | None = rn_model.SHARE_WINDOW_DAYS
     rotation_days: int | None = rn_model.ROTATION_WINDOW_DAYS
     rotation_top_n: int = rn_model.ROTATION_TOP_N
+    # park and defence. Both are nestings: an infinite ballast on either one
+    # returns the chain without that term, to the last bit.
+    park_ballast: float = pk_model.BALLAST_GAMES
+    def_ballast: float = df_model.BALLAST_BIP
+    def_runs_per_hit: float = df_model.RUNS_PER_BIP_HIT
+    # The ballast the top-down half is regressed with, needed here only because
+    # park neutralisation has to happen to the *totals*, before the league
+    # ballast is added (`park.neutral_run_rates`).
+    regress_games: float = 60.0
 
 
 @dataclass(frozen=True)
@@ -121,6 +132,14 @@ class ChainInputs:
     hitter_league: dict                  # lineups.league_rates on those
     hitter_counts: pd.DataFrame          # this season's games, dated
     hitter_pa: pd.DataFrame              # batter, team_id, date, pa
+    # park and defence. Both default empty, which is the chain without the term
+    # — an older caller that hands in no schedule gets exactly what it got.
+    park_games: pd.DataFrame = field(    # prior seasons' games, with the venue
+        default_factory=lambda: pd.DataFrame(columns=pk_model.GAME_COLS))
+    season_games: pd.DataFrame = field(  # this season's, dated: park exposure
+        default_factory=lambda: pd.DataFrame(columns=pk_model.GAME_COLS))
+    bip: pd.DataFrame = field(           # balls in play allowed, club and date
+        default_factory=lambda: pd.DataFrame(columns=df_model.COUNT_COLS))
 
     @property
     def pa_per_game(self) -> float:
@@ -134,7 +153,9 @@ class ChainInputs:
     @classmethod
     def from_logs(cls, season: int, pitching_logs: pd.DataFrame,
                   hitting_logs: pd.DataFrame, pitcher_prior: pd.DataFrame,
-                  hitter_prior: pd.DataFrame) -> "ChainInputs":
+                  hitter_prior: pd.DataFrame,
+                  schedule: pd.DataFrame | None = None,
+                  park_games: pd.DataFrame | None = None) -> "ChainInputs":
         """Build every frame above from the two raw game-log frames.
 
         `pitching_logs` is `mlb_stats_api.fetch_pitcher_game_logs` and
@@ -144,6 +165,12 @@ class ChainInputs:
         `build_seasons_table`). Only regular-season rows should reach here —
         a spring or postseason line is neither a rate nor a workload the
         regular season should read.
+
+        `schedule` is this season's `fetch_schedule` — where each game was
+        played, which is what park exposure and the road-game filter on the
+        defence counts read — and `park_games` is the *prior* seasons' games
+        in `park.completed_venue_games` shape. Leave either out and the chain
+        runs without that term.
         """
         p_counts = sp_model.normalize_counts(pitching_logs)
         p_counts["date"] = pitching_logs["date"].to_numpy()
@@ -153,6 +180,10 @@ class ChainInputs:
         h_prior = lu_model.normalize_counts(hitter_prior)
         pa = hitting_logs.loc[:, ["batter", "team_id", "date", "pa"]].dropna(
             subset=["team_id"])
+        season_games = pk_model.completed_venue_games(schedule)
+        home_by_game = ({int(pk): int(t) for pk, t in
+                         zip(schedule["game_pk"], schedule["home_id"])}
+                        if schedule is not None and len(schedule) else {})
         return cls(
             season=int(season),
             pitcher_prior_counts=p_prior,
@@ -166,6 +197,10 @@ class ChainInputs:
             hitter_league=lu_model.league_rates(h_prior),
             hitter_counts=h_counts,
             hitter_pa=pa,
+            park_games=(pk_model.completed_venue_games(None)
+                        if park_games is None else park_games),
+            season_games=season_games,
+            bip=df_model.bip_counts(pitching_logs, home_by_game),
         )
 
 
@@ -196,14 +231,26 @@ class Slate:
     runs_lookup: dict
     lineup_baseline: dict
     pa_per_game: float
+    # {venue_id: run multiplier} from the *prior* seasons (`src.sim.park`).
+    # Empty is the chain with no park term, and every lookup then returns 1.0.
+    park_factors: dict = field(default_factory=dict)
     config: ChainConfig = field(default_factory=ChainConfig)
     diagnostics: dict = field(default_factory=dict)
+
+    def park(self, venue_id=None) -> float:
+        """The run multiplier for one venue; 1.0 for None and for an unseen park."""
+        return pk_model.factor(venue_id, self.park_factors)
 
     def talent(self) -> pd.Series:
         """team_id → talent win% with nobody named: Pythagenpat on `team`.
 
         This is what `strength.regressed_strength` returns for the production
         model, with station C's blend in place of the raw regressed rates.
+
+        Park-neutral, deliberately: this is the club's talent, and the park is
+        a fact about a *game*. The Monte Carlo draws a game nobody has
+        announced from these numbers, which is the same thing
+        `home_win_probability` returns for that game with no venue given.
         """
         return pd.Series(
             {int(t): pythagenpat(max(float(r["rs_pg"]), MIN_R9),
@@ -271,7 +318,7 @@ def side_run_rates(slate: Slate, team_id: int, starter_id=None,
 
 def home_win_probability(slate: Slate, home_id: int, away_id: int,
                          starters=None, hfa: float = HFA_PRIOR,
-                         lineups=None) -> tuple[float, dict]:
+                         lineups=None, venue_id=None) -> tuple[float, dict]:
     """P(home wins) for one game — the number the site serves and the harness scores.
 
     `starters` is `(home starter id, away starter id)` or None when nobody has
@@ -282,14 +329,25 @@ def home_win_probability(slate: Slate, home_id: int, away_id: int,
     nobody has published yet — so this one function covers every remaining
     game of a season, not only tonight's.
 
+    `venue_id` is the ballpark. Both clubs' rates are multiplied by its run
+    factor — symmetrically, because a park is a fact about the game and not
+    about either team — which leaves each club's run *ratio* alone and moves
+    only the environment Pythagenpat converts it at. `venue_id=None` (or a
+    slate with no park factors) is the chain without the term, to the last bit,
+    and is also what the Monte Carlo draws an unannounced game with.
+
     Returns `(P(home), flags)`.
     """
-    talent, flags = {}, {"sp_no_history": 0, "lineup_slots": 0, "pen_shift": 0.0}
+    park = slate.park(venue_id)
+    talent = {}
+    flags = {"sp_no_history": 0, "lineup_slots": 0, "pen_shift": 0.0,
+             "park_factor": float(park)}
     for side, team_id, i in (("home", home_id, 0), ("away", away_id, 1)):
         sp = None if starters is None else starters[i]
         card = None if lineups is None else lineups.get(side)
         rs9, ra9, f = side_run_rates(slate, team_id, sp, card)
-        talent[side] = pythagenpat(rs9, ra9, 1.0)
+        rs9, ra9 = pk_model.apply_factor(rs9, ra9, park)
+        talent[side] = pythagenpat(max(rs9, MIN_R9), max(ra9, MIN_R9), 1.0)
         for k, v in f.items():
             flags[k] += v
     return float(home_win_prob(talent["home"], talent["away"], hfa)), flags
@@ -298,7 +356,8 @@ def home_win_probability(slate: Slate, home_id: int, away_id: int,
 def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
                 lg_rs9: float, lg_ra9: float, *,
                 cards: dict[int, list] | None = None,
-                config: ChainConfig | None = None) -> Slate:
+                config: ChainConfig | None = None,
+                totals: pd.DataFrame | None = None) -> Slate:
     """Everything the games on `as_of` need, from appearances strictly before it.
 
     `top_down` is station D's regressed runs scored / allowed per game indexed
@@ -306,6 +365,16 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
     walk-forward equivalent) and `lg_rs9` / `lg_ra9` are the league's own runs
     per game — the anchor every delta in the chain is centred on, so no term
     can move the league's run environment, only redistribute it.
+
+    `totals` is the same clubs' *unregressed* runs scored / allowed and games
+    played (`rs`, `ra`, `g`, indexed by team_id), and it is what the park term
+    needs: neutralising a club's park has to happen to the totals, before the
+    league ballast is added, or the ballast's league-average share gets divided
+    too (`park.neutral_run_rates`). Handed in, `top_down` is rebuilt from it
+    park-neutral — identically to the caller's own regression when the park
+    term is off, which is what keeps the sweep a clean nesting. Left out, the
+    park factors still price each game's venue but the top-down half keeps
+    whatever park is baked into it.
 
     `cards` is `{team_id: [[nine batter ids], ...]}`, the club's recent posted
     lineups oldest-first; only the last `config.baseline_window` are used and
@@ -319,6 +388,21 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
     cfg = config or ChainConfig()
     lg_rs9, lg_ra9 = float(lg_rs9), float(lg_ra9)
     team_ids = pd.Index([int(t) for t in top_down.index], name="team_id")
+
+    # ── the park: prior seasons' factors, this season's exposure ──
+    # The factors read no game of this season at all; the exposure reads only
+    # games strictly before `as_of`. Both cuts are the leakage guard.
+    park_factors = pk_model.run_factors(inputs.park_games,
+                                        ballast=cfg.park_ballast)
+    played = inputs.season_games
+    if len(played):
+        played = played[played["date"].astype(str) < str(as_of)]
+    exposure = pk_model.team_exposure(played, park_factors, team_ids)
+    if totals is not None:
+        tot = totals.reindex(team_ids)
+        top_down = pk_model.neutral_run_rates(
+            tot["rs"], tot["ra"], tot["g"], cfg.regress_games,
+            exposure=exposure if park_factors else None)
 
     # ── the pitcher rate table: every arm, not only the announced starters ──
     counts = pd.concat(
@@ -363,6 +447,11 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
                 for t, g in frames.items()}
     ra9 = rn_model.team_ra9(rot_ra9, pen_full, lg_ra9, team_ids=team_ids,
                             starter_ip=cfg.starter_ip)
+    # ── the defence FIP cannot see, on the runs-allowed half where the hole is
+    def_deltas, def_diag = df_model.team_defence(
+        inputs.bip, as_of, ballast=cfg.def_ballast,
+        runs_per_hit=cfg.def_runs_per_hit)
+    ra9 = df_model.apply_deltas(ra9, def_deltas)
     bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=team_ids)
     blended = rn_model.blend_run_env(bottom_up, top_down, cfg.blend_weight)
 
@@ -384,13 +473,24 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
         "ra_missing": sorted(int(t) for t in team_ids
                              if int(t) not in rot_ra9 or int(t) not in pen_full),
         "blend_weight": float(cfg.blend_weight),
+        "n_parks": len(park_factors),
+        "park_ballast": float(cfg.park_ballast),
+        "park_exposure": {int(t): float(v) for t, v in exposure.items()},
+        "park_factors": dict(park_factors),
+        "def_ballast": float(cfg.def_ballast),
+        "def_deltas": {int(t): float(v) for t, v in def_deltas.items()},
+        "def_lg_babip": float(def_diag.get("lg_babip", 0.0)),
+        "def_bip_per9": float(def_diag.get("bip_per9", 0.0)),
+        "def_babip": {int(t): float(v)
+                      for t, v in (def_diag.get("babip") or {}).items()},
     }
     return Slate(as_of=str(as_of), team=blended, sp_ra9=sp_ra9, lg_ra9=lg_ra9,
                  lg_rs9=lg_rs9, expected_ip=sp_model.expected_starter_ip(
                      inputs.start_ip, as_of, ballast=cfg.ip_ballast),
                  available_pen=available_pen, pen_baseline=pen_baseline,
                  runs_lookup=runs_lookup, lineup_baseline=baseline,
-                 pa_per_game=pa_per_game, config=cfg, diagnostics=diag)
+                 pa_per_game=pa_per_game, park_factors=park_factors,
+                 config=cfg, diagnostics=diag)
 
 
 def league_run_rates(rs_total: float, ra_total: float, games: float) -> tuple[float, float]:

@@ -49,13 +49,14 @@ PITCHING_FIELDS = {
     # available tonight. Absent or zero on a stray split, that module falls
     # back to batters faced times the league's pitches per batter faced.
     "numberOfPitches": "pitches",
-    # Hits, at-bats and sacrifice flies allowed. Not needed by station E's FIP
-    # term — FIP is deliberately blind to balls in play — but they are exactly
-    # what a BABIP-against component needs (BIP = AB - K - HR + SF,
-    # hits in play = H - HR), so the pitcher rate provider
-    # (`src/eval/pitchers.py`) can be built from the same season table station
-    # E already reads. The API has carried all three on every season split
-    # since 2015, and they are summed like every other count.
+    # Hits, at-bats and sacrifice flies allowed. Station E's FIP term does not
+    # want them — FIP is deliberately blind to balls in play — but two other
+    # consumers do: the pitcher rate provider's BABIP-against component
+    # (`src/eval/pitchers.py`) and the team-defence residual
+    # (`src/sim/defence.py`), both of which need BIP = AB - K - HR + SF and
+    # hits in play = H - HR. The API has carried all three on every season
+    # split since 2015, and they are re-parsed from the same cached responses
+    # the rest of the pitching line comes from, so adding them costs no fetch.
     "hits": "h",
     "atBats": "ab",
     "sacFlies": "sf",
@@ -215,14 +216,24 @@ def fetch_standings(season: int) -> pd.DataFrame:
 
 
 def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
-    """Games between two ISO dates, one row per game (Phase 2.1)."""
+    """Games between two ISO dates, one row per game (Phase 2.1).
+
+    `venue_id` / `venue_name` are the ballpark the game is played in, which is
+    the home club's park for all but the handful of neutral-site games a season
+    and is what `src.sim.park` keys its run multipliers on. Taken from the
+    schedule rather than from a static park table so a club that moves, a
+    London series and a temporary home all come out right.
+    """
     data = _get("schedule", sportId=1, startDate=start_date, endDate=end_date)
     rows = []
     for date in data.get("dates", []):
         for g in date.get("games", []):
+            venue = g.get("venue") or {}
             rows.append({
                 "game_pk": g["gamePk"],
                 "date": date["date"],
+                "venue_id": venue.get("id"),
+                "venue_name": venue.get("name"),
                 "game_datetime": g.get("gameDate"),
                 "status": g["status"]["abstractGameState"],
                 "game_type": g.get("gameType"),
