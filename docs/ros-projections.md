@@ -241,13 +241,15 @@ hitter half of the contract moved: `players`, `n_hitters`, `engine`, `arms`,
 `components` and the wOBA block are exactly what they were, which is why the
 page's hitter views needed no changes at all.
 
-**The two halves of a pitcher's line are held to different standards, and the
-document says which is which in a field rather than only in prose.**
+**Two models fill a pitcher's line and the document names each one in a field
+rather than only in prose. Both are now gated** — the workload half was
+stamped `structural` for its first day of life, which was an honest label for
+"nobody has scored this", and it was scored later the same day.
 
 | Half | What it is | Gated? |
 |---|---|---|
 | the **rates** | `marcel_pitcher_tuned` fed the harness's own training frame at the cutoff — K%, BB%, HR/BF, BABIP against. `pitcher_engine` names it. | **yes** — each beat league average, the previous season *and* season to date out of sample on five cells ([backtest-baselines.md](backtest-baselines.md#the-pitcher-side-of-station-a--sept-3-2026)) |
-| the **batters faced** | a projected workload. `batters_faced_method` reads `"structural"`. | **no** — there is no station B for pitchers, and this does not pretend there is |
+| the **batters faced** | a projected workload. `batters_faced_method` reads `"recent_usage"`. | **yes, since Sept 3, 2026** — MAE 45.6 batters faced against 51.1 for a season-to-date rate extrapolation, 50.4 for a trailing-30-day one, 67.6 for last season prorated and 93.3 for no model at all, on 22,807 pitcher-projections at 26 walk-forward as-of dates over 2024-2026; paired −5.6 (t −16.7), −4.9 (−12.1), −22.1 (−19.8), −47.7 (−19.9) ([pitcher-workload.md](pitcher-workload.md)) |
 
 The rates are the same estimator the hitter side runs, with pitcher constants;
 the components register into the harness under a `p_` prefix and the
@@ -269,17 +271,34 @@ The workload is arithmetic on the pitcher's own recent usage:
 
 Role is read off the workload itself, not a depth chart: a pitcher averaging
 at least 12 batters an outing is being used as a starter this month, whatever
-he was in April, and an opener is correctly a reliever. That is crude. It is a
-denominator, it is labelled as one, and the gated half does not depend on it.
-A pitcher with no 2026 appearances is not projected at all — there is no usage
-to extrapolate, and inventing one would be a depth chart rather than a
-projection.
+he was in April, and an opener is correctly a reliever. That is crude, and the
+harness tried the less crude version — role from `gamesStarted`, which gets
+the opener right, with the appearance rate blended across the horizon and
+regressed toward the league's own role averages at the cutoff. It is 0.99
+batters faced a pitcher *worse* (t +10.6). A pitcher with no 2026 appearances
+is not projected at all — there is no usage to extrapolate, and inventing one
+would be a depth chart rather than a projection.
+
+**The last term is the biggest one.** Removing station B's expected active
+fraction — i.e. not knowing who is on the injured list this morning — costs
+4.4 batters faced a pitcher (t −37.8), and 9.2 for a starter: more than the
+gap to the nearest baseline, and more than every other difference in the
+model put together. What does *not* carry over from station B is its actual
+fix. Projecting an injured pitcher at his pre-injury usage times an expected
+return fraction, which was worth −6.4 PA a hitter at a two-month horizon,
+costs +4.1 batters faced here, and costs most at exactly the long horizons
+where it paid most for hitters. A hitter comes off the list into the lineup;
+a pitcher comes off it into a rehab assignment, a pitch count, and somebody
+else's rotation slot.
 
 `fip_ros` is the same FIP arithmetic station E's starter term runs, on the
 same coefficients, re-centred so a league-average line comes back at the
 league's own runs allowed per nine. Innings come from the league's batters
-faced per inning; projecting a pitcher's own would be another ungated
-structural choice for no gain.
+faced per inning rather than from the pitcher's own, which the workload
+backtest also scores: run on outs instead of batters faced, the same ordering
+of methods holds, so the served innings are the served batters faced rescaled
+and nothing is lost by not projecting them separately
+([pitcher-workload.md §4](pitcher-workload.md#4-innings)).
 
 The pitcher block also fails on its own. If the pitcher season table or the
 Stats API roster call is missing, `pitchers` comes back empty and the hitter

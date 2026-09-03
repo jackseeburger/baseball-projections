@@ -99,6 +99,47 @@ leaves and carrying the variance.
 └──────────────────────────────────────────────────────────────────┘
 ```
 
+## 2b. Three tracks, not one — hitting, pitching, defence
+
+The diagram above reads as if layers 1–4 were a single pipeline. They are not.
+They are **three parallel tracks that converge at layer 5**, and writing them as
+one hid the fact that two of them are much emptier than the first.
+
+| | **Hitting** | **Pitching** | **Defence / catching** |
+|---|---|---|---|
+| **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8 components | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
+| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm inside noise | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
+| **L3 Playing time** | PA — **gated**, the biggest win in the repo | batters faced — **gated** (B-P) | innings by position — **does not exist** |
+| **L4 Assembly** | rates × PA → wOBA → wRC+ → oWAR | rates × BF → FIP / RA9 → pWAR | runs saved → dWAR |
+| ↓ | | | |
+| **L5** | → team runs scored | → team runs allowed | → team runs allowed |
+
+Three things fall out of laying it side by side.
+
+**Defence is nearly an empty column.** Layer 3 does not exist for it at all — we
+have no projection of who plays where, for how many innings. That is the same
+kind of gap that projected batters faced was until it was scored, and it blocks
+a defensive layer 4 entirely: runs saved per inning is useless without innings.
+
+**Pitching has no layer 1.** Every pitcher rate we project comes from box-score
+outcomes. The pitch-level data that would tell us *why* a pitcher gets those
+outcomes — and would let us separate a real change in stuff from a hot month —
+sits unused in R2. This is the largest single untouched asset in the system, and
+it feeds the term that already buys us the most per game.
+
+**The defence column is where the "no Marcel equivalent" argument bites
+hardest.** There is no simple estimator for a catcher's framing runs or a
+shortstop's range: those quantities only exist once a model has adjusted for
+everything around them. That is why the framing work is the first entry in a
+column that is otherwise blank, rather than a detour.
+
+One correction that belongs here: we tested team defence in the run environment
+and it failed. That does **not** settle this column. It was a top-down team-level
+blend that duplicated information the run-environment blend already carried — a
+different construction, against a different baseline, from a per-fielder
+hierarchical spatial model. Do not cite it as evidence that defence is worthless
+to model.
+
 ## 3. So: are all the rates moving to Bayes?
 
 **Yes.** All five components, at layer 2, replacing Marcel as the engine.

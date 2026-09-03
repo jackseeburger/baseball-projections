@@ -32,13 +32,17 @@ stamped `pitcher_engine` and `batters_faced_method`. Nothing above it moved —
 `players`, `n_hitters`, `engine`, `arms` and `components` are exactly what
 they were, because the page's hitter views were written against them.
 
-The two halves of the pitcher block are held to different standards and the
-document says which is which. The **rates** cleared the serving gate against
-league average, the previous season and season to date
-(`scripts/run_pitcher_backtest.py`). The **batters faced** did not go through
-a gate at all — there is no station B for pitchers — so
-`batters_faced_method` reads `structural` and `pitcher_method` spells out the
-arithmetic. It also fails on its own: a missing pitcher season table leaves
+Both halves of the pitcher block have been through a gate, and the document
+names each one. The **rates** cleared theirs against league average, the
+previous season and season to date (`scripts/run_pitcher_backtest.py`). The
+**batters faced** cleared theirs on Sept 3, 2026 against a season-to-date rate
+extrapolation, a trailing-30-day one, last season prorated and no model at all
+— 26 walk-forward as-of dates over 2024-2026
+(`scripts/run_pitcher_workload_backtest.py`, docs/pitcher-workload.md) — so
+`batters_faced_method` reads `recent_usage` rather than the `structural` it
+carried while it was unscored, and `pitcher_method` spells out both the
+arithmetic and the margin. It also fails on its own: a missing pitcher season
+table leaves
 `pitchers` empty and the hitter projection fresh, rather than taking the
 site's established product stale with it.
 
@@ -121,8 +125,8 @@ PITCHER_METHOD = (
     "src/eval/marcel_pitcher_params.json) trained on 2015-2025 pitcher season "
     "totals plus 2026 through the day before the as-of date. The rate columns "
     "cleared the serving gate against league average, the previous season and "
-    "season to date; the projected batters faced did not go through a gate at "
-    "all and are structural. " + pitcher_ros.BF_METHOD_NOTE)
+    "season to date; the projected batters faced cleared their own on Sept 3, "
+    "2026. " + pitcher_ros.BF_METHOD_NOTE)
 FRAMING = ("Live projection: tuned Marcel with 2026 through {through}. "
            "Preseason Bayesian shown for comparison — see Model Accuracy.")
 
@@ -214,9 +218,11 @@ def pitcher_inputs(as_of: str, refresh: bool = False) -> dict:
 
     The return-time distribution station B fits is estimated from *all*
     injured-list and option spells, not hitters' only, so reading it for
-    pitchers is the same estimate rather than a borrowed one — but nothing has
-    scored it on pitchers, which is part of why the workload half of this block
-    is labelled structural.
+    pitchers is the same estimate rather than a borrowed one. It has now been
+    scored on pitchers as well: removing it costs 4.4 batters faced a pitcher
+    over 44 walk-forward cutoffs (t -37.8 on the 2024-2026 holdout), which is
+    the largest single term in the workload projection
+    (docs/pitcher-workload.md).
     """
     import build_playing_time as bpt
     from src.data.mlb_stats_api import (

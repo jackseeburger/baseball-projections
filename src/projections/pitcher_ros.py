@@ -7,8 +7,9 @@ plate appearances. This is the same shape with the other id on the row:
         = marcel_pitcher_tuned(prior seasons + 2026 through as_of - 1 day)
           x  a projected count of batters faced
 
-and the two halves are held to very different standards, which is the point of
-this docstring.
+Both halves have now been through a gate — the rates on Sept 3, 2026 and the
+workload later the same day — which is what this docstring used to exist to
+deny.
 
 **The rates are gated.** They are `src/eval/pitchers.marcel_pitcher_tuned` with
 the constants frozen in `src/eval/marcel_pitcher_params.json`, and every
@@ -18,11 +19,18 @@ date out of sample on the 2026 cutoffs and season-level 2025 and 2026
 docs/backtest-baselines.md). A component that had not cleared would not be in
 `SERVED_COMPONENTS` and would not reach the page.
 
-**The batters faced are structural, and not gated at all.** There is no
-station B for pitchers: nobody has scored a projected-workload model here
-against a baseline, so this module does not pretend one exists. What it does
-is arithmetic on the pitcher's own recent usage, split by role, regressed, and
-labelled `structural` in the document so the page can say so:
+**The batters faced are gated too, since Sept 3, 2026.** This function used to
+be stamped `structural` because nobody had scored it against anything. Now
+somebody has: `src/projections/pitcher_workload.py` is station B's harness
+pointed at pitchers, and `projected_batters_faced` below is one of the methods
+it runs, called rather than copied so what the harness scores is what the site
+publishes. Over 26 walk-forward as-of dates in 2024-2026 — a fortnight apart
+from May to September, 22,807 pitcher-projections — it beats a season-to-date
+rate extrapolation by 5.6 batters faced a pitcher (t -16.7), the trailing-30-day
+one by 4.9 (-12.1), last season prorated by 22.1 (-19.8) and projecting nobody
+at all by 47.7 (-19.9), and nothing built to beat it did
+([docs/pitcher-workload.md](../../docs/pitcher-workload.md)). The arithmetic is
+unchanged:
 
     projected BF = games the club has left
                  x his appearance rate per club game  (30-day and season
@@ -32,11 +40,18 @@ labelled `structural` in the document so the page can say so:
                  x station B's expected active fraction, for a pitcher who is
                    hurt or optioned
 
+That last term is the largest single thing in here: dropping it costs 4.4
+batters faced a pitcher (t -37.8), and 9.2 for a starter. Knowing a pitcher is
+on the injured list this morning is worth more than every refinement tried on
+the other three terms put together — and, unlike station B's hitters, an
+injured *pitcher* is better projected near zero than at his pre-injury usage
+discounted by an expected return date, which is the one place the two stations
+disagree.
+
 Role is read off the workload itself rather than a depth chart: a pitcher
 averaging at least `STARTER_MIN_BF` batters an outing is a starter this month,
-whatever he was in April. That is deliberately crude. It is a denominator, it
-is honest about being one, and the *rate* columns — which are the gated part —
-do not depend on it.
+whatever he was in April. Reading it off `gamesStarted` instead — which gets
+the opener right — was tried in the harness and is not better.
 
 Everything is a pure function over DataFrames, so it unit-tests without a
 network; the fetch layer is `scripts/build_ros_projections.py`.
@@ -72,16 +87,19 @@ LIVE_PROVIDERS = {
     "marcel_preseason": P.marcel_pitcher_tuned_preseason,
 }
 
-# --- the batters-faced model (structural) -----------------------------------
+# --- the batters-faced model (scored Sept 3, 2026) --------------------------
 
-BF_METHOD = "structural"
+BF_METHOD = "recent_usage"
 BF_METHOD_NOTE = (
     "Projected batters faced: club games remaining x the pitcher's appearance "
     "rate per club game (trailing 30 days and season blended, regressed toward "
     "his role's rate) x his batters faced per appearance (regressed toward his "
-    "role's average) x station B's expected active fraction. Structural, not "
-    "gated: no baseline has been beaten here, and only the rate columns are "
-    "the scored model."
+    "role's average) x station B's expected active fraction. Scored "
+    "walk-forward at 26 as-of dates over 2024-2026 against a season-to-date "
+    "rate extrapolation, a trailing-30-day one, last season prorated and no "
+    "model at all, on 22,807 pitcher-projections: MAE 45.6 batters faced "
+    "against 51.1, 50.4, 67.6 and 93.3, paired -5.6 (t -16.7), -4.9 (-12.1), "
+    "-22.1 (-19.8) and -47.7 (-19.9). See docs/pitcher-workload.md."
 )
 
 # At least this many batters an outing and he is being used as a starter.
