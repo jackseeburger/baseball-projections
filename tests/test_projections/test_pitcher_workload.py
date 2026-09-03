@@ -223,6 +223,25 @@ def test_structural_is_the_served_function():
             want.loc[pitcher, "bf_ros"])
 
 
+def test_structural_on_outs_keeps_the_served_role_call():
+    """The served constants are in batters faced; outs are put on that scale.
+
+    Without the rescale a starter averaging 17 outs would fall under
+    `STARTER_MIN_BF` (12 *batters*) and be projected as a reliever, and the
+    per-appearance regression would point at 22 outs a start instead of 15.
+    The harness would then be scoring a different model and calling it the
+    served one.
+    """
+    on_bf = W.project(inputs(), "structural", unit="bf").set_index("pitcher")
+    on_outs = W.project(inputs(), "structural", unit="outs").set_index("pitcher")
+    assert list(on_outs.loc[[1, 5, 8], "role"]) == ["SP", "SP", "SP"]
+    assert list(on_outs.loc[[2, 6, 7], "role"]) == ["RP", "RP", "RP"]
+    # Every appearance in the fixture is 0.7 outs per batter faced, so the two
+    # projections differ by exactly that ratio.
+    ratio = on_outs["projected"] / on_bf["projected"].where(on_bf["projected"] > 0)
+    assert ratio.dropna().to_numpy() == pytest.approx(0.7, abs=1e-9)
+
+
 def test_the_gate_only_moves_the_unavailable():
     gated = W.project(inputs(), "structural", unit="bf").set_index("pitcher")
     ungated = W.project(inputs(), "structural_nogate", unit="bf").set_index("pitcher")

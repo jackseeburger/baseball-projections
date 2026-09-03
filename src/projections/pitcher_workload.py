@@ -42,6 +42,11 @@ scored window.
     blend_il          the station B fix, ported: an unavailable pitcher is
                       weighed as he was the day he went out, and scaled by the
                       fraction of the horizon he is expected to be back for.
+    structural_hazard the served projection times an attrition term: a
+                      constant per-club-game hazard, per role, of a currently
+                      healthy pitcher losing the rest of his season. One at a
+                      short horizon and a haircut at a long one, which is the
+                      shape the residual actually has.
     structural_cal    the served projection times one constant per role,
                       chosen on the fitting seasons to minimize MAE. The
                       cheapest possible improvement, and the one a projection
@@ -125,9 +130,21 @@ MIN_APPEARANCES_FOR_ROLE = 1
 # before 2024-2026 were scored.
 STRUCTURAL_CALIBRATION = {"SP": 0.90, "RP": 0.87}
 
+# Per-club-game hazard of a *currently healthy* pitcher losing the rest of his
+# season, per role. The served projection assumes he keeps his turn until the
+# end of the year; over a three-month horizon a fair number of pitchers do not,
+# and none of the model's terms knows it. With a constant hazard the expected
+# share of a horizon of `h` club games he is still available for is
+# `(1 - exp(-lambda h)) / (lambda h)` — one at a short horizon, a haircut at a
+# long one, which is the shape the by-horizon table in docs/pitcher-workload.md
+# actually shows. Two parameters, chosen on 2022-2023 by
+# `--calibrate-hazard` and frozen before 2024-2026 were scored.
+ATTRITION_HAZARD = {"SP": 0.0020, "RP": 0.0030}
+
 BASELINES = ("zero", "last_season", "season_rate", "recent_rate",
              "structural", "structural_nogate")
-CANDIDATES = ("blend", "blend_il", "blend_il_share", "structural_cal")
+CANDIDATES = ("blend", "blend_il", "blend_il_share", "structural_cal",
+              "structural_hazard")
 METHODS = BASELINES + CANDIDATES
 
 PRODUCTION_METHOD = "structural"
@@ -340,12 +357,15 @@ def project(inputs: CutoffInputs, method: str, unit: str = "bf",
     if method in ("season_rate", "recent_rate"):
         window = None if method == "season_rate" else RECENT_DAYS
         return _project_flat_rate(inputs, unit, window)
-    if method in ("structural", "structural_nogate", "structural_cal"):
+    if method in ("structural", "structural_nogate", "structural_cal",
+                  "structural_hazard"):
         calibration = (params.get("calibration", STRUCTURAL_CALIBRATION)
                        if method == "structural_cal" else None)
+        hazard = (params.get("hazard", ATTRITION_HAZARD)
+                  if method == "structural_hazard" else None)
         return _project_structural(inputs, unit,
                                    gate=(method != "structural_nogate"),
-                                   calibration=calibration)
+                                   calibration=calibration, hazard=hazard)
     return _project_blend(inputs, unit, method=method, **params)
 
 
@@ -399,8 +419,27 @@ def _project_flat_rate(inputs: CutoffInputs, unit: str,
     return _frame(staff, (rate.fillna(0.0) * left))
 
 
+def attrition_fraction(games_remaining, hazard: float):
+    """Expected share of `games_remaining` a healthy pitcher is still around for.
+
+    A constant per-club-game hazard `lambda` of losing the rest of the season,
+    averaged over the horizon: `(1 - exp(-lambda h)) / (lambda h)`. One when
+    the hazard is zero or the horizon is, and falling smoothly from there —
+    the smallest form that is a survival curve rather than a fudge factor.
+    """
+    h = np.asarray(games_remaining, dtype=float)
+    lam = float(hazard)
+    if lam <= 0:
+        out = np.ones_like(h)
+        return out if h.ndim else float(out)
+    x = np.clip(lam * h, 0.0, 60.0)
+    out = np.where(x > 1e-9, (1.0 - np.exp(-x)) / np.where(x > 0, x, 1.0), 1.0)
+    return out if h.ndim else float(out)
+
+
 def _project_structural(inputs: CutoffInputs, unit: str, gate: bool = True,
-                        calibration: dict | None = None) -> pd.DataFrame:
+                        calibration: dict | None = None,
+                        hazard: dict | None = None) -> pd.DataFrame:
     """The served projection, through the served function.
 
     `pitcher_ros.projected_batters_faced` is called here rather than
@@ -414,8 +453,15 @@ def _project_structural(inputs: CutoffInputs, unit: str, gate: bool = True,
     that is actually running*.
     """
     staff = _staff(inputs)
-    partial = _structural_partial(inputs, inputs.cutoff, unit, None)
-    recent = _structural_partial(inputs, inputs.cutoff, unit, RECENT_DAYS)
+    # The served function's role threshold and role priors are in *batters
+    # faced*. Running it on outs means putting outs on that scale first —
+    # divide by the league's outs per batter faced before the cutoff, project,
+    # then multiply back — so a start is still a start and the regression
+    # still points at the right average. Anything else would be scoring a
+    # different model and calling it the served one.
+    scale = _unit_scale(inputs, unit)
+    partial = _structural_partial(inputs, inputs.cutoff, unit, None, scale)
+    recent = _structural_partial(inputs, inputs.cutoff, unit, RECENT_DAYS, scale)
     played = club_games(inputs.team_games, pd.Timestamp("1900-01-01"), inputs.cutoff)
     recent_played = club_games(
         inputs.team_games, inputs.cutoff - pd.Timedelta(days=RECENT_DAYS),
@@ -435,28 +481,52 @@ def _project_structural(inputs: CutoffInputs, unit: str, gate: bool = True,
     out = staff.loc[:, ["pitcher", "team_id"]].merge(
         work.loc[:, ["pitcher", "role", "bf_ros"]], on="pitcher", how="left")
     out["role"] = out["role"].fillna("RP")
-    out["projected"] = out["bf_ros"].astype(float).fillna(0.0)
+    out["projected"] = out["bf_ros"].astype(float).fillna(0.0) * scale
     if calibration:
         out["projected"] = out["projected"] * out["role"].map(
             calibration).astype(float).fillna(1.0)
+    if hazard:
+        left = out["team_id"].map(_horizon(inputs)).astype(float).fillna(0.0)
+        lam = out["role"].map(hazard).astype(float).fillna(0.0)
+        out["projected"] = out["projected"] * [
+            attrition_fraction(h, l) for h, l in zip(left, lam)]
     return out.loc[:, PROJECTION_COLUMNS].reset_index(drop=True)
 
 
+def _unit_scale(inputs: CutoffInputs, unit: str) -> float:
+    """League `unit` per batter faced, before the cutoff. 1.0 for batters faced.
+
+    About 0.70 for outs — every plate appearance that is not a hit, a walk or
+    a hit batsman is an out somewhere. Taken from the season to date rather
+    than from a constant, so it is data the projection could have had.
+    """
+    if unit == "bf":
+        return 1.0
+    log = inputs.appearances
+    if log is None or not len(log):
+        return 3.0 / 4.3
+    past = log[_dates(log) < inputs.cutoff]
+    bf = float(past["bf"].sum()) if len(past) else 0.0
+    if bf <= 0:
+        return 3.0 / 4.3
+    return float(past[unit].sum()) / bf
+
+
 def _structural_partial(inputs: CutoffInputs, cutoff, unit: str,
-                        window_days: int | None) -> pd.DataFrame:
+                        window_days: int | None,
+                        scale: float = 1.0) -> pd.DataFrame:
     """The `pitcher, bf, games` aggregate the served function expects.
 
-    `bf` carries whichever unit is being projected, so running the harness on
-    outs runs the served arithmetic on outs. The served role threshold
-    (`STARTER_MIN_BF`, twelve batters) is in batters faced, so on outs it is
-    rescaled by the league's outs per batter faced rather than left to call
-    every pitcher a reliever.
+    `bf` carries whichever unit is being projected, divided by `scale` so it
+    sits on the batters-faced scale the served constants (`STARTER_MIN_BF`,
+    `ROLE_BF_PER_APPEARANCE`) are written in. The caller multiplies the
+    projection back.
     """
     totals = window_totals(inputs.appearances, cutoff, unit, window_days)
     if not len(totals):
         return pd.DataFrame(columns=["pitcher", "bf", "games"])
     return pd.DataFrame({"pitcher": totals["pitcher"],
-                         "bf": totals[unit].astype(float),
+                         "bf": totals[unit].astype(float) / float(scale),
                          "games": totals["appearances"].astype(float)})
 
 

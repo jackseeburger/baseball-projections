@@ -372,6 +372,49 @@ def calibrate(seasons=FIT_SEASONS, unit: str = "bf", method: str = "blend",
     return out
 
 
+def calibrate_hazard(seasons=FIT_SEASONS, unit: str = "bf",
+                     grid=np.arange(0.0, 0.0121, 0.0005)) -> dict:
+    """The per-role attrition hazard that minimizes MAE on the fitting seasons.
+
+    A flat per-role multiplier (`--calibrate`) says the served projection is
+    about a tenth too high; the by-horizon table says the excess is four
+    batters faced a pitcher in May and nothing at all in August. That is not a
+    level error, it is a survival one — the model gives a healthy pitcher his
+    turn every fifth day until October and some of them lose the season in
+    July. One hazard per role is the smallest thing with the right shape.
+
+    Two parameters, and the grid is coarse on purpose: at 0.0005 per club game
+    the finest step moves a three-month projection by about 3%, which is
+    already below the resolution the holdout can see.
+    """
+    projected, realized, roles, horizons = [], [], [], []
+    for season in seasons:
+        frames = season_frames(season)
+        for cutoff, projections, actual, universe in walk_forward(
+                frames, unit=unit, methods=("structural",)):
+            proj = projections["structural"]
+            left = W.games_remaining(frames["schedule"], cutoff,
+                                     frames["score_end"])
+            df = W._aligned(proj, actual, universe=universe)
+            horizon = (proj.drop_duplicates("pitcher").set_index("pitcher")
+                       ["team_id"].map(left))
+            projected.append(df["projected"].to_numpy(float))
+            realized.append(df["realized"].to_numpy(float))
+            roles.append(df["role"].fillna("RP").to_numpy())
+            horizons.append(df["pitcher"].map(horizon).fillna(0.0).to_numpy(float))
+    p = np.concatenate(projected)
+    y = np.concatenate(realized)
+    r = np.concatenate(roles)
+    h = np.concatenate(horizons)
+    out = {}
+    for role in ("SP", "RP"):
+        m = r == role
+        maes = [np.abs(p[m] * W.attrition_fraction(h[m], lam) - y[m]).mean()
+                for lam in grid]
+        out[role] = float(grid[int(np.argmin(maes))])
+    return out
+
+
 # --- the report ---------------------------------------------------------
 
 def _print_headline(table: pd.DataFrame, unit: str) -> None:
@@ -392,6 +435,7 @@ def main() -> None:
     ap.add_argument("--unit", choices=("bf", "outs"), default="bf")
     ap.add_argument("--sweep", action="store_true")
     ap.add_argument("--calibrate", action="store_true")
+    ap.add_argument("--calibrate-hazard", action="store_true")
     ap.add_argument("--method", default="blend",
                     help="which method --sweep and --calibrate operate on")
     ap.add_argument("--json-out", type=Path)
@@ -419,6 +463,11 @@ def main() -> None:
               f"mean excess over each cutoff's own best weight "
               f"{100 * (loss - 1):.2f}%")
         print(f"  in use: {W.BLEND_WEIGHT_SHORT} / {W.BLEND_WEIGHT_LONG}")
+        return
+
+    if args.calibrate_hazard:
+        print(f"\nPer-role attrition hazard on {FIT_SEASONS} ({args.unit}): "
+              f"{calibrate_hazard(unit=args.unit)}")
         return
 
     if args.calibrate:
