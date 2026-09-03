@@ -33,7 +33,14 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       model there is
     pythag_C_sp_bpa_ip
                     — the same, splitting the game between starter and pen at
-                      *this* starter's expected innings instead of a flat 5.5
+                      *this* starter's expected innings instead of a flat 5.5.
+                      This is the chain the live odds job serves, and both are
+                      computed by one function (src/sim/game_model.py)
+    pythag_C_sp_bpa_ip_lu
+                    — ...and the posted card on top, measured against the
+                      club's own recent cards. Identical to the row above on
+                      any game whose lineup is not posted, which is every
+                      future game the nightly prices
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
@@ -58,6 +65,7 @@ from src.data.mlb_stats_api import (
     fetch_season_pitching,
 )
 from src.sim import bullpen as bp_model
+from src.sim import game_model as gm
 from src.sim import lineups as lu_model
 from src.sim import reliever_usage as ru_model
 from src.sim import run_environment as rn_model
@@ -74,14 +82,16 @@ C_MODEL = "pythag_C"
 C_SP_MODEL = "pythag_C_sp"
 C_SP_BPA_MODEL = "pythag_C_sp_bpa"
 C_SP_BPA_IP_MODEL = "pythag_C_sp_bpa_ip"
+C_SP_BPA_IP_LU_MODEL = "pythag_C_sp_bpa_ip_lu"
 SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
 # measure it against. Both chosen walk-forward on the 2025 season and never on
 # a 2026 score; the 2025 curve is flat for any weight from 0.25 to 0.75
-# (docs/market-benchmark-2026.md).
-LU_WEIGHT = 0.5
-LU_BASELINE = "team"
+# (docs/market-benchmark-2026.md). Owned by the module the term lives in, so
+# the live odds job reads the same two numbers this harness scores.
+LU_WEIGHT = lu_model.WEIGHT
+LU_BASELINE = lu_model.BASELINE
 # Bullpen availability: what counts as a pen and what counts as used up. Both
 # chosen walk-forward on 2025 only (docs/market-benchmark-2026.md).
 BP_BASELINE = bp_model.BASELINE
@@ -564,8 +574,33 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     else:
         bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=top_down.index)
     blended = rn_model.blend_run_env(bottom_up, top_down, c_ctx["weight"])
+    # The same date's inputs in the shape the *live* job assembles them, so the
+    # best model's probability is computed by one function for both callers
+    # (src/sim/game_model.py). Everything in it was built above from games
+    # strictly before `date`; nothing new is fetched or estimated here.
+    # Only the models that price the pen need it, and only those read the
+    # slate; a caller handing in a pen-free day context gets None here and the
+    # `pythag_C` / `pythag_C_sp` columns, which do not use it.
+    slate = None
+    if "available" in bp_day:
+        slate = gm.Slate(
+            as_of=str(date), team=blended, sp_ra9=sp_day["sp_ra9"], lg_ra9=lg_ra9,
+            lg_rs9=lg_rs9, expected_ip=bp_day["sp_ip"],
+            available_pen=bp_day["available"],
+            pen_baseline=(bp_day["lg_bpa_ra9"] if c_ctx["bpa_baseline"] == "league"
+                          else {int(t): full
+                                for t, (_a, full) in bp_day["pen"].items()}),
+            runs_lookup=lu_day["runs_lookup"],
+            lineup_baseline=({} if c_ctx.get("lu_baseline") == "league"
+                             else lu_day["baseline"]),
+            pa_per_game=c_ctx["pa_per_game"],
+            config=gm.ChainConfig(starter_ip=sp_day["starter_ip"],
+                                  lineup_weight=c_ctx["lu_weight"],
+                                  blend_weight=c_ctx["weight"]))
     return {
         "team": blended,
+        "slate": slate,
+        "lineups": c_ctx.get("lineups", {}),
         "lg_ra9": lg_ra9,
         "starter_ip": sp_day["starter_ip"],
         # Diagnostics: clubs the bottom-up half could not price and that
@@ -598,7 +633,7 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
     """
     team, lg_ra9 = c_day["team"], c_day["lg_ra9"]
     sp_ids = sp_day["probables"].get(int(g.game_pk))
-    talent, talent_sp, talent_bpa, talent_ip = {}, {}, {}, {}
+    talent, talent_sp, talent_bpa = {}, {}, {}
     shift, ip_used = 0.0, 0.0
     for side, team_id, i in (("home", g.home_id, 0), ("away", g.away_id, 1)):
         rs9 = max(float(team.loc[team_id, "rs_pg"]), MIN_R9)
@@ -614,17 +649,8 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
                                            bp_day, bp_ctx, "available")
                 shift += d
                 talent_bpa[side] = pythagenpat(rs9, max(ra9_bpa, MIN_R9), 1.0)
-                # ...and the same two deltas with the game split at this
-                # starter's own expected innings instead of the flat 5.5.
-                ip = bp_day["sp_ip"].get(int(sp_ids[i]), c_day["starter_ip"])
-                ip_used += ip
-                ra9_ip = sp_model.blend_starter_team(
-                    sp_day["sp_ra9"].get(int(sp_ids[i]), lg_ra9), ra9, lg_ra9,
-                    starter_ip=ip)
-                ra9_ip, _ = pen_delta_ra9(float(ra9_ip), team_id, sp_ids[i],
-                                          bp_day, bp_ctx, "available",
-                                          relief_ip=sp_model.GAME_IP - ip)
-                talent_ip[side] = pythagenpat(rs9, max(ra9_ip, MIN_R9), 1.0)
+                ip_used += bp_day["sp_ip"].get(int(sp_ids[i]),
+                                               c_day["starter_ip"])
     p_c = float(home_win_prob(talent["home"], talent["away"], hfa))
     p_c_sp = (p_c if sp_ids is None else
               float(home_win_prob(talent_sp["home"], talent_sp["away"], hfa)))
@@ -636,9 +662,21 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
         out[C_SP_BPA_MODEL] = (p_c_sp if sp_ids is None else
                                float(home_win_prob(talent_bpa["home"],
                                                    talent_bpa["away"], hfa)))
-        out[C_SP_BPA_IP_MODEL] = (p_c_sp if sp_ids is None else
-                                  float(home_win_prob(talent_ip["home"],
-                                                      talent_ip["away"], hfa)))
+        # The last two rungs are the shared chain (src/sim/game_model.py), the
+        # same function and the same slate `scripts/run_playoff_odds.py` prices
+        # tonight's games with: `_ip` splits the game at this starter's own
+        # expected innings, and `_ip_lu` adds the posted card on top. With no
+        # card posted the two are equal to the last bit, because a club's cards
+        # are what its card is measured against — which is why the live job can
+        # serve one function for every remaining game of a season.
+        slate = c_day["slate"]
+        p_ip, _ = gm.home_win_probability(slate, g.home_id, g.away_id, sp_ids, hfa)
+        cards = (c_day.get("lineups") or {}).get(int(g.game_pk))
+        p_ip_lu, lu_flags = gm.home_win_probability(slate, g.home_id, g.away_id,
+                                                    sp_ids, hfa, lineups=cards)
+        out[C_SP_BPA_IP_MODEL] = p_c_sp if sp_ids is None else p_ip
+        out[C_SP_BPA_IP_LU_MODEL] = p_c_sp if sp_ids is None else p_ip_lu
+        out["c_lineup_slots"] = 0 if sp_ids is None else lu_flags["lineup_slots"]
         out["c_bpa_shift"] = shift
         out["c_starter_ip"] = ip_used
     return out
@@ -670,7 +708,11 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
     return {"hitter_logs": logs, "starts": bp_ctx["starts"], "weight": weight,
             "share_window": share_window, "rotation_days": rotation_days,
             "rotation_top_n": rotation_top_n, "pa_per_game": pa_per_game,
-            "control": control}
+            "control": control,
+            # Carried through so the shared per-game function reads the same
+            # lineup knobs the `_lu` ladder above it does.
+            "lu_weight": lu_ctx["weight"], "lu_baseline": lu_ctx["baseline"],
+            "lineups": lu_ctx["lineups"], "bpa_baseline": bp_ctx["bpa_baseline"]}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -921,7 +963,8 @@ def main() -> None:
     if c_ctx is not None:
         models += [C_MODEL, C_SP_MODEL]
         if bp_ctx is not None:
-            models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL]
+            models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL,
+                       C_SP_BPA_IP_LU_MODEL]
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -951,6 +994,11 @@ def main() -> None:
               f"{preds['c_starter_ip'].sum() / (2 * len(preds)):.2f} innings "
               f"against the flat {sp_model.STARTER_IP}; "
               f"ip_ballast={args.sp_ip_ballast:.0f} starts.")
+        print(f"{C_SP_BPA_IP_LU_MODEL}: "
+              f"{int((preds['c_lineup_slots'] > 0).sum())} of {len(preds)} games "
+              f"had a card posted for at least one side "
+              f"({int(preds['c_lineup_slots'].sum())} slots); on the rest it is "
+              f"{C_SP_BPA_IP_MODEL} exactly. weight={args.lu_weight}.")
     if c_ctx is not None:
         print(f"{C_SP_MODEL}: {int(preds['c_sp_fallback'].sum())} of {len(preds)} games "
               f"fell back to {C_MODEL} for a missing starter; "
@@ -1002,7 +1050,9 @@ def main() -> None:
             # The reliever-availability gate: the one new term against the best
             # model there is.
             pairs += [(C_SP_BPA_MODEL, C_SP_MODEL),
-                      (C_SP_BPA_IP_MODEL, C_SP_BPA_MODEL)]
+                      (C_SP_BPA_IP_MODEL, C_SP_BPA_MODEL),
+                      # The posted card on top of the chain the nightly serves.
+                      (C_SP_BPA_IP_LU_MODEL, C_SP_BPA_IP_MODEL)]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 

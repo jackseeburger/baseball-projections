@@ -91,6 +91,27 @@ def _get_cached(cache_key: str, path: str, refresh: bool = False,
     return data
 
 
+def _fetch_many(ids, build, workers: int = 1) -> list:
+    """`build(id)` for every id, results in the order given.
+
+    One player-season game log is one request, and a caller that wants the
+    whole league wants about fifteen hundred of them: the nightly odds job
+    needs every pitcher's appearances (for the pen, the rotation and who is
+    available) and every hitter's plate appearances (for the club's shares)
+    *today*, not eventually. `workers > 1` runs them through a small thread
+    pool — the requests are independent GETs and the cache writes go to
+    distinct files — which is the difference between an eleven-minute fetch
+    and an eighty-second one. The order of the returned list never depends on
+    it, so the frame this builds is byte-identical either way.
+    """
+    ids = list(ids)
+    if workers and int(workers) > 1 and len(ids) > 1:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=int(workers)) as pool:
+            return list(pool.map(build, ids))
+    return [build(i) for i in ids]
+
+
 def _ip_to_outs(innings) -> float:
     """Stats API innings-pitched strings ("5.2" = 5 innings + 2 outs) → outs."""
     if innings is None:
@@ -286,7 +307,8 @@ def fetch_season_pitching(season: int, page_size: int = 1000,
 
 
 def fetch_pitcher_game_logs(pitcher_ids, season: int,
-                            refresh: bool = False) -> pd.DataFrame:
+                            refresh: bool = False,
+                            workers: int = 1) -> pd.DataFrame:
     """Per-appearance pitching lines for `pitcher_ids` in `season`.
 
     Columns: pitcher, season, date, game_pk, game_type, team, bf, k, bb, hbp,
@@ -298,13 +320,17 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
     model needs (a reliever traded in July belongs to one pen before the
     deadline and another after it, and only the appearances themselves say
     when the line moved).
+
+    `workers` fetches that many logs at a time (see `_fetch_many`); the frame
+    is assembled in pitcher-id order either way.
     """
     rows = []
-    for pid in sorted({int(p) for p in pitcher_ids}):
-        data = _get_cached(
-            f"pitching_gamelog_{season}_{pid}", f"people/{pid}/stats",
-            refresh=refresh, stats="gameLog", group="pitching", season=season,
-        )
+    ids = sorted({int(p) for p in pitcher_ids})
+    payloads = _fetch_many(ids, lambda pid: _get_cached(
+        f"pitching_gamelog_{season}_{pid}", f"people/{pid}/stats",
+        refresh=refresh, stats="gameLog", group="pitching", season=season,
+    ), workers=workers)
+    for pid, data in zip(ids, payloads):
         stats = data.get("stats", [])
         for s in (stats[0].get("splits", []) if stats else []):
             row = {"pitcher": pid, "season": season, "date": s.get("date"),
@@ -460,7 +486,8 @@ def fetch_team_hitting_game_logs(team_ids, season: int,
 
 
 def fetch_hitter_game_logs(player_ids, season: int,
-                           refresh: bool = False) -> pd.DataFrame:
+                           refresh: bool = False,
+                           workers: int = 1) -> pd.DataFrame:
     """Per-game hitting lines for `player_ids` in `season`.
 
     Columns: batter, season, date, game_pk, game_type, team_id, pa, ab, plus
@@ -470,14 +497,15 @@ def fetch_hitter_game_logs(player_ids, season: int,
     Cached per player-season under data/cache/statsapi/. The season is still
     in progress, so a cached log is only complete up to the day it was
     pulled; pass `refresh=True` (or `--refresh` on the build script) to
-    re-pull. Same convention as `fetch_pitcher_game_logs`.
+    re-pull. Same convention as `fetch_pitcher_game_logs`, `workers` included.
     """
     rows = []
-    for pid in sorted({int(p) for p in player_ids}):
-        data = _get_cached(
-            f"hitting_gamelog_{season}_{pid}", f"people/{pid}/stats",
-            refresh=refresh, stats="gameLog", group="hitting", season=season,
-        )
+    ids = sorted({int(p) for p in player_ids})
+    payloads = _fetch_many(ids, lambda pid: _get_cached(
+        f"hitting_gamelog_{season}_{pid}", f"people/{pid}/stats",
+        refresh=refresh, stats="gameLog", group="hitting", season=season,
+    ), workers=workers)
+    for pid, data in zip(ids, payloads):
         stats = data.get("stats", [])
         for s in (stats[0].get("splits", []) if stats else []):
             row = {"batter": pid, "season": season, "date": s.get("date"),
@@ -613,7 +641,7 @@ def posted_lineup(team_box: dict) -> list[int]:
 
 
 def fetch_lineups(game_pks, refresh: bool = False,
-                  pace: float = 0.02) -> pd.DataFrame:
+                  pace: float = 0.02, workers: int = 1) -> pd.DataFrame:
     """Posted batting order for each game, one row per lineup slot.
 
     Columns: game_pk, side ("home"/"away"), slot (1-9), batter (MLBAM id).
@@ -634,10 +662,10 @@ def fetch_lineups(game_pks, refresh: bool = False,
     Games with no posted lineup are simply absent, and the caller falls back to
     a lineup-free model.
 
-    `pace` sleeps between *uncached* requests; a season is ~1,800 of them.
+    `pace` sleeps between *uncached* requests; a season is ~1,800 of them, and
+    `workers` fetches that many at a time (`_fetch_many`).
     """
-    rows = []
-    for pk in sorted({int(p) for p in game_pks}):
+    def one(pk: int) -> dict:
         cache_file = STATSAPI_CACHE / f"lineup_{pk}.json"
         fresh = not cache_file.exists() or refresh
         try:
@@ -646,9 +674,14 @@ def fetch_lineups(game_pks, refresh: bool = False,
                                fields=_LINEUP_FIELDS)
         except requests.HTTPError as exc:      # pragma: no cover - network
             logger.warning(f"lineup {pk}: {exc}")
-            continue
+            return {}
         if fresh and pace:
             time.sleep(pace)
+        return data
+
+    rows = []
+    pks = sorted({int(p) for p in game_pks})
+    for pk, data in zip(pks, _fetch_many(pks, one, workers=workers)):
         teams = ((data.get("liveData") or {}).get("boxscore") or {}).get("teams") or {}
         for side in ("home", "away"):
             for slot, batter in enumerate(posted_lineup(teams.get(side) or {}), start=1):

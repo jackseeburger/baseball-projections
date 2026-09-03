@@ -32,7 +32,10 @@ Every material gap traces to **team strength v0 being outcome-based rather
 than roster-based**. That is the roadmap 1.5 upgrade (aggregate player
 projections → projected runs scored/allowed) and it now has a measured
 target: close the AL Central and MIL/LAD gaps without hurting the 24 teams
-that already agree. The swap point is `src/sim/strength.from_run_environment`.
+that already agree. ~~The swap point is
+`src/sim/strength.from_run_environment`.~~ **Made on Sept 3, 2026** — station
+C's blend is the strength the board is served off, and both named gaps close
+from our side; see [the last section](#sept-3-2026--the-full-chain-is-wired-and-one-function-serves-it).
 
 Secondary candidates, in order of expected payoff:
 1. ~~Starting-pitcher adjustment when probables are posted~~ — **wired in Sept 2, 2026**, see below.
@@ -288,3 +291,285 @@ is scheduled, which the code already prefers where they exist. Until then
 this is a rotation-shaped prior, and the honest claim for it is the one the
 numbers support — it is a *large* change to the postseason answer, and it is
 not yet scored against anything. `KXMLBSERIES` in October is the exam.
+
+---
+
+## Sept 3, 2026 — the full chain is wired, and one function serves it
+
+The two sections above wired the starting-pitcher term into the regular season
+and then into the bracket. Four more terms had cleared the station E gate and
+were still sitting outside production: station C's bottom-up run environment,
+the posted lineup, the pen that is actually available, and the starter's own
+expected innings. Together they are `pythag_C_sp_bpa_ip`, **Brier .24388 on
+the 756 market-priced games against the production model's .24619**
+([market-benchmark-2026.md](market-benchmark-2026.md)). The gate rule
+(architecture §3) says a model that beats its baseline out of sample runs in
+production, so it runs.
+
+Three things changed.
+
+1. **One function prices a game.** `src/sim/game_model.py` holds the whole
+   chain — `ChainInputs` (the season-long frames), `build_slate` (one date,
+   every frame cut to games strictly before it) and `home_win_probability`
+   (one game). `scripts/backtest_game_odds.py` computes its
+   `pythag_C_sp_bpa_ip` column through it and `scripts/run_playoff_odds.py`
+   prices tonight's games through it, so the number on the scoreboard and the
+   number on the site are one call, not two implementations that agree today.
+2. **Team strength is station C.** Every remaining game the simulator draws
+   without a named starter — and every postseason series game the bracket's
+   rotation deltas bend — starts from the blended run environment
+   (`src/sim/run_environment.py`, w = 0.5) instead of the standings' regressed
+   run differential.
+3. **The announced games get the whole stack.** For a remaining game with both
+   probables posted: the starter's regressed FIP over *his own* expected
+   innings, the availability-weighted pen over the rest, and the club's posted
+   card when one is up. With no card up the lineup term is exactly zero,
+   because a club's own recent cards are what its card is measured against —
+   which is why the same function covers every remaining game of the season
+   and why the horizon is a boundary in what is *known*, not in how it is
+   priced.
+
+`--legacy-chain` reproduces the previous pricing (station D strength, the
+starting-pitcher term alone) and `--no-starters` still reverts to team
+strength everywhere.
+
+Reproduce (same seed, same sims, same day → the same tables):
+
+```
+python scripts/run_playoff_odds.py --sims 20000 --dry-run --legacy-chain
+python scripts/run_playoff_odds.py --sims 20000 --dry-run
+python scripts/run_playoff_odds.py --sims 20000 --coin-flip
+```
+
+### The agreement test
+
+`tests/test_sim/test_chain_agreement.py` builds a whole synthetic season — 4
+clubs, 45 dates, every pitching appearance, every hitting line, every posted
+card — and serves it to *both* scripts through their own fetch functions. The
+backtest sees the last date as played and scores it walk-forward; the odds job
+sees the same date as scheduled and prices it from the same history, with
+standings built from exactly the games the backtest sums. The two P(home)
+values agree to **1e-12**, with and without a posted card, and a third test
+pins the property the horizon rests on: the chain asked about a game with
+nobody announced returns exactly the log5 probability the Monte Carlo draws
+that game with.
+
+On the real season the refactor is a no-op, which is the other half of the
+claim: re-running the harness after it, every model's Brier is unchanged to
+five decimals (`pythag_60` .24619, `pythag_60_sp` .24483,
+`pythag_60_sp_lu_bp` .24454, `pythag_C_sp` .24428, `pythag_C_sp_bpa` .24400,
+`pythag_C_sp_bpa_ip` .24388) and the per-game frames are **identical to the
+last bit** on all 15 columns.
+
+The card branch is scored too, as a new column: `pythag_C_sp_bpa_ip_lu` gets
+**.24382** on the 756, a paired −0.00006 against `pythag_C_sp_bpa_ip`
+(se 0.00025, t = −0.25, n = 756) — the same "inside one standard error"
+verdict every term above the starter gets. It fires on a live slate only when
+a club has already published its card, which at the nightly job's hour is no
+game at all.
+
+### What it costs
+
+The chain needs the whole population on both sides of the ball — the pen
+window, the rotation window, last night's pitch counts and each club's plate
+appearances are all questions about players nobody announced — so the nightly
+now pulls every pitcher's and every hitter's game log for the season (1,494
+player-seasons) instead of the 185 pitchers tonight's probables and the 30
+rotation pools happen to name. Eight at a time (`--chain-workers`, cached
+under `data/cache/statsapi/` as always):
+
+| | wall | CPU | fetched |
+|---|---|---|---|
+| `--legacy-chain` (the old job) | **1m 24.7s** | 23.7s | probables + 185 pitcher logs |
+| the full chain (what runs now) | **1m 33.9s** | 1m 38.5s | probables + 844 pitcher logs + 650 hitter logs + 29 live feeds |
+
+Nine seconds of wall clock, on a workflow whose only other steps are the
+projection and accuracy builds. The extra CPU is the rate tables now covering
+1,300 pitchers and 1,062 hitters rather than the handful on tonight's mound.
+
+### Before and after, every club
+
+**Run:** 2026-09-03, 2,091 games played, 340 remaining, HFA 0.5336, 20,000
+sims, seed 246 (day of year). 29 of the 340 remaining games had both probables
+posted inside the 7-day window (0 starter slots with no history); 9 of those
+29 also had a card up, because the job was run while those games were being
+played. All three columns share the seed and the state, so every difference is
+the model.
+
+| Club | Div | W-L | playoffs old | new | Δ | division old | new | Δ | pennant old | new | Δ | WS old | new | Δ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| LAD | NL West | 82-56 | 100.0 | 100.0 | -0.0 | 100.0 | 100.0 | +0.0 | 26.4 | 34.0 | +7.6 | 16.8 | 22.6 | +5.8 |
+| MIL | NL Central | 86-53 | 100.0 | 100.0 | +0.0 | 99.1 | 98.4 | -0.6 | 37.7 | 28.9 | -8.7 | 25.5 | 17.7 | -7.7 |
+| TB | AL East | 83-55 | 100.0 | 100.0 | +0.0 | 83.4 | 84.3 | +0.9 | 27.5 | 27.2 | -0.3 | 11.2 | 12.0 | +0.7 |
+| NYY | AL East | 79-60 | 100.0 | 100.0 | +0.0 | 16.3 | 15.4 | -1.0 | 24.0 | 23.8 | -0.2 | 11.2 | 11.3 | +0.1 |
+| ATL | NL East | 83-58 | 100.0 | 100.0 | +0.0 | 91.8 | 84.6 | -7.2 | 17.2 | 13.9 | -3.3 | 10.0 | 7.4 | -2.6 |
+| PHI | NL East | 79-61 | 99.2 | 99.7 | +0.4 | 8.2 | 15.4 | +7.2 | 7.9 | 12.6 | +4.6 | 4.2 | 6.9 | +2.7 |
+| BOS | AL East | 75-65 | 97.9 | 97.2 | -0.7 | 0.3 | 0.3 | +0.0 | 13.1 | 12.5 | -0.6 | 5.4 | 5.2 | -0.1 |
+| CWS | AL Central | 73-65 | 96.0 | 94.3 | -1.8 | 84.4 | 81.3 | -3.1 | 17.9 | 15.1 | -2.8 | 5.4 | 4.7 | -0.7 |
+| CHC | NL Central | 78-61 | 99.2 | 99.2 | +0.1 | 0.9 | 1.6 | +0.6 | 8.3 | 7.6 | -0.7 | 4.5 | 4.0 | -0.6 |
+| CLE | AL Central | 70-68 | 59.6 | 57.5 | -2.1 | 14.7 | 17.2 | +2.6 | 7.0 | 7.0 | +0.0 | 2.2 | 2.4 | +0.2 |
+| HOU | AL West | 70-69 | 66.3 | 67.5 | +1.2 | 63.9 | 64.8 | +0.9 | 4.5 | 6.7 | +2.2 | 1.1 | 1.9 | +0.9 |
+| TEX | AL West | 69-71 | 31.1 | 29.8 | -1.3 | 25.4 | 23.5 | -1.9 | 2.5 | 3.0 | +0.5 | 0.5 | 0.9 | +0.4 |
+| AZ | NL West | 74-67 | 49.9 | 50.6 | +0.7 | 0.0 | 0.0 | -0.0 | 1.2 | 1.5 | +0.3 | 0.5 | 0.6 | +0.1 |
+| SEA | AL West | 66-74 | 11.8 | 13.0 | +1.2 | 10.7 | 11.7 | +1.0 | 0.9 | 1.5 | +0.6 | 0.3 | 0.5 | +0.3 |
+| TOR | AL East | 68-71 | 13.6 | 15.6 | +1.9 | 0.0 | 0.0 | +0.0 | 0.7 | 1.4 | +0.6 | 0.1 | 0.5 | +0.4 |
+| SD | NL West | 73-67 | 40.4 | 39.6 | -0.8 | 0.0 | 0.0 | -0.0 | 1.0 | 1.2 | +0.2 | 0.3 | 0.5 | +0.1 |
+| BAL | AL East | 69-71 | 16.0 | 16.1 | +0.1 | 0.0 | 0.0 | +0.0 | 1.1 | 1.1 | +0.0 | 0.3 | 0.4 | +0.1 |
+| MIN | AL Central | 67-72 | 7.0 | 8.7 | +1.8 | 0.9 | 1.4 | +0.5 | 0.5 | 0.7 | +0.1 | 0.1 | 0.2 | +0.1 |
+| MIA | NL East | 70-69 | 7.9 | 7.2 | -0.7 | 0.0 | 0.0 | +0.0 | 0.2 | 0.2 | +0.0 | 0.1 | 0.1 | -0.0 |
+| PIT | NL Central | 68-71 | 1.4 | 1.9 | +0.5 | 0.0 | 0.0 | +0.0 | 0.1 | 0.1 | +0.0 | 0.0 | 0.1 | +0.0 |
+| DET | AL Central | 63-75 | 0.7 | 0.4 | -0.3 | 0.1 | 0.0 | -0.0 | 0.1 | 0.1 | -0.1 | 0.1 | 0.0 | -0.0 |
+| STL | NL Central | 69-70 | 1.9 | 1.8 | -0.1 | 0.0 | 0.0 | +0.0 | 0.1 | 0.1 | -0.0 | 0.0 | 0.0 | +0.0 |
+| WSH | NL East | 67-75 | 0.1 | 0.1 | -0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| CIN | NL Central | 67-73 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| KC | AL Central | 62-77 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | -0.0 | 0.0 | 0.0 | +0.0 |
+| NYM | NL East | 62-77 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| COL | NL West | 54-86 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| LAA | AL West | 53-86 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| SF | NL West | 58-82 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| ATH | AL West | 54-86 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+
+The same board against the control this document has scored against since the
+first run — **no strength model at all, every club a .500 coin flip**
+(`--coin-flip`):
+
+| Club | playoffs chain | coin flip | Δ | division chain | coin flip | Δ | pennant chain | coin flip | Δ | WS chain | coin flip | Δ |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| LAD | 100.0 | 100.0 | +0.0 | 100.0 | 99.6 | +0.3 | 34.0 | 19.4 | +14.6 | 22.6 | 10.0 | +12.5 |
+| MIL | 100.0 | 100.0 | +0.0 | 98.4 | 97.8 | +0.6 | 28.9 | 25.2 | +3.7 | 17.7 | 13.0 | +4.7 |
+| TB | 100.0 | 100.0 | +0.0 | 84.3 | 88.9 | -4.6 | 27.2 | 25.0 | +2.2 | 12.0 | 12.3 | -0.3 |
+| NYY | 100.0 | 100.0 | +0.0 | 15.4 | 10.7 | +4.7 | 23.8 | 14.4 | +9.4 | 11.3 | 7.0 | +4.3 |
+| ATL | 100.0 | 100.0 | +0.0 | 84.6 | 86.1 | -1.5 | 13.9 | 19.8 | -5.9 | 7.4 | 10.1 | -2.6 |
+| PHI | 99.7 | 99.4 | +0.3 | 15.4 | 13.9 | +1.5 | 12.6 | 12.4 | +0.2 | 6.9 | 6.3 | +0.6 |
+| BOS | 97.2 | 95.2 | +1.9 | 0.3 | 0.4 | -0.0 | 12.5 | 10.8 | +1.7 | 5.2 | 5.4 | -0.2 |
+| CWS | 94.3 | 92.6 | +1.7 | 81.3 | 79.9 | +1.4 | 15.1 | 19.7 | -4.6 | 4.7 | 9.5 | -4.8 |
+| CHC | 99.2 | 98.1 | +1.1 | 1.6 | 2.2 | -0.6 | 7.6 | 12.3 | -4.8 | 4.0 | 6.3 | -2.3 |
+| CLE | 57.5 | 53.7 | +3.8 | 17.2 | 18.1 | -0.9 | 7.0 | 7.9 | -0.9 | 2.4 | 3.8 | -1.4 |
+| HOU | 67.5 | 68.2 | -0.7 | 64.8 | 65.1 | -0.3 | 6.7 | 10.8 | -4.1 | 1.9 | 5.2 | -3.2 |
+| TEX | 29.8 | 36.8 | -7.0 | 23.5 | 28.7 | -5.2 | 3.0 | 5.2 | -2.2 | 0.9 | 2.7 | -1.8 |
+| AZ | 50.6 | 45.6 | +4.9 | 0.0 | 0.3 | -0.2 | 1.5 | 5.0 | -3.5 | 0.6 | 2.5 | -1.8 |
+| SEA | 13.0 | 7.1 | +5.9 | 11.7 | 6.3 | +5.4 | 1.5 | 1.0 | +0.5 | 0.5 | 0.4 | +0.1 |
+| TOR | 15.6 | 14.2 | +1.3 | 0.0 | 0.0 | +0.0 | 1.4 | 1.6 | -0.3 | 0.5 | 0.8 | -0.3 |
+| SD | 39.6 | 41.5 | -1.9 | 0.0 | 0.1 | -0.1 | 1.2 | 4.3 | -3.1 | 0.5 | 2.2 | -1.8 |
+| BAL | 16.1 | 22.4 | -6.3 | 0.0 | 0.0 | +0.0 | 1.1 | 2.4 | -1.3 | 0.4 | 1.2 | -0.8 |
+| MIN | 8.7 | 9.4 | -0.7 | 1.4 | 1.9 | -0.6 | 0.7 | 1.2 | -0.6 | 0.2 | 0.6 | -0.4 |
+| MIA | 7.2 | 11.1 | -3.9 | 0.0 | 0.0 | +0.0 | 0.2 | 1.2 | -1.0 | 0.1 | 0.6 | -0.5 |
+| PIT | 1.9 | 1.4 | +0.5 | 0.0 | 0.0 | +0.0 | 0.1 | 0.1 | -0.0 | 0.1 | 0.1 | -0.0 |
+| DET | 0.4 | 0.3 | +0.1 | 0.0 | 0.0 | +0.0 | 0.1 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| STL | 1.8 | 2.7 | -1.0 | 0.0 | 0.0 | +0.0 | 0.1 | 0.2 | -0.2 | 0.0 | 0.1 | -0.1 |
+| WSH | 0.1 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| CIN | 0.0 | 0.1 | -0.1 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | -0.0 | 0.0 | 0.0 | +0.0 |
+| KC | 0.0 | 0.1 | -0.1 | 0.0 | 0.0 | -0.0 | 0.0 | 0.0 | -0.0 | 0.0 | 0.0 | -0.0 |
+| NYM | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| COL | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| LAA | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| SF | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+| ATH | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 | 0.0 | 0.0 | +0.0 |
+
+### Where the moves come from
+
+Almost all of it is the strength swap, not the per-game terms: the chain
+reprices 29 of 340 remaining games, while station C's run environment reaches
+every one of them and every postseason series. The per-club run environment
+(top-down = the regressed season-to-date rates, bottom-up = the hitters and
+staff on hand, blend = half and half):
+
+| Club | RS/G top-down → bottom-up | RA/G top-down → bottom-up | rotation FIP | pen FIP | strength | Δ odds |
+|---|---|---|---|---|---|---|
+| **MIL** | 4.84 → 4.61 | 4.00 → 4.25 | 4.09 | 4.51 | .589 → .563 | pennant −8.7, WS −7.7 |
+| **LAD** | 4.78 → 5.19 | 4.03 → 4.11 | 4.03 | 4.23 | .579 → .594 | pennant +7.6, WS +5.8 |
+| **PHI** | 4.50 → 4.76 | 4.32 → 4.10 | 4.04 | 4.19 | .519 → .544 | division +7.2, pennant +4.6 |
+| **ATL** | 4.61 → 4.65 | 4.02 → 4.38 | 4.43 | 4.31 | .563 → .545 | division −7.2, pennant −3.3 |
+| **CWS** | 4.69 → 4.65 | 4.46 → 4.56 | 4.57 | 4.53 | .523 → .517 | division −3.1, pennant −2.8 |
+| **SEA** | 4.12 → 4.68 | 4.44 → 4.25 | 4.17 | 4.39 | .465 → .505 | playoffs +1.2, division +1.0 |
+
+Reading the six:
+
+- **Milwaukee (−8.7 pennant, −7.7 WS) is the club whose record its roster
+  least supports.** It has scored 4.84 and allowed 4.00 per game; the hitters
+  actually taking its plate appearances project 4.61, and its staff — the
+  third-best rotation by regressed FIP at 4.09, in front of a pen at 4.51,
+  a shade worse than the league's 4.48 — projects 4.25. Half of that gap comes
+  off its talent win%, .589 → .563, and
+  a club that led the World Series board on run differential now sits second.
+  The bracket keeps liking Milwaukee: its game 1 and 2 arms are −1.10 and
+  −0.70 runs per nine, the best pair on the board. What it loses is the
+  regular-season strength that carried it through three rounds.
+- **The Dodgers (+7.6 pennant, +5.8 WS) are the mirror image.** Their nine
+  project **5.19** runs a game against 4.78 scored, the best projected offence
+  in baseball, in front of the best rotation (4.03). Both halves move the same
+  way, .579 → .594, and Los Angeles takes over the top of the board. This is
+  the disagreement the first section of this document diagnosed — we were 12
+  points under Kalshi on the Dodgers on run differential alone — closing from
+  our side.
+- **Philadelphia (+7.2 division, +4.6 pennant) and Atlanta (−7.2, −3.3) are
+  one race.** Philadelphia's staff projects 4.10 against 4.32 allowed (a 4.04
+  rotation, a 4.19 pen) and its bats 4.76 against 4.50 scored; Atlanta's
+  projects 4.38 against 4.02 allowed. Atlanta has prevented runs better all
+  season than its staff's component rates say it should — defence, park and
+  sequencing, everything FIP is blind to — and blending halfway to the
+  bottom-up estimate costs it the NL East, which Philadelphia picks up almost
+  exactly.
+- **Chicago (−3.1 division) and Cleveland (+2.6) are the AL Central version**
+  of the same thing, and the same one the first run flagged as our largest
+  disagreement with FanGraphs: their roster estimates are a tenth of a run
+  apart where their run differentials were further.
+- **Seattle is the biggest riser still alive** (+0.040 talent win%, the second
+  largest move on the board): 4.68 projected runs against 4.12 scored and 4.25
+  allowed against 4.44. It buys 1.2 points of P(playoffs) at 66-74, which is
+  what a strength change is worth to a club that needs the other results too.
+- The two largest strength moves of all, **Oakland +0.046 and Cincinnati
+  +0.029**, move no odds at all: they are 54-86 and 67-73. A strength model
+  can only matter where the standings have not already decided.
+
+The per-game terms are the smaller half and they are visible in one place: on
+the 29 repriced games the chain moves P(home) by a mean **0.024** and up to
+**0.053** against the same games priced by the old starter-only override, and
+by a mean 0.034 (max 0.103) against the strength the sim draws the other 311
+with. The expected-win shifts those imply are LAD +0.170, STL −0.170,
+ATL −0.137, PHI +0.137, MIL +0.126, CHC −0.126 — a sixth of a win at most,
+the same order as the starter term on its own.
+
+### Sanity
+
+- **The probabilities add up.** In all three runs P(playoffs) sums to exactly
+  6.00 per league, P(division) to 1.00 in each of the six divisions,
+  P(pennant) to 1.00 per league, and the two leagues' P(WS) to 1.00 (AL .401,
+  NL .599 on the chain; .379/.621 old; .489/.511 on the coin flip).
+- **The moves clear the simulation's own noise floor.** Re-running the served
+  chain at three seeds at 20,000 sims moves the same numbers by at most 0.93
+  points (246 vs 247: P(playoffs) 0.62 CLE, P(division) 0.71 TEX, P(pennant)
+  0.87 MIL, P(WS) 0.93 MIL; the other two pairings are smaller). The four
+  largest model moves — MIL −8.7, LAD +7.6, PHI +7.2, ATL −7.2 — are eight to
+  ten times that.
+- **No club moves more than its terms can pay for.** The largest strength
+  change on the board is 0.046 of talent win% (Oakland), and over its 22
+  remaining games it buys 0.44 of an expected win — the arithmetic ceiling on
+  what a strength change can do in September. Every odds move above traces to
+  a named run-environment gap of 0.2–0.4 runs a game; St. Louis, whose two
+  halves agree to 0.005 of a run, moves 0.1 points of P(playoffs) and nothing
+  else.
+
+### What it still does not know
+
+1. **One season, inside one standard error.** Every term above the starter is
+   worth < 0.0006 Brier and none is more than one standard error from zero on
+   756 games. The ordering holds on all 1,778 games of 2026 and all 2,105 of
+   2025, which is the only reason to believe the sign. A second season of
+   exchange history is what would size them.
+2. **Two rotations in one job.** The bracket still picks its four arms by the
+   BAS-42 rule — the club's most-used starters this season, ranked by
+   regressed FIP — while station C's runs-allowed half uses the top five by
+   starts in the last 30 days. What changed here is the strength those deltas
+   bend, not who is in the rotation, and the first-pass limits listed in the
+   previous section (openers counted as starts, trades splitting a pitcher,
+   health and roster eligibility invisible) are all still there.
+3. **The card term is nearly always asleep.** Lineups go up two to four hours
+   before first pitch and the nightly job runs at 09:15 UTC, so in production
+   `n_games_with_lineups` will read 0 and the served model is exactly the
+   gated `pythag_C_sp_bpa_ip`. The 9 games in the table above had cards
+   because this run was made while they were being played.
+4. **The bottom-up half is park-, defence- and baserunning-neutral.** That is
+   why it is blended rather than swapped in, and Atlanta is what it looks like
+   when the top-down half is carrying real information the components cannot
+   see. `--c-weight` is a knob on that trade, chosen walk-forward on 2025.

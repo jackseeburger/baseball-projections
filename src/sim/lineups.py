@@ -97,6 +97,15 @@ PA_PER_GAME = 38.0
 BASELINE_BALLAST_GAMES = 0.0
 BASELINE_WINDOW_GAMES = 15
 
+# How much of the card's distance from that baseline to apply to the club's
+# runs scored, and what the distance is measured against ("team" is the club's
+# own recent cards, "league" is league average). Both chosen walk-forward on
+# 2025 only, where the curve is flat for any weight from 0.25 to 0.75
+# (docs/market-benchmark-2026.md). They live here rather than in a caller so
+# the harness and the live odds job cannot pick different ones.
+WEIGHT = 0.5
+BASELINE = "team"
+
 LINEUP_SLOTS = 9
 
 EVENTS = ("bbhbp", "k", "hr", "b1", "d23", "out")
