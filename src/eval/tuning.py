@@ -399,7 +399,7 @@ def coordinate_search(
 
 def paired_abs_error_diff(
     joined_a: pd.DataFrame, joined_b: pd.DataFrame, weight_col: str = "trials",
-    id_col: str = "batter",
+    id_col: str = "batter", cluster_col: str | None = None,
 ) -> dict:
     """Trials-weighted paired difference in absolute error, A minus B.
 
@@ -407,6 +407,14 @@ def paired_abs_error_diff(
     for the *same* split; only batters in both are used, so the difference is
     a within-player comparison and its SE is not inflated by the spread of
     player skill. Negative means A is the better model.
+
+    `cluster_col` names a column of `joined_a` whose rows are not independent
+    of each other — the same hitter scored at three cutoffs of the same season,
+    say. With it the SE is the cluster-robust one (sum the weighted residuals
+    within a cluster, then take their spread across clusters), which is the
+    honest denominator whenever a row's id is finer than the unit that
+    actually varies. Without it the SE is the independent-rows one, exactly as
+    before, and `n_clusters` comes back equal to `n`.
     """
     a = joined_a.set_index(id_col)
     b = joined_b.set_index(id_col)
@@ -416,10 +424,20 @@ def paired_abs_error_diff(
          - (b["predicted"] - b["realized_rate"]).abs()).to_numpy()
     w = a[weight_col].to_numpy(dtype="float64")
     mean = float(np.sum(w * d) / np.sum(w))
-    # SE of a weighted mean of independent observations.
-    se = float(np.sqrt(np.sum(w ** 2 * (d - mean) ** 2)) / np.sum(w))
+    resid = w * (d - mean)
+    if cluster_col is None:
+        n_clusters = int(len(common))
+        # SE of a weighted mean of independent observations.
+        ss = float(np.sum(resid ** 2))
+    else:
+        groups = pd.Series(resid).groupby(
+            joined_a.set_index(id_col).loc[common, cluster_col].to_numpy()).sum()
+        n_clusters = int(len(groups))
+        ss = float(np.sum(groups.to_numpy() ** 2))
+    se = float(np.sqrt(ss) / np.sum(w))
     return {
         "n": int(len(common)),
+        "n_clusters": n_clusters,
         "diff": mean,
         "se": se,
         "t": mean / se if se > 0 else float("nan"),
