@@ -36,8 +36,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-# The artifact the nightly serves, when one has been fitted and gated.
-DEFAULT_MODEL_PATH = Path(__file__).resolve().parent / "game_learned.json"
+# The fitted artifact. Not served: the learned model has *not* cleared the
+# station E gate (docs/market-benchmark-2026.md, Sept 3 — it loses to the chain
+# by .0007 on the market's own 756 games), so it lives behind
+# `scripts/backtest_game_odds.py --learned` and nothing in production loads it
+# by default.
+DEFAULT_MODEL_PATH = (Path(__file__).resolve().parents[2] / "data" / "models"
+                      / "game_learned_2026.json")
 
 # Defaults chosen for the shape of the problem, not for a score: shallow trees
 # (the signal is a smooth function of a few run rates), a leaf that must hold

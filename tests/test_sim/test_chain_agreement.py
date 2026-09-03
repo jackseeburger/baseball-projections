@@ -390,12 +390,15 @@ def _patch(mp, module, fakes: dict) -> None:
 
 def backtest_probabilities(season: dict, fakes: dict, mp, *,
                            park_ballast: float = float("inf"),
-                           def_ballast: float = float("inf")) -> pd.DataFrame:
+                           def_ballast: float = float("inf"),
+                           learned=None) -> pd.DataFrame:
     """The harness's own walk-forward frame for the target date.
 
     The two ballasts default to infinite, which is the park and defence terms
     switched off — what the nightly serves, and therefore what the columns
-    above them have to keep matching.
+    above them have to keep matching. `learned` is passed straight through to
+    `walk_forward`, so the same call that scores the chain also scores the
+    learned challenger off the same slate (`--learned`).
     """
     bt = _load("backtest_game_odds_chain", ROOT / "scripts/backtest_game_odds.py")
     _patch(mp, bt, fakes)
@@ -423,7 +426,8 @@ def backtest_probabilities(season: dict, fakes: dict, mp, *,
         rn_model.ROTATION_TOP_N, lu_ctx["pa_per_game"], schedule=sched,
         park_ballast=park_ballast, def_ballast=def_ballast)
     preds = bt.walk_forward(scored, teams_frame()["team_id"].to_numpy(),
-                            0, [REGRESS_GAMES], sp_ctx, lu_ctx, bp_ctx, c_ctx)
+                            0, [REGRESS_GAMES], sp_ctx, lu_ctx, bp_ctx, c_ctx,
+                            learned)
     return preds[preds["date"] == season["target_date"]].set_index("game_pk")
 
 
@@ -624,3 +628,64 @@ class TestTheStrengthTheSimDraws:
         assert len(rot.by_team) == len(CLUBS)
         assert rot.run_env is not None and (rot.run_env > 0).all()
         assert live["diagnostics"]["n_games_with_starters"] > 0
+
+
+class TestTheLearnedChallengerIsScoredOffTheSameSlate:
+    """`--learned` and the feature table read the same slate for the same game.
+
+    The learned model is not gated — on the market's own 756 games it loses to
+    the chain by .0007 (docs/market-benchmark-2026.md, Sept 3) — so it lives
+    behind a flag on the harness rather than in the nightly. That still leaves
+    two paths to one number: `scripts/build_game_features.py` builds the table
+    the model is trained on, and `scripts/backtest_game_odds.py --learned`
+    scores it inside the walk-forward loop. Both call
+    `game_features.game_features` on a `build_slate` slate, and this asserts
+    they land on the same probability for the same game.
+    """
+
+    def _table(self, season: dict) -> pd.DataFrame:
+        from src.sim import game_features as gf
+        from src.sim import game_model as gm
+
+        sched = schedule_frame(season, target_final=True)
+        scored = sched[sched["status"] == "Final"].dropna(
+            subset=["home_score", "away_score"]).copy()
+        scored["home_win"] = scored["home_score"] > scored["away_score"]
+        inputs = gm.ChainInputs.from_logs(
+            SEASON, season["pitching"], season["hitting"],
+            season["prior_pitching"], season["prior_hitting"])
+        probables = {int(r.game_pk): (int(r.home_sp_id), int(r.away_sp_id))
+                     for r in season["probables"].itertuples(index=False)
+                     if pd.notna(r.home_sp_id) and pd.notna(r.away_sp_id)}
+        return gf.season_features(scored, [c[0] for c in CLUBS], inputs,
+                                  probables=probables, cards=season["cards"],
+                                  min_games=0)
+
+    def test_the_flag_scores_what_the_table_trains_on(self, season, monkeypatch):
+        from src.sim import game_features as gf
+        from src.sim import learned_game as lgm
+
+        table = self._table(season)
+        assert len(table) > 20
+        model = lgm.LearnedModel.from_fitted(
+            lgm.fit_booster(gf.feature_matrix(table),
+                            table[gf.LABEL].astype(int),
+                            {"n_estimators": 25, "min_child_samples": 5,
+                             "num_leaves": 3}),
+            gf.FEATURE_COLUMNS,
+            lgm.Calibrator.fit(np.linspace(0.3, 0.7, len(table)),
+                               table[gf.LABEL].astype(int), kind="platt"))
+        expected = table.set_index("game_pk")
+        expected["learned"] = model.predict(gf.feature_matrix(table))
+
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch, learned=model)
+        assert "learned" in scored.columns and len(scored)
+        for game_pk, row in scored.iterrows():
+            assert float(row["learned"]) == pytest.approx(
+                float(expected.loc[int(game_pk), "learned"]), abs=1e-12), game_pk
+        # ...and the chain column the two paths compute agrees too, which is
+        # what makes the comparison between them a comparison of models.
+        for game_pk, row in scored.iterrows():
+            assert float(row["pythag_C_sp_bpa_ip"]) == pytest.approx(
+                float(expected.loc[int(game_pk), "chain_p"]), abs=1e-12), game_pk

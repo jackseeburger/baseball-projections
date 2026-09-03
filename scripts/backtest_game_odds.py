@@ -54,11 +54,20 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       **Neither term cleared its gate** (docs/market-benchmark-2026.md),
                       so the nightly serves pythag_C_sp_bpa_ip and these are
                       scoreboard columns only
+    learned         — the gradient-boosted challenger, off with no `--learned`.
+                      Same inputs as the chain, no hand-written functional
+                      form, trained on the seasons before this one
+                      (src/sim/learned_game.py, scripts/train_game_learned.py).
+                      Ungated: it loses to `pythag_C_sp_bpa_ip` by .0007 on the
+                      market's 756 games (docs/market-benchmark-2026.md)
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
     python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
         --market data/parquet/market_closes_2026.parquet
+    python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+        --market data/parquet/market_closes_2026.parquet \
+        --learned data/models/game_learned_2026.json
 """
 from __future__ import annotations
 
@@ -107,6 +116,11 @@ C_PK_MODEL = "pythag_C_sp_bpa_ip_pk"
 C_DEF_MODEL = "pythag_C_sp_bpa_ip_def"
 C_PK_DEF_MODEL = "pythag_C_sp_bpa_ip_pk_def"
 C_PK_DEF_LU_MODEL = "pythag_C_sp_bpa_ip_pk_def_lu"
+# The learned challenger, scored only when `--learned` names an artifact. It is
+# not gated (docs/market-benchmark-2026.md, Sept 3): on the market's own game
+# set it loses to the chain by .0007, inside one standard error, so the chain
+# runs and this stays a flag.
+LEARNED_MODEL = "learned"
 SP_BALLAST_GAMES = 60.0  # the production team-strength ballast this model extends
 MIN_R9 = 0.5              # Pythagenpat needs positive run rates on both sides
 # How much of the lineup's distance from its baseline to apply, and what to
@@ -165,11 +179,18 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                  ballasts: list[float], sp_ctx: dict | None = None,
                  lu_ctx: dict | None = None,
                  bp_ctx: dict | None = None,
-                 c_ctx: dict | None = None) -> pd.DataFrame:
+                 c_ctx: dict | None = None,
+                 learned=None) -> pd.DataFrame:
     """One row per scored game with each model's P(home).
 
     Every quantity used on a date is rebuilt from games, pitcher appearances
     batter games and relief appearances strictly before that date.
+
+    `learned` is an optional `learned_game.LearnedModel` (`--learned`). Its
+    feature row is read off the *same* slate the chain is priced from, through
+    `game_features.game_features`, so the learned column and the
+    `pythag_C_sp_bpa_ip` column beside it can only ever disagree about the
+    model, never about the date cut or the inputs.
     """
     completed = completed.sort_values("date").reset_index(drop=True)
     rows = []
@@ -189,6 +210,15 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
                   if bp_ctx and lu_day is not None else None)
         c_day = (run_env_day_context(tot, date, c_ctx, sp_day, lu_day, bp_day)
                  if c_ctx and bp_day is not None else None)
+        learned_ctx = None
+        if learned is not None and c_day is not None and c_day["slate"] is not None:
+            lg_rs9, lg_ra9 = gf.league_rates_from_totals(tot)
+            learned_ctx = gf.DayContext(
+                top_down=team_rates(tot, SP_BALLAST_GAMES), tot=tot, hfa=hfa_obs,
+                lg_rs9=lg_rs9, lg_ra9=lg_ra9,
+                rest=gf.rest_days(before, str(date), tot.index),
+                sp_rest=gf.pitcher_rest_days(bp_ctx["game_logs"], str(date)))
+        learned_rows, learned_at = [], []
         for g in day.itertuples(index=False):
             row = {"date": date, "game_pk": int(g.game_pk),
                    "home_id": g.home_id, "away_id": g.away_id,
@@ -218,7 +248,20 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
             if c_day is not None:
                 row.update(run_env_game_probs(g, c_day, sp_day, hfa_obs,
                                               bp_day, bp_ctx))
+            if learned_ctx is not None:
+                sp_ids = sp_day["probables"].get(int(g.game_pk))
+                cards = (c_day.get("lineups") or {}).get(int(g.game_pk))
+                learned_rows.append(gf.game_features(c_day["slate"], learned_ctx,
+                                                     g, sp_ids, cards))
+                learned_at.append(len(rows))
             rows.append(row)
+        if learned_rows:
+            # One call for the whole slate: the booster is fast, the per-row
+            # DataFrame construction around it is not.
+            frame = pd.DataFrame(learned_rows)
+            probs = learned.predict(gf.feature_matrix(frame))
+            for i, prob in zip(learned_at, probs):
+                rows[i][LEARNED_MODEL] = float(prob)
         if lu_day is not None:
             update_lineup_history(day, lu_ctx, lu_history)
     return pd.DataFrame(rows)
@@ -1016,6 +1059,13 @@ def main() -> None:
                         help="balls in play of ballast regressing a club's "
                              "BABIP allowed toward the league ('inf' is the "
                              "model with no defence term in it)")
+    parser.add_argument("--learned", type=Path, default=None,
+                        help="score a fitted learned model (JSON from "
+                             "scripts/train_game_learned.py --save-model) as a "
+                             "`learned` column, off the same slate the chain is "
+                             "priced from. Off by default: the learned model "
+                             "has not cleared the station E gate "
+                             "(docs/market-benchmark-2026.md)")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game prediction frame here (parquet) "
                              "for follow-up analysis")
@@ -1079,8 +1129,16 @@ def main() -> None:
             park_prior_seasons=args.park_prior_seasons,
             def_ballast=args.def_ballast)
 
+    learned = None
+    if args.learned is not None:
+        from src.sim.learned_game import LearnedModel
+        learned = LearnedModel.load(args.learned)
+        print(f"learned model: {args.learned.name}, trained on "
+              f"{learned.meta.get('train_seasons')} "
+              f"({learned.meta.get('n_train')} games)")
+
     preds = walk_forward(scored, teams["team_id"].to_numpy(), args.min_games,
-                         ballasts, sp_ctx, lu_ctx, bp_ctx, c_ctx)
+                         ballasts, sp_ctx, lu_ctx, bp_ctx, c_ctx, learned)
     models = ["home_constant", "win_pct_log5"] + [f"pythag_{int(k)}" for k in ballasts]
     if sp_ctx is not None:
         models.append(SP_MODEL)
@@ -1094,6 +1152,8 @@ def main() -> None:
             models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL,
                        C_SP_BPA_IP_LU_MODEL, C_PK_MODEL, C_DEF_MODEL,
                        C_PK_DEF_MODEL, C_PK_DEF_LU_MODEL]
+    if learned is not None and LEARNED_MODEL in preds.columns:
+        models.append(LEARNED_MODEL)
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
     print(score(preds, models).round(4).to_string(index=False))
     if sp_ctx is not None:
@@ -1198,6 +1258,9 @@ def main() -> None:
                       (C_PK_DEF_MODEL, C_SP_BPA_IP_MODEL),
                       (C_PK_DEF_MODEL, C_PK_MODEL),
                       (C_PK_DEF_MODEL, C_DEF_MODEL)]
+    if learned is not None and LEARNED_MODEL in preds.columns:
+        # The gate the learned model has to clear: the chain the nightly serves.
+        pairs += [(LEARNED_MODEL, C_SP_BPA_IP_MODEL), (LEARNED_MODEL, "pythag_60")]
     for model, base in pairs:
         print(paired_t_line(preds, model, base))
 
