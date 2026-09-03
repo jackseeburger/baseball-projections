@@ -260,6 +260,47 @@ class TestWidth:
         # fall, which is the mechanical consequence the doc pre-registers.
         assert wide.std() < base.std()
 
+    def test_an_override_moves_with_the_draw(self, toy):
+        """A repriced game keeps its starter term *and* gains the width.
+
+        Pinning an override at its point value would re-assert certainty on
+        exactly the games the chain knows most about. The contract instead is
+        that the override is shifted, in logit space, by the same amount the
+        draw shifted the matchup — so the realized win rate on an overridden
+        game sits near the override, but the *spread* across simulated seasons
+        is the width's, not zero.
+        """
+        state = toy["state"]
+        pks = state.remaining["game_pk"].astype(int).to_numpy()[:60]
+        ov = {int(pk): 0.65 for pk in pks}
+        cols = [list(state.remaining["game_pk"].astype(int)).index(pk)
+                for pk in pks]
+        hw = simulate_remaining(state, _dist(toy, 1.0), 0.54, 6000,
+                                np.random.default_rng(8), p_home_overrides=ov)
+        rate = hw[:, cols].mean()
+        assert 0.60 < rate < 0.70            # still centred on the override
+        # And the *same* games under the point path have a rate of exactly the
+        # override up to sampling, which is the thing the width sits on top of.
+        flat = simulate_remaining(state, toy["point"], 0.54, 6000,
+                                  np.random.default_rng(8),
+                                  p_home_overrides=ov)
+        assert abs(flat[:, cols].mean() - 0.65) < 0.01
+
+    def test_an_override_at_zero_and_one_stays_certain(self, toy):
+        """A logit-space shift on a degenerate override must not blow up."""
+        state = toy["state"]
+        pks = state.remaining["game_pk"].astype(int).to_numpy()[:20]
+        ov = {int(pk): (1.0 if i % 2 else 0.0) for i, pk in enumerate(pks)}
+        cols = [list(state.remaining["game_pk"].astype(int)).index(pk)
+                for pk in pks]
+        hw = simulate_remaining(state, _dist(toy, 2.0), 0.54, 500,
+                                np.random.default_rng(2), p_home_overrides=ov)
+        got = hw[:, cols]
+        assert np.isfinite(got).all()
+        for j, pk in enumerate(pks):
+            want = bool(ov[int(pk)])
+            assert got[:, j].mean() == (1.0 if want else 0.0)
+
     def test_probabilities_stay_coherent(self, toy):
         odds = run_playoff_odds(toy["state"], _dist(toy, 1.0), 0.54,
                                 n_sims=400, seed=2)
