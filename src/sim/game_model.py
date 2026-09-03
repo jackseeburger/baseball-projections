@@ -451,6 +451,7 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
     def_deltas, def_diag = df_model.team_defence(
         inputs.bip, as_of, ballast=cfg.def_ballast,
         runs_per_hit=cfg.def_runs_per_hit)
+    fip_only = rn_model.bottom_up_rates(rs9, ra9, team_ids=team_ids)
     ra9 = df_model.apply_deltas(ra9, def_deltas)
     bottom_up = rn_model.bottom_up_rates(rs9, ra9, team_ids=team_ids)
     blended = rn_model.blend_run_env(bottom_up, top_down, cfg.blend_weight)
@@ -483,6 +484,12 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
         "def_bip_per9": float(def_diag.get("bip_per9", 0.0)),
         "def_babip": {int(t): float(v)
                       for t, v in (def_diag.get("babip") or {}).items()},
+        # The two halves the blend is made of, kept apart so the gap between
+        # them can be attributed term by term
+        # (`scripts/attribute_run_environment.py`).
+        "bottom_up": bottom_up,
+        "bottom_up_fip_only": fip_only,
+        "top_down": top_down,
     }
     return Slate(as_of=str(as_of), team=blended, sp_ra9=sp_ra9, lg_ra9=lg_ra9,
                  lg_rs9=lg_rs9, expected_ip=sp_model.expected_starter_ip(

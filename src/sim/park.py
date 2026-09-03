@@ -246,14 +246,16 @@ def apply_factor(rs9: float, ra9: float, venue_factor: float) -> tuple[float, fl
     return float(rs9) * f, float(ra9) * f
 
 
-def fetch_prior_factors(season: int, prior_seasons: int = PRIOR_SEASONS,
-                        ballast: float = BALLAST_GAMES) -> dict:
-    """Park factors for `season` from the completed seasons before it.
+def fetch_prior_games(season: int,
+                      prior_seasons: int = PRIOR_SEASONS) -> pd.DataFrame:
+    """The completed seasons before `season`, in `completed_venue_games` shape.
 
     The only function here that touches the network, and it is one schedule
     call per prior season (a few hundred kilobytes each, no per-player
     fetching). Walk-forward by construction: a game of `season` cannot reach
-    these numbers because no game of `season` is in the pool.
+    these numbers because no game of `season` is in the pool. The pool is
+    returned rather than the finished factors so a caller can sweep the ballast
+    without paying for the fetch again — the same shape `ChainInputs` carries.
     """
     from src.data.mlb_stats_api import fetch_schedule
 
@@ -261,11 +263,16 @@ def fetch_prior_factors(season: int, prior_seasons: int = PRIOR_SEASONS,
     for year in range(int(season) - int(prior_seasons), int(season)):
         sched = fetch_schedule(f"{year}-03-01", f"{year}-11-15")
         frames.append(completed_venue_games(sched))
-    pool = (pd.concat(frames, ignore_index=True) if frames
+    return (pd.concat(frames, ignore_index=True) if frames
             else pd.DataFrame(columns=GAME_COLS))
-    return run_factors(pool, ballast=ballast)
+
+
+def fetch_prior_factors(season: int, prior_seasons: int = PRIOR_SEASONS,
+                        ballast: float = BALLAST_GAMES) -> dict:
+    """`fetch_prior_games` + `run_factors`, for a caller that wants the table."""
+    return run_factors(fetch_prior_games(season, prior_seasons), ballast=ballast)
 
 
 __all__ = ["PRIOR_SEASONS", "BALLAST_GAMES", "completed_venue_games",
            "run_factors", "factor", "team_exposure", "neutral_run_rates",
-           "apply_factor", "fetch_prior_factors"]
+           "apply_factor", "fetch_prior_games", "fetch_prior_factors"]
