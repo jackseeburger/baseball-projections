@@ -79,9 +79,40 @@ delivered the schedule event late, it did not hold a job.
 That points at GitHub's documented behaviour — the `schedule` event is best effort and
 is delayed or dropped under load, with the start of an hour being the worst window.
 Every slot this repo had was on `:00`, `:15`, `:30` or `:45`, which is exactly where
-the load is. **This remains a hypothesis.** It is consistent with the evidence and it
-is GitHub's own advice, but we cannot prove it from outside, and five slots is a small
-sample. The mitigations are worth taking either way:
+the load is.
+
+> ### The hypothesis was tested the same day, and it is WRONG
+>
+> Recorded here rather than quietly dropped, because it was written down as a
+> hypothesis precisely so it could be falsified.
+>
+> Under the new odd-minute crons, `nightly-odds` missed **09:23, 12:07 and
+> 14:53 — three for three.** The `schedule-watchdog`, a brand-new workflow
+> added the same day on `:43`, has **never run at all.** As of 16:15 UTC the
+> repository had exactly two scheduled runs in its entire history, both from
+> before the change.
+>
+> A fresh workflow on an uncongested minute getting nothing is not congestion.
+> Every workflow reports `state: active`; the repository is public (so Actions
+> minutes are free) and unarchived. Disabling and billing are both ruled out.
+>
+> What the evidence actually fits: the last `schedule` event this repository
+> received was **00:58 on 2026-09-03**, and nothing scheduled has fired since —
+> under the old crons *or* the new ones. That is repo-wide and time-bounded,
+> not minute-dependent.
+>
+> **The cause is not yet known.** The next diagnostic is the Actions tab in the
+> browser, which surfaces scheduling notices the REST API does not.
+>
+> `workflow_dispatch` works: a manual run on 2026-09-03 completed the whole
+> nightly end to end in about five minutes and committed a fresh board,
+> projections and accuracy page. So nothing is blocked — the schedules are.
+
+The mitigations below were taken anyway. Odd minutes cost nothing and are still
+GitHub's own advice; the redundancy and spacing are good practice regardless;
+and the watchdogs are the part that matters, since they are what makes the next
+silent failure loud whatever its cause. But **none of them fixed this**, and the
+doc should not read as though they did:
 
 1. **Every cron minute is now odd and non-round** (`:07`, `:11`, `:19`, `:23`, `:29`,
    `:37`, `:41`, `:43`, `:47`, `:53`). Costs nothing, and is the documented remedy.
