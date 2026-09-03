@@ -269,19 +269,21 @@ The nightly workflow runs the build before the accuracy page and commits
 - **The projection is a point estimate.** The Bayesian components publish an
   interval and this does not; calibrated rest-of-season bands are roadmap
   5.7 and are a real thing the old model had that this one does not.
-- **The tuned age curve is the weak part of the live engine, and it shows on
-  the board.** The search put K%'s peak age at 31 with both slopes positive,
-  which is a straight line in age and therefore partly a *level* correction
-  rather than aging (Marcel regresses to the last season's league rate while
-  the player's history spans three). The visible effect on the Sept 2 board:
-  the PA-weighted mean projected K% moved from .2208 to .2133 against a 2026
-  league rate of .2207 — stock sat exactly on league, tuned sits 0.7 points
-  under it. Decile calibration is *tighter* under tuning (max K% gap .0134
-  against stock's .0179 at the Jul 1 cutoff) and the signed bias is small in
-  the other direction (+.0036 realized-minus-predicted, against stock's
-  −.0022), and the components offset in the rollup — mean projected wOBA
-  moved .3161 → .3141 against a league .3139, i.e. closer. But the level term
-  is bookkeeping wearing an aging curve's clothes, and the fix is to project
-  the league rate forward and refit the age term against that.
+- **The tuned age curve used to be the weak part of the live engine, and it
+  showed on the board — fixed Sept 3.** The first fit put K%'s peak age at 31
+  with both slopes positive, which is a straight line in age and therefore
+  partly a *level* correction rather than aging (Marcel regresses to the last
+  season's league rate while the player's history spans three). The visible
+  effect on the Sept 2 board was that the PA-weighted mean projected K% moved
+  from .2208 (stock) to .2133 against a 2026 league rate of .2207 — stock sat
+  exactly on league, tuned sat 0.7 points under it. The refit constrains the
+  age term to peak inside 25–31 with slopes of opposite signs so it cannot
+  act as a level, and the Sept 2 board rebuilt on the refrozen params comes
+  back to **.2185**, 0.2 points under league. The projected-league-rate
+  options built at the same time turn out not to be the answer — they lose
+  their own inner validation, and only ISO takes one
+  ([backtest-baselines.md](backtest-baselines.md#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate)).
+  What remains is that a multiplier pinned to 1.0 at the peak still shifts the
+  population mean; renormalizing it to mean 1 is the next thing to try.
 - **This is not station C.** Nothing here feeds the run environment or the
   playoff odds; it is the site's player-level number only.

@@ -1,11 +1,13 @@
 # Baseline Backtest Scores (roadmap 0.3, baseline half)
 
-Three parts: **season-level** splits (below), the **intra-season
+Four parts: **season-level** splits (below), the **intra-season
 walk-forward** at date cutoffs ([jump](#intra-season-walk-forward--rest-of-2026-rates)),
-which is the one that judges rest-of-season projections, and **tuning
+which is the one that judges rest-of-season projections, **tuning
 Marcel's own constants**
 ([jump](#tuning-marcel--fitted-constants-beat-tangos-defaults)), which moves
-this bar up.
+this bar up, and the **constrained refit of the age curve**
+([jump](#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate)),
+which is the fit currently frozen in `src/eval/marcel_params.json`.
 
 **Run:** Sept 1, 2026 · **Data:** MLB Stats API season hitting totals 2015–2026
 (`data/parquet/hitter_seasons_api.parquet`, MLBAM-keyed, rebuildable via
@@ -202,6 +204,12 @@ prior, not in replacing it.
 ---
 
 # Tuning Marcel — fitted constants beat Tango's defaults
+
+> **Superseded in part by [the Sept 3 section below](#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate).**
+> Everything about the method still stands; the constants in "The chosen
+> constants" and every number scored against them are the *previous* frozen
+> fit, kept here for the record. `src/eval/marcel_params.json` now holds the
+> constrained refit.
 
 **Run:** Sept 2, 2026 · **Code:** `src/eval/baselines.marcel_tuned`,
 `src/eval/tuning.py`, `scripts/tune_marcel.py` · **Params:**
@@ -473,3 +481,353 @@ missing. `ros.py` is not edited here — it is in a PR in flight.
 - **A tuned Marcel is a better baseline, not a model.** It moves the bar the
   Bayesian components have to clear *up* by 2–3% on the two components where
   they were closest, which makes station A's problem harder, not easier.
+
+# The age curve was not aging — a constrained refit, and a projected league rate
+
+**Run:** Sept 3, 2026 · **Code:** `src/eval/baselines.projected_league_rate`,
+`src/eval/tuning.py` (`AGE_PEAK_WINDOW`, `constrain`, `age_curve_ok`),
+`scripts/tune_marcel.py` · **Params:** `src/eval/marcel_params.json`
+(refrozen) · **Data:** unchanged — `data/parquet/hitter_seasons_api.parquet`
+and `pa_outcomes_2026.parquet`, same holdout, same paired machinery.
+
+The section above ended with a caveat it could not act on: the fitted age
+curve was not an aging curve. The search put its peak at an end of the grid
+(23 or 31) with **equal slopes on both sides**, which is a straight line in
+age — and half of a straight line in age is a *level* correction, because
+Marcel regresses three seasons of a player's history toward **one** season's
+league rate. Its in-sample gains on HR/PA (−3.66%) and ISO (−3.79%) were the
+largest in the table and were exactly the two that vanished out of sample. On
+the live board the same thing showed as a level: mean projected K% .2133
+against a 2026 league rate of .2207, where stock Marcel sat on league.
+
+Two changes, meant to separate aging from bookkeeping.
+
+## 1. Regress toward a projected league rate
+
+`marcel_tuned` no longer hard-codes "the last training season's rate".
+`MarcelParams.league_mode` picks one of three, per component:
+
+| Option | What it regresses toward |
+|---|---|
+| `last` | the last training season's rate — stock Marcel, and still the default |
+| `weighted3` | the same three seasons under the component's **own recency weights**, so the thing being regressed toward is measured over the same window as the thing being regressed |
+| `drift` | `r_last + damp · (predict_year − last) · (r_last − r_prev)`, the one-season change extrapolated and damped by a constant (`league_damp` ∈ {.25, .5, .75, 1}) |
+
+The horizon scaling matters at a cutoff: there the most recent *training*
+season is the target season, so the horizon is zero and `drift` collapses
+back to `last` — the partial season's own rate is already a same-season
+measurement and there is nothing to extrapolate.
+
+**The choice is made on the inner validation, never the holdout.** For each
+component and each option, the same coordinate search runs on 2020–2022 with
+the option pinned (so the other five axes adapt to it) and the fitted params
+are scored on 2023–2024. Percent of stock's validation MAE, negative better:
+
+| Component | `last` | `weighted3` | `drift@.25` | `drift@.5` | `drift@.75` | `drift@1` |
+|---|---|---|---|---|---|---|
+| k_rate | **−2.47** | −2.44 | −2.43 | −2.39 | −2.34 | −2.29 |
+| bb_rate | **+0.19** | +0.37 | +0.27 | +0.36 | +0.47 | +0.60 |
+| hr_rate | **−1.25** | −1.15 | −0.80 | −0.31 | +0.22 | +0.80 |
+| babip | **−3.78** | −3.25 | −3.74 | −3.66 | −3.56 | −3.45 |
+| iso | −0.22 | **−0.95** | +0.43 | +1.14 | +1.94 | +2.77 |
+| **mean** | **−1.51** | −1.48 | −1.25 | −0.97 | −0.65 | −0.31 |
+
+**`last` wins.** It is best on four of five components and on the mean; only
+ISO takes `weighted3`, and it takes it by a real margin (−0.95% against
+−0.22%). Every drift option is worse than doing nothing, monotonically worse
+the harder it is pushed. So the frozen file carries `last` for K%, BB%, HR/PA
+and BABIP, and `weighted3` for ISO.
+
+Note that the in-sample optimum disagrees: search the league axis on the full
+2020–2024 window and it picks `weighted3` for four of five components. That
+is the signature of an axis a search cannot pick honestly for itself, which
+is why `tune` pins it from the inner validation instead of sweeping it.
+
+### The level, which is what the option was for
+
+Trials-weighted mean projection minus the realized rate of the same scored
+players, averaged over the five tuning years, with stock's other constants
+held fixed (`--league-modes` prints all of it per season):
+
+| Component | `last` | `weighted3` | `drift@.25` | `drift@.5` | `drift@.75` | `drift@1` |
+|---|---|---|---|---|---|---|
+| k_rate | +.00219 | +.00183 | +.00224 | +.00228 | +.00232 | +.00236 |
+| bb_rate | +.00045 | +.00026 | +.00047 | +.00049 | +.00051 | +.00053 |
+| hr_rate | +.00201 | +.00200 | +.00201 | +.00201 | +.00200 | +.00200 |
+| babip | +.00133 | +.00157 | +.00132 | +.00130 | +.00129 | +.00128 |
+| iso | +.00838 | +.00854 | +.00834 | +.00829 | +.00825 | +.00821 |
+
+Mean projected K% by season, all six options, against the season's realized
+league K%:
+
+| Predict year | `last` | `weighted3` | `drift@.5` | `drift@1` | Realized league |
+|---|---|---|---|---|---|
+| 2020 | .21868 | .21763 | .21933 | .21999 | .23435 |
+| 2021 | .22694 | .22523 | .22760 | .22827 | .23180 |
+| 2022 | .22559 | .22552 | .22529 | .22498 | .22418 |
+| 2023 | .22281 | .22382 | .22187 | .22093 | .22728 |
+| 2024 | .22575 | .22577 | .22610 | .22644 | .22580 |
+
+**There was no lag to correct.** The options differ in the fourth decimal;
+against the scored population Marcel already sits within a couple of tenths
+of a point of league, and the year it misses badly (2020) is the 60-game
+season, which no amount of drift damping reaches. The live board's K% gap
+was never the league rate — **it was the age curve**, which is the second
+change.
+
+## 2. Constrain the age term so it cannot act as a level
+
+Two rules, in `src/eval/tuning.py`:
+
+1. the peak lives in **25–31**, a window an aging curve can plausibly peak in;
+2. the two slopes take **opposite signs**, so the multiplier turns over at the
+   peak instead of running monotonically across the whole age range.
+
+Rule 2 is signed per component by which way *performance* runs
+(`AGE_DIRECTION`). For the four components where a bigger number is a better
+hitter the multiplier rises to the peak and falls after it; **K% is
+mirrored** — a trough at the peak age, rising after — because there a bigger
+number is worse. This deliberately excludes stock Marcel's own age term,
+which is monotone in age with a kink at 27, since a monotone line is exactly
+the shape that doubles as a level. `constrain()` projects any start point
+into the family (peak clipped, wrong-signed slope zeroed), so a constrained
+search cannot land outside it, from any start — that is a test.
+
+## The chosen constants
+
+| Component | Ballast (trials) | Weights (w1, w2, w3) | Peak age | Slope young | Slope old | League rate |
+|---|---|---|---|---|---|---|
+| k_rate | **100** PA | 1 / **0.4** / **0.4** | **30** | 0 | **+0.008** | last |
+| bb_rate | 200 PA *(stock)* | 5 / 4 / 3 *(stock)* | 27 | −0.001 | −0.003 | last |
+| hr_rate | **300** PA | 1 / **0.6** / **0.4** | **25** | **+0.012** | **−0.012** | last |
+| babip | **600** BIP | 1 / 0.8 / **1.0** | **26** | 0 | −0.003 | last |
+| iso | **300** AB | 1 / **0.6** / **0.4** | **25** | 0 | **−0.012** | **weighted3** |
+
+The previous fit, for comparison: k_rate 100 / 1-0.4-0.2 / peak **31** /
++0.006 / +0.012; hr_rate 200 / 1-0.6-0.6 / peak **23** / **−0.012 / −0.012**;
+babip 600 / 1-0.8-1.0 / peak 26 / −0.012 / −0.003; iso 300 / 1-0.8-0.6 / peak
+**23** / **−0.012 / −0.012**. The two components whose curves were flat lines
+across the whole age range (HR/PA and ISO, peak at the grid edge with equal
+slopes) are the two that changed most.
+
+The ballasts and weights barely moved, which is the reassuring part: the
+content of the original fit — **K% wants half stock's ballast and sharp
+recency, BABIP wants three times stock's ballast and flat recency** — is
+untouched by any of this. What moved is the age term.
+
+And the constrained curves are readable as aging for the first time. **K%:
+flat to 30, then +0.8% a year** — hitters' strikeout rates hold through the
+prime and climb late. **BABIP: flat to 26, then −0.3% a year** — a slow
+decline as legs go. **ISO: −1.2% a year after 25**, and **HR/PA: +1.2% a year
+to 25, −1.2% after**. The two power components peak young and at the window
+edge, which is the caveat below; the K% and BABIP shapes are the ones worth
+quoting.
+
+## In sample (2020–2024, the tuning window)
+
+| Component | Stock MAE | Tuned MAE | Gain | Gain without the age term | Inner validation (2023–24) |
+|---|---|---|---|---|---|
+| k_rate | .030657 | **.030135** | **−1.70%** | −1.79% | −2.47% |
+| bb_rate | .017569 | .017476 | −0.53% | −0.09% | **+0.19% → kept stock** |
+| hr_rate | .010679 | **.010369** | **−2.90%** | −0.33% | −1.25% |
+| babip | .027762 | **.026922** | **−3.03%** | −3.08% | −3.78% |
+| iso | .038630 | **.037398** | **−3.19%** | −0.64% | −0.95% |
+
+BB% trips the guard for the third time and keeps Tango's constants; the
+holdout again confirms the call. Compare the in-sample column with the
+previous fit's — K% −3.10% → −1.70%, HR/PA −3.66% → −2.90%, ISO −3.79% →
+−3.19%, BABIP −3.28% → −3.03%. **Every in-sample gain got smaller**, which is
+what taking away a degree of freedom is supposed to do. The question is
+whether the gains that remain are the real ones.
+
+## Out of sample — MAE by arm and cell
+
+Same holdout, never seen by the search: season-level 2025 (train ≤ 2024) and
+2026 (train ≤ 2025), and the three 2026 intra-season cutoffs.
+
+| Component | Arm | 2025 | 2026 | May 1 | Jul 1 | Aug 1 |
+|---|---|---|---|---|---|---|
+| **k_rate** | marcel_tuned | **.0298** | **.0272** | **.0269** | .0293 | **.0341** |
+| | marcel_tuned_noage | .0300 | .0272 | .0269 | **.0292** | .0343 |
+| | marcel | .0299 | .0278 | .0278 | .0296 | .0343 |
+| | marcel_preseason | — | — | .0293 | .0310 | .0365 |
+| | season_to_date | — | — | .0355 | .0340 | .0371 |
+| | bayes_preseason | — | .0284 | .0296 | .0325 | .0386 |
+| | previous_season | .0351 | .0307 | .0319 | .0342 | .0363 |
+| | league_average | .0479 | .0496 | .0507 | .0518 | .0588 |
+| **bb_rate** | marcel_tuned *(= marcel)* | **.0163** | .0182 | **.0172** | .0206 | **.0268** |
+| | marcel_tuned_noage | .0164 | .0183 | .0172 | **.0205** | .0269 |
+| | bayes_preseason | — | **.0179** | .0179 | .0222 | .0279 |
+| | previous_season | .0202 | .0220 | .0210 | .0246 | .0286 |
+| | league_average | .0244 | .0251 | .0254 | .0263 | .0321 |
+| **hr_rate** | marcel_tuned | .0097 | **.0089** | .0100 | **.0114** | **.0148** |
+| | marcel_tuned_noage | **.0097** | .0091 | **.0098** | .0115 | .0150 |
+| | marcel | .0098 | .0091 | .0098 | .0115 | .0152 |
+| | marcel_preseason | — | — | .0098 | .0118 | .0155 |
+| | bayes_preseason | — | .0092 | .0099 | .0117 | .0153 |
+| | previous_season | .0114 | .0113 | .0121 | .0141 | .0167 |
+| | league_average | .0122 | .0117 | .0128 | .0135 | .0161 |
+| **babip** | marcel_tuned | .0237 | **.0235** | **.0266** | .0344 | .0425 |
+| | marcel_tuned_noage | **.0236** | .0235 | .0267 | **.0343** | .0426 |
+| | marcel | .0249 | .0242 | .0269 | .0350 | .0424 |
+| | marcel_preseason | — | — | .0270 | .0349 | **.0393** |
+| | bayes_preseason | — | .0243 | .0271 | .0345 | .0417 |
+| | previous_season | .0337 | .0329 | .0344 | .0389 | .0411 |
+| | league_average | .0253 | .0254 | .0288 | .0352 | .0427 |
+| **iso** | marcel_tuned | **.0336** | **.0320** | .0351 | .0411 | .0557 |
+| | marcel_tuned_noage | .0337 | .0325 | .0346 | **.0410** | .0566 |
+| | marcel | .0339 | .0333 | **.0345** | .0413 | .0567 |
+| | marcel_preseason | — | — | .0352 | .0428 | .0558 |
+| | bayes_preseason | — | .0341 | .0358 | .0436 | **.0551** |
+| | previous_season | .0405 | .0404 | .0418 | .0493 | .0584 |
+| | league_average | .0430 | .0406 | .0448 | .0472 | .0609 |
+
+Scored players are unchanged from the section above: 407 (2025) · 362 (2026)
+· 315 / 231 / 126 at the three cutoffs for K%/BB%/HR; 390 · 356 · 308 / 213 /
+80 for ISO; 347 · 319 · 267 / 157 / 4 for BABIP.
+
+## The paired test — new params vs stock Marcel
+
+Per-player difference in absolute error, trials-weighted, **negative = tuned
+better**. BB% is stock, hence identically zero.
+
+| Component | 2025 | 2026 | May 1 | Jul 1 | Aug 1 |
+|---|---|---|---|---|---|
+| k_rate | **−.00006 ± .00046** | **−.00059 ± .00039** | **−.00084 ± .00034** | **−.00031 ± .00041** | **−.00019 ± .00050** |
+| bb_rate | .00000 | .00000 | .00000 | .00000 | .00000 |
+| hr_rate | **−.00003 ± .00014** | **−.00015 ± .00014** | +.00022 ± .00016 | **−.00009 ± .00017** | **−.00041 ± .00024** |
+| babip | **−.00127 ± .00040** | **−.00075 ± .00041** | **−.00030 ± .00043** | **−.00068 ± .00049** | +.00004 ± .00288 |
+| iso | **−.00032 ± .00055** | **−.00131 ± .00056** | +.00062 ± .00059 | **−.00018 ± .00070** | **−.00099 ± .00106** |
+
+Pooled within each component across its five cells, **new fit beside the
+previous frozen one**:
+
+| Component | New: pooled diff | SE | t | % of stock MAE | Cells won | Previous fit: % of stock MAE (t) |
+|---|---|---|---|---|---|---|
+| babip | −.000792 | .000215 | **−3.68** | **−2.96%** | 4/5 | −3.27% (−3.80) |
+| k_rate | −.000415 | .000195 | **−2.12** | **−1.42%** | 5/5 | −2.41% (−2.68) |
+| iso | −.000385 | .000286 | −1.35 | **−1.06%** | 4/5 | +0.02% (+0.02) |
+| hr_rate | −.000048 | .000073 | −0.66 | −0.47% | 4/5 | −0.30% (−0.40) |
+| bb_rate | 0 | — | — | 0 | 0/5 | 0 |
+
+**Overall: −1.10% of stock Marcel's MAE (SE 0.30, t −3.71), 17 of 25 cells**,
+against the previous fit's −1.10% ± 0.36 (t −3.06) on 15 of 25. Same point
+estimate, tighter, more cells, and — the part that matters — **no component
+is worse than stock any more**, where the previous fit left ISO at +0.02%.
+
+## Head to head: new params vs the previous frozen params
+
+Scored as a third arm on the same cells, paired per player. (Run with only
+`marcel`, the new params and the old ones as arms, so the common-player set
+is slightly larger than in the eight-arm table above and the percentages move
+a hair; the comparison between the two columns is what this table is for.)
+
+| Component | new − frozen, pooled | SE | t | % of stock MAE |
+|---|---|---|---|---|
+| iso | −.000313 | .000138 | **−2.27** | **−0.86%** |
+| hr_rate | −.000028 | .000031 | −0.90 | −0.27% |
+| bb_rate | 0 | — | — | 0 |
+| babip | +.000037 | .000126 | +0.29 | +0.14% |
+| k_rate | +.000247 | .000179 | +1.38 | +0.83% |
+| **overall** | | **0.18** | **−0.22** | **−0.04%** |
+
+Against stock in that same three-arm framing: **new −1.19% ± 0.29 (t −4.17),
+17/25 cells; previous −1.15% ± 0.34 (t −3.36), 16/25.**
+
+So: the new fit is **not worse pooled** and **not significantly worse on any
+component** — K% gives back 0.83% at t +1.38 and BABIP 0.14% at t +0.29,
+neither close to significant, while ISO gains 0.86% at t −2.27. That clears
+the bar for refreezing, and `src/eval/marcel_params.json` now holds the
+constrained fit.
+
+## Do the HR/ISO in-sample gains survive now?
+
+This was the whole question, and the answer is **yes, partly, and for the
+first time.**
+
+| Component | In sample (old fit) | Holdout (old fit) | In sample (new fit) | Holdout (new fit) |
+|---|---|---|---|---|
+| hr_rate | −3.66% | −0.30% (t −0.40) | −2.90% | −0.47% (t −0.66) |
+| iso | −3.79% | +0.02% (t +0.02) | −3.19% | −1.06% (t −1.35) |
+
+Neither is significant on its own — HR/PA's five cells are small and ISO's
+t is −1.35 — but both now point the right way, ISO by a full percent where it
+used to be exactly zero, and ISO wins its head-to-head against the old
+params at t −2.27. The pattern is the one a real effect makes and the old fit
+did not: a *smaller* in-sample gain that *survives*.
+
+K% and BABIP give a little back (−2.41% → −1.42%, −3.27% → −2.96%), which is
+the same story from the other side: part of what they were earning was the
+level correction, and they no longer get it.
+
+## The level, before and after
+
+Trials-weighted mean projection minus the realized rate of the scored
+players, averaged over the tuning window:
+
+| Component | Stock | Previous fit | New fit |
+|---|---|---|---|
+| k_rate | +.00219 | **−.00227** | +.00184 |
+| bb_rate | +.00045 | +.00045 | +.00045 |
+| hr_rate | +.00201 | −.00027 | +.00032 |
+| babip | +.00133 | +.00046 | −.00103 |
+| iso | +.00838 | **−.00259** | +.00121 |
+
+The previous fit's age curve was pushing K% **down** by 0.45 points relative
+to stock and ISO **down** by 1.1 — a level correction wearing an aging
+curve's clothes. Note that on ISO it was correcting a real stock bias
+(+.0084) and overshooting it; the constrained curve corrects the same bias
+and lands nearer zero (+.0012).
+
+**On the live board** (`scripts/build_ros_projections.py --as-of 2026-09-02`,
+420 hitters, `stale: false`), mean projected K% weighted by projected
+rest-of-season PA goes **.2133 → .2185** against a 2026 league K% of **.2207**
+through Sept 1: the gap closes from −7.4 to −2.2 tenths of a point.
+Unweighted across the 420 projected hitters it goes .2201 → .2252, which now
+sits *above* league, as a bench-heavy population should.
+
+## Caveats
+
+- **The two power components still peak at the window edge.** HR/PA and ISO
+  both land on peak age 25 with a −0.012 old-side slope, both at the edge of
+  their grids. The constraint stops them being straight lines but does not
+  stop them wanting to be as young-peaking and as steep as the window allows.
+  Read them as "power declines from the mid-twenties, at about the fastest
+  rate the grid offers", and treat the exact peak as unidentified.
+- **A multiplier fixed at 1.0 at the peak still shifts the level.** Inside
+  the constrained family the age term is ≤ 1 everywhere for the four
+  "bigger is better" components and ≥ 1 everywhere for K%, so any non-flat
+  curve moves the population mean. The constraint bounds that shift; it does
+  not remove it. Renormalizing the age multiplier to be mean-1 over the
+  projected population would, and is the obvious next thing to try.
+- **The league-rate choice and the guard share a validation split.** Both use
+  fit 2020–2022 / score 2023–2024. The option is chosen on that split and
+  then the fitted component is guarded on it, which is a mild reuse. It is
+  all inside the tuning window and the holdout is untouched, but the ISO
+  `weighted3` pick in particular rests on two years.
+- **`drift` is untested where it would matter most.** It collapses to `last`
+  at every intra-season cutoff by construction, so three of the five holdout
+  cells cannot distinguish it, and the two that can are the two season-level
+  ones. A league genuinely trending mid-season is not something this holdout
+  contains.
+- **BB% has now kept stock's constants three times running** — the search's
+  in-sample gain is small (−0.53%), the inner validation says +0.19%, and the
+  holdout is identically zero because the frozen params *are* stock. Whatever
+  is left in BB% is not reachable by these six knobs.
+- **The holdout has now been looked at twice.** The constants were chosen on
+  the tuning window both times and the guard is an inner-validation rule, but
+  this is the second fit scored on the same 2025/2026 cells, and the honest
+  reading of a −0.04% head-to-head is "the two fits are indistinguishable out
+  of sample; the case for the new one is that it is the one whose in-sample
+  gains are the same kind of thing as its out-of-sample gains."
+- Everything the previous section says about **cell independence, the 4-player
+  BABIP cell at Aug 1, and the coarse flat grid** still applies unchanged.
+
+## Reproducing
+
+```
+python scripts/tune_marcel.py --league-modes   # the option table + levels
+python scripts/tune_marcel.py --markdown       # refit, refreeze, score, tables
+python scripts/tune_marcel.py --skip-tune      # score the committed params
+python scripts/build_ros_projections.py --as-of 2026-09-02
+```
