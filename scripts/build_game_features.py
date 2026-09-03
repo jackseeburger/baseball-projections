@@ -46,6 +46,8 @@ FEATURES_DIR = Path(__file__).resolve().parent.parent / "data" / "features"
 # every other station's numbers exactly where they are: the rows for 2015+ are
 # the same rows, byte for byte, and only 2013-2014 are new.
 HITTER_SEASONS_EXT = PARQUET_DIR / "hitter_seasons_2013_2026.parquet"
+# The seasons before the shared table starts, fetched once and kept beside it.
+HITTER_SEASONS_PRE = PARQUET_DIR / "hitter_seasons_pre2015.parquet"
 PRIOR_SEASONS = 2
 
 
@@ -69,7 +71,7 @@ def hitter_seasons(start: int, end: int) -> pd.DataFrame:
         return base[base["season"].between(start, end)]
     if not HITTER_SEASONS_EXT.exists():
         older = build_seasons_table(start, have - 1,
-                                    cache_path=FEATURES_DIR / "_hitter_seasons_pre.parquet")
+                                    cache_path=HITTER_SEASONS_PRE)
         ext = pd.concat([older, base], ignore_index=True)
         ext = ext.drop_duplicates(subset=["batter", "season"], keep="last")
         HITTER_SEASONS_EXT.parent.mkdir(parents=True, exist_ok=True)
@@ -148,6 +150,23 @@ def build_season(season: int, *, workers: int, min_games: int,
     return feats
 
 
+def write_table(feats: pd.DataFrame, path: Path) -> None:
+    """Write one season's table: features as float32, zstd-compressed.
+
+    The table is committed, so its size is a real cost. Single precision is
+    seven significant figures on a runs-per-nine rate — four orders of
+    magnitude finer than anything the fifth decimal of a Brier score can see —
+    while the identifiers, the label and the chain's own probabilities keep
+    full precision, because those are what the published numbers are checked
+    against.
+    """
+    out = feats.copy()
+    for col in gf.FEATURE_COLUMNS:
+        out[col] = out[col].astype("float32")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    out.to_parquet(path, index=False, compression="zstd")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seasons", default="2015-2026",
@@ -181,7 +200,7 @@ def main() -> None:
         if not len(feats):
             print(f"{season}: no rows, nothing written", flush=True)
             continue
-        feats.to_parquet(path, index=False)
+        write_table(feats, path)
         print(f"wrote {path} ({len(feats)} rows)", flush=True)
 
 
