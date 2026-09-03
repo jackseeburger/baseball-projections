@@ -579,7 +579,14 @@ def main() -> None:
                               "2023-2024; the holdout is never consulted"),
                 "inner_validation":
                     mode_scores.drop(columns="params").to_dict("records"),
-                "levels": mode_levels.to_dict("records"),
+                # Only the chosen option's levels: the other five are 150 more
+                # rows of provenance nobody reads, and `--league-modes`
+                # reprints all of them on demand.
+                "levels": mode_levels[[
+                    o == (m if m != "drift" else f"drift@{d:g}")
+                    for (m, d), o in ((picks[c], o) for c, o in zip(
+                        mode_levels["component"], mode_levels["option"]))
+                ]].to_dict("records"),
             },
             in_sample=summary,
             variants={"ballast_weights_only":

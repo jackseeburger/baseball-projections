@@ -27,6 +27,7 @@ from src.eval.baselines import (
     marcel_tuned,
     marcel_tuned_preseason,
     marcel_tuned_provider,
+    projected_league_rate,
     save_marcel_params,
     tuned_age_adjustment,
 )
@@ -220,6 +221,184 @@ class TestAgeCurve:
         assert (a["predicted"].to_numpy() == b["predicted"].to_numpy()).all()
 
 
+class TestProjectedLeagueRate:
+    """The three "regress toward what?" options, on a frame whose answer is
+    arithmetic rather than a fit.
+
+    Three seasons, one player each — so every season's league rate *is* that
+    player's rate — and the rates climb by exactly .010 a year: 2021 .200,
+    2022 .210, 2023 .220. The trials differ per season so a wrong weighting
+    shows up as a wrong number rather than as the same number by luck.
+    """
+
+    @pytest.fixture
+    def trend(self):
+        return pd.DataFrame([
+            {"batter": 1, "season": 2021, "age": 27, "pa": 1000, "k": 200},
+            {"batter": 1, "season": 2022, "age": 28, "pa": 500, "k": 105},
+            {"batter": 1, "season": 2023, "age": 29, "pa": 2000, "k": 440},
+        ])
+
+    def test_last_is_the_most_recent_season(self, trend, spec):
+        p = FLAT.replace(league_mode="last")
+        assert projected_league_rate(trend, spec, p, 2024) == pytest.approx(0.220)
+
+    def test_weighted3_uses_the_components_own_recency_weights(self, trend, spec):
+        p = FLAT.replace(league_mode="weighted3", weights=(3.0, 2.0, 1.0))
+        # (3*440 + 2*105 + 1*200) / (3*2000 + 2*500 + 1*1000) = 1730/8000
+        assert projected_league_rate(trend, spec, p, 2024) == pytest.approx(1730 / 8000)
+
+    def test_weighted3_with_flat_weights_is_the_pooled_three_year_rate(
+            self, trend, spec):
+        p = FLAT.replace(league_mode="weighted3", weights=(1.0, 1.0, 1.0))
+        assert projected_league_rate(trend, spec, p, 2024) == pytest.approx(
+            745 / 3500)
+
+    @pytest.mark.parametrize("damp,expected", [
+        (0.0, 0.220), (0.5, 0.225), (1.0, 0.230),
+    ])
+    def test_drift_extrapolates_the_one_season_change(self, trend, spec,
+                                                      damp, expected):
+        p = FLAT.replace(league_mode="drift", league_damp=damp)
+        assert projected_league_rate(trend, spec, p, 2024) == pytest.approx(expected)
+
+    def test_drift_scales_with_the_horizon(self, trend, spec):
+        """Two years out is two years of drift; zero years out is none."""
+        p = FLAT.replace(league_mode="drift", league_damp=1.0)
+        assert projected_league_rate(trend, spec, p, 2025) == pytest.approx(0.240)
+        assert projected_league_rate(trend, spec, p, 2023) == pytest.approx(0.220)
+
+    def test_drift_needs_a_previous_season(self, spec):
+        one = pd.DataFrame([{"batter": 1, "season": 2023, "age": 27,
+                             "pa": 1000, "k": 220}])
+        p = FLAT.replace(league_mode="drift", league_damp=1.0)
+        assert projected_league_rate(one, spec, p, 2024) == pytest.approx(0.220)
+
+    def test_an_unknown_mode_is_an_error(self, trend, spec):
+        with pytest.raises(ValueError, match="unknown league_mode"):
+            projected_league_rate(trend, spec, FLAT.replace(league_mode="ouija"),
+                                  2024)
+
+    def test_the_mode_reaches_the_projection(self, seasons, spec):
+        """A rising league pulls every projection up, because the ballast is
+        league average and league average is what moved."""
+        train = seasons[seasons.season <= 2023].copy()
+        # Make the league rate climb: scale each season's strikeouts.
+        train["k"] = (train["k"] * (1.0 + 0.1 * (train["season"] - 2021))).round()
+        last = marcel_tuned(train, spec, 2024,
+                            params=FLAT.replace(league_mode="last"))
+        drift = marcel_tuned(train, spec, 2024,
+                             params=FLAT.replace(league_mode="drift",
+                                                 league_damp=1.0))
+        assert (drift["predicted"].to_numpy() > last["predicted"].to_numpy()).all()
+
+    def test_stock_params_still_mean_last_season(self, seasons, spec):
+        assert STOCK_PARAMS["k_rate"].league_mode == "last"
+        train = seasons[seasons.season <= 2023]
+        assert projected_league_rate(train, spec, STOCK_PARAMS["k_rate"],
+                                     2024) == pytest.approx(0.25)
+
+
+class TestAgeConstraint:
+    """The tuner's age term cannot land outside the constrained family.
+
+    The unconstrained fit put the peak at a grid end (23 or 31) with equal
+    slopes either side — a straight line in age that was half level
+    correction. These are the rules that make that shape unreachable.
+    """
+
+    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    def test_every_candidate_the_search_can_propose_is_inside(self, component):
+        start = tuning.constrain(STOCK_PARAMS[component], component)
+        for axis in tuning.AXES:
+            for cand in tuning._candidates(axis, start, component,
+                                           constrained=True):
+                assert tuning.age_curve_ok(cand, component), (axis, cand)
+
+    @pytest.mark.parametrize("component", sorted(COMPONENTS))
+    def test_a_fit_lands_inside_the_window(self, component):
+        """The real search on real-shaped noise, from a start outside the
+        family, still returns something inside it."""
+        rng = np.random.default_rng(7)
+        rows = []
+        for season in range(2019, 2025):
+            for batter in range(80):
+                pa = 600
+                rows.append({"batter": batter, "season": season,
+                             "age": 20 + batter % 20, "pa": pa,
+                             "k": int(rng.binomial(pa, 0.24)),
+                             "bb": int(rng.binomial(pa, 0.09)),
+                             "hr": int(rng.binomial(pa, 0.035)),
+                             "ab": 550, "bip": 400,
+                             "hits_in_play": int(rng.binomial(400, 0.29)),
+                             "xb_points": int(rng.binomial(550, 0.16))})
+        frame = pd.DataFrame(rows)
+        spec = COMPONENTS[component]
+        splits = tuning.make_splits(frame, component, [2023, 2024])
+        # Start from a deliberately illegal age term: peak off the window with
+        # both slopes the same sign, i.e. the straight line we are outlawing.
+        bad = STOCK_PARAMS[component].replace(
+            peak_age=23.0, age_slope_young=0.012, age_slope_old=0.012)
+        assert not tuning.age_curve_ok(bad, component)
+        best, _ = tuning.coordinate_search(splits, spec, start=bad, passes=1)
+        assert tuning.age_curve_ok(best, component)
+        lo, hi = tuning.AGE_PEAK_WINDOW
+        assert lo <= best.peak_age <= hi
+
+    def test_the_slopes_turn_the_curve_over(self):
+        """Inside the family the multiplier has a genuine extremum at the peak
+        — it cannot be monotone across the age range, which is the shape that
+        doubles as a level."""
+        for component in COMPONENTS:
+            for young in tuning.constrained_slope_grid(component, "young"):
+                for old in tuning.constrained_slope_grid(component, "old"):
+                    p = MarcelParams(peak_age=28.0, age_slope_young=young,
+                                     age_slope_old=old)
+                    adj = tuned_age_adjustment(np.arange(20.0, 41.0), p)
+                    peak = tuned_age_adjustment(np.array([28.0]), p)[0]
+                    assert peak == 1.0
+                    if tuning.AGE_DIRECTION[component] > 0:
+                        assert adj.max() == pytest.approx(1.0)
+                    else:
+                        assert adj.min() == pytest.approx(1.0)
+
+    def test_k_rate_is_mirrored(self):
+        """K% is the component where a bigger number is a worse hitter, so its
+        constrained curve troughs at the peak age instead of cresting."""
+        assert tuning.AGE_DIRECTION["k_rate"] < 0
+        assert all(s <= 0 for s in tuning.constrained_slope_grid("k_rate", "young"))
+        assert all(s >= 0 for s in tuning.constrained_slope_grid("k_rate", "old"))
+        assert all(s >= 0 for s in tuning.constrained_slope_grid("iso", "young"))
+        assert all(s <= 0 for s in tuning.constrained_slope_grid("iso", "old"))
+
+    def test_constrain_is_idempotent_and_clips(self):
+        p = MarcelParams(peak_age=23.0, age_slope_young=0.012,
+                         age_slope_old=0.012)
+        once = tuning.constrain(p, "iso")
+        assert once.peak_age == tuning.AGE_PEAK_WINDOW[0]
+        assert once.age_slope_young == 0.012      # right sign for iso, kept
+        assert once.age_slope_old == 0.0          # wrong sign, zeroed
+        assert tuning.constrain(once, "iso") == once
+
+    def test_the_frozen_age_curves_are_inside_the_family(self):
+        """Whatever is committed must satisfy the rule it was fit under —
+        except a component the guard sent back to stock, whose curve is
+        Tango's monotone one by design."""
+        fitted = load_marcel_params(strict=True)
+        for component, p in fitted.items():
+            if p == STOCK_PARAMS[component]:
+                continue
+            assert tuning.age_curve_ok(p, component), component
+
+    def test_unconstrained_search_can_still_leave_the_window(self):
+        """The constraint is a choice, not a law of the code: the old
+        behaviour is still reachable, which is what makes the comparison in
+        the doc runnable."""
+        cands = tuning._candidates("peak_age", STOCK_PARAMS["iso"], "iso",
+                                   constrained=False)
+        assert any(c.peak_age < tuning.AGE_PEAK_WINDOW[0] for c in cands)
+
+
 # --- partial seasons and the harness ----------------------------------------
 
 class TestPartialSeasons:
@@ -283,6 +462,23 @@ class TestParamsFile:
         for name, p in params.items():
             assert back[name] == p
         assert json.loads(path.read_text())["generated"] == "test"
+
+    def test_the_league_mode_round_trips(self, tmp_path):
+        params = {"iso": MarcelParams(300.0, (1.0, 0.6, 0.4), 25.0, 0.0, -0.012,
+                                      league_mode="drift", league_damp=0.5)}
+        back = load_marcel_params(save_marcel_params(params, tmp_path / "p.json"))
+        assert back["iso"] == params["iso"]
+
+    def test_a_file_written_before_league_mode_existed_still_loads(self, tmp_path):
+        """Back-compat: no `league_mode` key means stock Marcel's "last", so
+        an older params file means exactly what it meant when it was written."""
+        path = tmp_path / "old.json"
+        path.write_text(json.dumps({"components": {"k_rate": {
+            "ballast": 100.0, "weights": [1.0, 0.4, 0.2], "peak_age": 31.0,
+            "age_slope_young": 0.006, "age_slope_old": 0.012}}}))
+        p = load_marcel_params(path)["k_rate"]
+        assert p.league_mode == "last"
+        assert p.league_damp == 0.0
 
     def test_unfit_components_fall_back_to_stock(self, tmp_path):
         path = save_marcel_params(
