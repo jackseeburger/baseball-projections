@@ -32,18 +32,20 @@ The availability rule has three inspectable constants and no fitted curve:
     unavailable if   d1 ≥ HARD_1D_PITCHES              (heavy work yesterday)
                 or   d1 + d2 ≥ HARD_2D_PITCHES         (heavy work over two)
                 or   d1 > 0 and d2 > 0 and d3 > 0      (three days running)
-    otherwise        w = 1 − (d1 + 0.5·d2 + 0.25·d3) / HARD_2D_PITCHES,
+    otherwise        w = 1 − (d1 + 0.5·d2 + 0.25·d3) / TAPER_PITCHES,
                      clipped to [0, 1]
 
 The three-days-running clause is `bullpen.unavailable`'s rule kept intact — it
 is what clubs actually work to — and the two pitch thresholds are what it was
-missing. The taper divides by the same two-day threshold rather than
-introducing a fourth constant, and the 1 / 0.5 / 0.25 recency discount is the
-standard halving, not a fit.
+missing. `TAPER_PITCHES` is how tired a *usable* arm is allowed to look: it is
+separate from the hard stops because they answer different questions, and tying
+them together forces a routine 16-pitch outing to cost a third of an arm. The
+1 / 0.5 / 0.25 recency discount is the standard halving, not a fit.
 
-Provenance: `HARD_1D_PITCHES` and `HARD_2D_PITCHES` were chosen walk-forward
-on the **2025** season, scored on 2025 games only, and then applied unchanged
-to 2026. Nothing here is fit to the 2026 games the term is scored on.
+Provenance: the three constants were chosen walk-forward on the **2025**
+season, scored on 2025 games only, and then applied unchanged to 2026
+(`scripts/sweep_reliever_usage.py`). Nothing here is fit to the 2026 games the
+term is scored on.
 """
 from __future__ import annotations
 
@@ -53,11 +55,24 @@ import pandas as pd
 from src.sim.bullpen import pen_ra9
 
 # A reliever who threw this many pitches yesterday is not available tonight.
-# Roughly two innings of work: the outing after which clubs give a man a day.
-HARD_1D_PITCHES = 40.0
-# ...or this many across yesterday and the day before, which is the same
-# ceiling reached over a back-to-back instead of in one night.
-HARD_2D_PITCHES = 50.0
+# ...or this many across yesterday and the day before, the same ceiling reached
+# over a back-to-back instead of in one night. ...and `TAPER_PITCHES` is the
+# scale of the fractional taper below them: the recency-discounted pitch load
+# at which an arm that is still usable would be scored at zero.
+#
+# All three are the argmin of the declared grid {30, 40, 50} x {45, 65, 85} x
+# {50, 75, 100, 150} on 2025, and all three sit at its gentle edge, because the
+# 2025 surface is monotone in exactly that direction: **the less availability
+# weighting the rule does, the better it scores**, all the way out to disabling
+# it. A 50-pitch relief outing is above the 90th percentile (31 pitches), so the
+# one-day stop almost never fires, and at a taper of 150 a routine 16-pitch
+# inning costs a man 11% of an arm. That is a nearly-no-op rule, and it is what
+# the season chose. See docs/market-benchmark-2026.md for the surface and for
+# what it means: the term's gain is pen *quality* against the league baseline,
+# not availability.
+HARD_1D_PITCHES = 50.0
+HARD_2D_PITCHES = 85.0
+TAPER_PITCHES = 150.0
 # How many calendar days of workload the rule looks at. Three, because the
 # third day only ever enters through the three-days-running clause and the
 # quarter-weight tail of the taper.
@@ -163,13 +178,14 @@ def recent_pitches(appearances: pd.DataFrame, as_of: str,
 
 def availability_weight(d1, d2=0.0, d3=0.0, hard_1d: float = HARD_1D_PITCHES,
                         hard_2d: float = HARD_2D_PITCHES,
+                        taper: float = TAPER_PITCHES,
                         decay: float = USAGE_DECAY):
     """How much of a fresh arm this reliever is tonight, in [0, 1].
 
     Zero on any of the three hard stops (heavy yesterday, heavy over two days,
     three days running); otherwise one minus the recency-discounted load as a
-    share of the two-day threshold. A man who has not pitched in three days is
-    exactly 1 and leaves the pen's rate untouched.
+    share of `taper`. A man who has not pitched in three days is exactly 1 and
+    leaves the pen's rate untouched.
 
     Scalars or aligned arrays.
     """
@@ -177,7 +193,7 @@ def availability_weight(d1, d2=0.0, d3=0.0, hard_1d: float = HARD_1D_PITCHES,
     d2 = np.asarray(d2, dtype=float)
     d3 = np.asarray(d3, dtype=float)
     load = d1 + decay * d2 + decay * decay * d3
-    w = np.clip(1.0 - load / float(hard_2d), 0.0, 1.0)
+    w = np.clip(1.0 - load / float(taper), 0.0, 1.0)
     out = np.where((d1 >= float(hard_1d))
                    | (d1 + d2 >= float(hard_2d))
                    | ((d1 > 0) & (d2 > 0) & (d3 > 0)), 0.0, w)
@@ -187,6 +203,7 @@ def availability_weight(d1, d2=0.0, d3=0.0, hard_1d: float = HARD_1D_PITCHES,
 def availability(appearances: pd.DataFrame, as_of: str,
                  hard_1d: float = HARD_1D_PITCHES,
                  hard_2d: float = HARD_2D_PITCHES,
+                 taper: float = TAPER_PITCHES,
                  days: int = USAGE_DAYS, decay: float = USAGE_DECAY) -> dict:
     """{pitcher_id: availability weight} for one date, from the past only.
 
@@ -200,7 +217,8 @@ def availability(appearances: pd.DataFrame, as_of: str,
     zero = np.zeros(len(recent), dtype=float)
     d = [recent[f"d{i}"].to_numpy(dtype=float) if f"d{i}" in recent.columns else zero
          for i in (1, 2, 3)]
-    w = availability_weight(*d, hard_1d=hard_1d, hard_2d=hard_2d, decay=decay)
+    w = availability_weight(*d, hard_1d=hard_1d, hard_2d=hard_2d, taper=taper,
+                            decay=decay)
     return {int(p): float(x) for p, x in zip(recent["pitcher"], np.atleast_1d(w))}
 
 

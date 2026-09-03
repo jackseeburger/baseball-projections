@@ -48,7 +48,7 @@ NEW_MODEL = bt.C_SP_BPA_MODEL
 
 
 def cell_day_context(bp_day: dict, bp_ctx: dict, date: str,
-                     hard_1d: float, hard_2d: float) -> dict:
+                     hard_1d: float, hard_2d: float, taper: float) -> dict:
     """`bullpen_day_context`'s output with one cell's availability weights.
 
     Only the weights change from cell to cell; the pen frames and the FIP rate
@@ -56,8 +56,8 @@ def cell_day_context(bp_day: dict, bp_ctx: dict, date: str,
     sweep one pass rather than one pass per cell.
     """
     frames, ra9, lg_ra9 = bp_day["frames"], bp_day["ra9"], bp_day["lg_ra9"]
-    weights = ru_model.availability(bp_ctx["usage"], date,
-                                    hard_1d=hard_1d, hard_2d=hard_2d)
+    weights = ru_model.availability(bp_ctx["usage"], date, hard_1d=hard_1d,
+                                    hard_2d=hard_2d, taper=taper)
 
     def available(team_id: int, starter_id: int) -> float:
         grp = frames.get(int(team_id))
@@ -72,7 +72,8 @@ def cell_day_context(bp_day: dict, bp_ctx: dict, date: str,
 
 
 def sweep(completed: pd.DataFrame, team_ids, min_games: int, sp_ctx: dict,
-          lu_ctx: dict, bp_ctx: dict, c_ctx: dict, cells: list) -> pd.DataFrame:
+          lu_ctx: dict, bp_ctx: dict, c_ctx: dict, cells: list,
+          baselines: list) -> pd.DataFrame:
     """One row per (game, cell) with the base and challenger probabilities.
 
     The date loop is `backtest_game_odds.walk_forward`'s, reduced to the two
@@ -91,19 +92,19 @@ def sweep(completed: pd.DataFrame, team_ids, min_games: int, sp_ctx: dict,
         lu_day = bt.lineup_day_context(tot, date, day, lu_ctx, lu_history)
         bp_day = bt.bullpen_day_context(tot, date, bp_ctx, sp_day)
         c_day = bt.run_env_day_context(tot, date, c_ctx, sp_day, lu_day, bp_day)
-        by_cell = {(h1, h2): cell_day_context(bp_day, bp_ctx, date, h1, h2)
-                   for h1, h2 in cells}
+        by_cell = {cell: cell_day_context(bp_day, bp_ctx, date, *cell)
+                   for cell in cells}
         for g in day.itertuples(index=False):
             base = bt.run_env_game_probs(g, c_day, sp_day, hfa)[BASE_MODEL]
-            for (h1, h2), cell_day in by_cell.items():
-                for baseline in ("league", "team"):
+            for (h1, h2, tap), cell_day in by_cell.items():
+                for baseline in baselines:
                     probs = bt.run_env_game_probs(
                         g, c_day, sp_day, hfa, cell_day,
                         {**bp_ctx, "bpa_baseline": baseline})
                     rows.append({
                         "date": date, "game_pk": int(g.game_pk),
                         "home_win": bool(g.home_win), "hard_1d": h1,
-                        "hard_2d": h2, "baseline": baseline,
+                        "hard_2d": h2, "taper": tap, "baseline": baseline,
                         BASE_MODEL: base, NEW_MODEL: probs[NEW_MODEL],
                         "shift": probs["c_bpa_shift"]})
         bt.update_lineup_history(day, lu_ctx, lu_history)
@@ -126,16 +127,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--season", type=int, default=2025)
     parser.add_argument("--min-games", type=int, default=20)
-    parser.add_argument("--hard-1d", default="25,30,35,40,45")
-    parser.add_argument("--hard-2d", default="35,45,55,65")
+    parser.add_argument("--hard-1d", default="30,40,50")
+    parser.add_argument("--hard-2d", default="45,65,85")
+    parser.add_argument("--taper", default="50,75,100,150")
+    parser.add_argument("--baselines", default="league,team")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game sweep frame here (parquet)")
     args = parser.parse_args()
 
     h1s = [float(x) for x in args.hard_1d.split(",")]
     h2s = [float(x) for x in args.hard_2d.split(",")]
-    cells = [(h1, h2) for h1 in h1s for h2 in h2s if h2 >= h1]
-    print(f"{len(cells)} cells x 2 baselines on {args.season}")
+    taps = [float(x) for x in args.taper.split(",")]
+    baselines = args.baselines.split(",")
+    cells = [(h1, h2, t) for h1 in h1s for h2 in h2s for t in taps if h2 >= h1]
+    print(f"{len(cells)} cells x {len(baselines)} baselines on {args.season}")
 
     teams = fetch_teams(args.season)
     sched = fetch_schedule(f"{args.season}-03-01", f"{args.season}-10-15")
@@ -162,26 +167,25 @@ def main() -> None:
         bt.rn_model.ROTATION_TOP_N, lu_ctx["pa_per_game"])
 
     df = sweep(scored, teams["team_id"].to_numpy(), args.min_games,
-               sp_ctx, lu_ctx, bp_ctx, c_ctx, cells)
+               sp_ctx, lu_ctx, bp_ctx, c_ctx, cells, baselines)
     if df.empty:
         print("no games scored")
         return
 
-    base_rows = df[(df["hard_1d"] == cells[0][0]) & (df["hard_2d"] == cells[0][1])
-                   & (df["baseline"] == "league")]
-    y = base_rows["home_win"].astype(float).to_numpy()
-    print(f"\n{len(base_rows)} games, {BASE_MODEL} Brier "
-          f"{np.mean((base_rows[BASE_MODEL].to_numpy() - y) ** 2):.5f}\n")
+    first = df[(df["hard_1d"] == cells[0][0]) & (df["hard_2d"] == cells[0][1])
+               & (df["taper"] == cells[0][2]) & (df["baseline"] == baselines[0])]
+    y = first["home_win"].astype(float).to_numpy()
+    print(f"\n{len(first)} games, {BASE_MODEL} Brier "
+          f"{np.mean((first[BASE_MODEL].to_numpy() - y) ** 2):.5f}\n")
 
-    out = []
-    for (h1, h2, b), grp in df.groupby(["hard_1d", "hard_2d", "baseline"]):
-        out.append({"hard_1d": h1, "hard_2d": h2, "baseline": b, **paired(grp)})
+    keys = ["hard_1d", "hard_2d", "taper", "baseline"]
+    out = [{**dict(zip(keys, k)), **paired(grp)} for k, grp in df.groupby(keys)]
     table = pd.DataFrame(out).sort_values("paired").reset_index(drop=True)
-    print(table.to_string(index=False,
-                          float_format=lambda v: f"{v:.5f}"))
+    print(table.to_string(index=False, float_format=lambda v: f"{v:.5f}"))
     best = table.iloc[0]
     print(f"\nbest on {args.season}: hard_1d={best['hard_1d']:.0f}, "
-          f"hard_2d={best['hard_2d']:.0f}, baseline={best['baseline']} "
+          f"hard_2d={best['hard_2d']:.0f}, taper={best['taper']:.0f}, "
+          f"baseline={best['baseline']} "
           f"({best['paired']:+.5f}, se {best['se']:.5f}, n={int(best['n'])})")
 
     if args.out is not None:

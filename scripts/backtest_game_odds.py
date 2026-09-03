@@ -86,6 +86,7 @@ BP_BASELINE = bp_model.BASELINE
 # walk-forward on 2025 only (docs/market-benchmark-2026.md).
 BPA_HARD_1D = ru_model.HARD_1D_PITCHES
 BPA_HARD_2D = ru_model.HARD_2D_PITCHES
+BPA_TAPER = ru_model.TAPER_PITCHES
 BPA_BASELINE = ru_model.BASELINE
 # Station C: how much of the bottom-up run environment to use, what trailing
 # window defines a club's hitters and their plate-appearance shares, and how
@@ -436,7 +437,8 @@ def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
     # relief appearances above.
     weights = ru_model.availability(bp_ctx["usage"], date,
                                     hard_1d=bp_ctx["hard_1d"],
-                                    hard_2d=bp_ctx["hard_2d"])
+                                    hard_2d=bp_ctx["hard_2d"],
+                                    taper=bp_ctx["taper"])
     pen, frames = {}, {}
     for team_id, grp in pens.groupby("team"):
         frames[int(team_id)] = grp
@@ -475,7 +477,8 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
                      league: dict, prior_counts: pd.DataFrame,
                      bpa_baseline: str = BPA_BASELINE,
                      hard_1d: float = BPA_HARD_1D,
-                     hard_2d: float = BPA_HARD_2D) -> dict:
+                     hard_2d: float = BPA_HARD_2D,
+                     taper: float = BPA_TAPER) -> dict:
     """Fetch every pitcher's appearances once for the whole backtest.
 
     `sp_ctx` already holds the prior-season pitching totals and league rates —
@@ -499,7 +502,7 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
             "roster_days": roster_days, "rest_days": rest_days,
             "rest_min_days": rest_min_days, "relief_ip": relief_ip,
             "bpa_baseline": bpa_baseline, "hard_1d": hard_1d,
-            "hard_2d": hard_2d}
+            "hard_2d": hard_2d, "taper": taper}
 
 
 # ─── station C: the bottom-up team run environment ───
@@ -786,7 +789,10 @@ def main() -> None:
                         help="pitches thrown yesterday that rule a reliever out")
     parser.add_argument("--bpa-hard-2d", type=float, default=BPA_HARD_2D,
                         help="pitches thrown over the last two days that rule a "
-                             "reliever out; also the divisor of the taper below it")
+                             "reliever out")
+    parser.add_argument("--bpa-taper", type=float, default=BPA_TAPER,
+                        help="recency-discounted pitch load at which a reliever "
+                             "who is still usable would be scored at zero")
     parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
                         help="innings the bullpen is assumed to cover")
     parser.add_argument("--no-run-env", action="store_true",
@@ -857,7 +863,7 @@ def main() -> None:
             args.bp_rest_min_days, args.relief_ip,
             sp_ctx["league"], sp_ctx["prior_counts"],
             bpa_baseline=args.bpa_baseline, hard_1d=args.bpa_hard_1d,
-            hard_2d=args.bpa_hard_2d)
+            hard_2d=args.bpa_hard_2d, taper=args.bpa_taper)
 
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:
@@ -903,7 +909,8 @@ def main() -> None:
               f"club-games took the mound with a pen short of full availability, "
               f"mean shift {preds['bpa_shift'].sum() / (2 * len(preds)):.3f} runs "
               f"per nine; baseline={args.bpa_baseline}, "
-              f"hard={args.bpa_hard_1d:.0f}/{args.bpa_hard_2d:.0f} pitches.")
+              f"hard={args.bpa_hard_1d:.0f}/{args.bpa_hard_2d:.0f} pitches, "
+              f"taper={args.bpa_taper:.0f}.")
     if c_ctx is not None:
         print(f"{C_SP_MODEL}: {int(preds['c_sp_fallback'].sum())} of {len(preds)} games "
               f"fell back to {C_MODEL} for a missing starter; "

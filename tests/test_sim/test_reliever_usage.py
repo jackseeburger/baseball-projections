@@ -256,7 +256,8 @@ def test_a_future_outing_cannot_make_a_rested_arm_unavailable():
 
 def test_the_window_moves_forward_with_the_date():
     """The same log read one day later sees the work one day further back."""
-    app = ru.appearance_pitches(frame([log(1, 100, "2026-05-05", pitches=45)]))
+    heavy = ru.HARD_1D_PITCHES
+    app = ru.appearance_pitches(frame([log(1, 100, "2026-05-05", pitches=heavy)]))
     assert ru.availability(app, "2026-05-06")[1] == 0.0
     assert ru.availability(app, "2026-05-08")[1] > 0.0
     assert ru.availability(app, "2026-05-09") == {}
