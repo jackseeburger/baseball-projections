@@ -473,3 +473,136 @@ def test_the_refit_bayes_arm_is_labelled_with_its_own_scale(tmp_path):
     assert any(scale in n for n in section["notes"])
     paired = [r for r in bayes_rows if "paired_vs_live" in r]
     assert paired and paired[0]["paired_vs_live"]["base"] == "marcel_tuned"
+
+
+def _ros_payload_with_bayes(tmp_path, scale):
+    """The ros fixture plus a `bayes` arm fitted at `scale`, built and returned."""
+    payload = json.loads((FIXTURES / "ros_backtest.json").read_text())
+    payload["scores"].extend(
+        {**row, "model": "bayes", "mae": row["mae"] * 1.02}
+        for row in payload["scores"]
+        if row["model"] == "marcel_tuned" and row["component"] == "k_rate")
+    payload["arms"] = ["marcel_tuned", "bayes"] + [
+        a for a in payload["arms"] if a != "marcel_tuned"]
+    payload["bayes_fits"] = [{"cutoff": c, "scale": scale}
+                             for c in payload["cutoffs"]]
+    ros = tmp_path / "ros.json"
+    ros.write_text(json.dumps(payload))
+    return build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=ros,
+        git_sha="deadbeef",
+    )["sections"]["ros_backtest"]
+
+
+@pytest.mark.parametrize("scale, expected, forbidden", [
+    ("2x500 draws (tune 500), pymc, pitcher",
+     "opposing-pitcher term on", "opposing-pitcher term off"),
+    ("2x1000 draws (tune 1000), pymc, no-pitcher",
+     "opposing-pitcher term off", "opposing-pitcher term on"),
+])
+def test_the_note_reads_the_pitcher_term_off_the_run(tmp_path, scale,
+                                                     expected, forbidden):
+    """Whether the pitcher term was on is reported, never asserted.
+
+    The term multiplies the cell count by ~110 because it joins the cell key,
+    so the scale a run can afford and whether it carried the term are the same
+    decision. A note that claims the term was on when the run had it off is
+    the same class of error this whole section exists to correct.
+    """
+    notes = " ".join(_ros_payload_with_bayes(tmp_path, scale)["notes"])
+    assert expected in notes
+    assert forbidden not in notes
+
+
+def test_a_mixed_run_does_not_claim_one_pitcher_setting(tmp_path):
+    """Cutoffs fitted differently must not be summarized as if they agreed."""
+    payload = json.loads((FIXTURES / "ros_backtest.json").read_text())
+    payload["scores"].extend(
+        {**row, "model": "bayes", "mae": row["mae"] * 1.02}
+        for row in payload["scores"]
+        if row["model"] == "marcel_tuned" and row["component"] == "k_rate")
+    payload["arms"] = ["marcel_tuned", "bayes"] + [
+        a for a in payload["arms"] if a != "marcel_tuned"]
+    payload["bayes_fits"] = [
+        {"cutoff": c, "scale": "2x500 draws (tune 500), pymc, "
+                               + ("pitcher" if i else "no-pitcher")}
+        for i, c in enumerate(payload["cutoffs"])]
+    ros = tmp_path / "ros.json"
+    ros.write_text(json.dumps(payload))
+    notes = " ".join(build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=ros, git_sha="deadbeef",
+    )["sections"]["ros_backtest"]["notes"])
+    assert "on at some cutoffs and off at others" in notes
+
+
+def _ros_with_bayes_paired(tmp_path, ts):
+    """The fixture plus a `bayes` arm whose paired t-stats are `ts`, per cutoff."""
+    payload = json.loads((FIXTURES / "ros_backtest.json").read_text())
+    payload["scores"].extend(
+        {**row, "model": "bayes", "mae": row["mae"] * 1.02}
+        for row in payload["scores"]
+        if row["model"] == "marcel_tuned" and row["component"] == "k_rate")
+    payload["arms"] = ["marcel_tuned", "bayes"] + [
+        a for a in payload["arms"] if a != "marcel_tuned"]
+    payload["bayes_fits"] = [{"cutoff": c, "scale": "2x500 draws (tune 500), pymc, pitcher"}
+                             for c in payload["cutoffs"]]
+    payload["paired_base"] = "marcel_tuned"
+    payload["paired"] = [
+        {"component": "k_rate", "cutoff": c, "arm": "bayes",
+         "base": "marcel_tuned", "n": 300, "diff": 0.0004,
+         "se": 0.0002, "t": t, "win_rate": 0.45}
+        for c, t in zip(payload["cutoffs"], ts)]
+    ros = tmp_path / "ros.json"
+    ros.write_text(json.dumps(payload))
+    return build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=ros, git_sha="deadbeef",
+    )["sections"]["ros_backtest"]["framing"]
+
+
+def test_a_count_of_cells_won_is_qualified_by_the_paired_test(tmp_path):
+    """"Beats it on 3 of 3" over-claims if none of the three gaps is real.
+
+    The correction this section exists for cuts both ways: the old labelling
+    over-claimed against the Bayesian arm by denying it the season, and a bare
+    cell count would over-claim against it again by reporting three wins that
+    the within-hitter paired test cannot separate from noise.
+    """
+    framing = _ros_with_bayes_paired(tmp_path, [1.56, 1.63, 0.06])
+    assert "not significant at any cutoff" in framing
+    assert "largest |t| 1.63" in framing
+
+
+def test_significant_paired_gaps_are_counted_as_such(tmp_path):
+    framing = _ros_with_bayes_paired(tmp_path, [2.7, 2.6, 0.5])
+    assert "significant at 2 of 3 cutoffs" in framing
+    assert "largest |t| 2.70" in framing
+
+
+def test_a_missing_paired_test_adds_no_significance_claim(tmp_path):
+    """No paired rows, no claim either way."""
+    payload = json.loads((FIXTURES / "ros_backtest.json").read_text())
+    payload["scores"].extend(
+        {**row, "model": "bayes", "mae": row["mae"] * 1.02}
+        for row in payload["scores"]
+        if row["model"] == "marcel_tuned" and row["component"] == "k_rate")
+    payload["arms"] = ["marcel_tuned", "bayes"] + [
+        a for a in payload["arms"] if a != "marcel_tuned"]
+    ros = tmp_path / "ros.json"
+    ros.write_text(json.dumps(payload))
+    framing = build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=ros, git_sha="deadbeef",
+    )["sections"]["ros_backtest"]["framing"]
+    assert "the fair comparison" in framing
+    assert "significant" not in framing

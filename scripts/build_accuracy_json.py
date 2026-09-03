@@ -417,6 +417,19 @@ def section_ros(payload: dict) -> dict:
                 f"information, the fair comparison — is the "
                 f"\"{ROS_ARM_LABELS['bayes']}\" row; the live arm beats it on "
                 f"{bayes_won} of {bayes_n}.")
+        # A count of cells won is not a result. The same table already carries
+        # the within-hitter paired test, so say whether those wins are
+        # separable from noise — a bare "3 of 3" over-claims against our own
+        # model exactly as the old labelling over-claimed against it.
+        ts = [abs(p["t"]) for (c, comp, arm), p in paired.items()
+              if arm == "bayes" and comp == (components[0] if components else "")
+              and p.get("t") is not None and not math.isnan(p["t"])]
+        if ts:
+            sig = sum(t >= 2 for t in ts)
+            fair += (
+                f" On the within-hitter paired test those gaps are "
+                f"{'not significant at any cutoff' if not sig else f'significant at {sig} of {len(ts)} cutoffs'}"
+                f" (largest |t| {max(ts):.2f}).")
         if bayes_scale:
             fair += (" That row is a "
                      f"{sorted(set(v for v in bayes_scale.values() if v))[0]} "
@@ -463,13 +476,27 @@ def section_ros(payload: dict) -> dict:
         "the season to date is the expected result, not a verdict on the model.",
     ]
     if "bayes" in arms:
+        # Whether the opposing-pitcher term was on is *read off the run*, never
+        # asserted: the term multiplies the cell count by ~110 (it joins the
+        # cell key), so a run that could afford full hitter coverage may well
+        # have had it off. Claiming it was on when it was not would be the same
+        # class of error this section exists to correct.
+        scales = sorted({v for v in bayes_scale.values() if v})
+        pitcher_note = ""
+        if scales:
+            on = [s for s in scales if "no-pitcher" not in s]
+            off = [s for s in scales if "no-pitcher" in s]
+            pitcher_note = (
+                ", with the opposing-pitcher term on" if on and not off else
+                ", with the opposing-pitcher term off" if off and not on else
+                ", with the opposing-pitcher term on at some cutoffs and off "
+                "at others")
         notes.append(
             "\"Bayes + 2026 to date\" is the PA-level Bayesian K% model refit "
             "at the cutoff on exactly the plate appearances the baselines see "
-            "(src/eval/bayes_arm.py), with the opposing-pitcher term on. It "
+            f"(src/eval/bayes_arm.py){pitcher_note}. It "
             "covers K% only; the other four components have no refit arm yet."
-            + (f" Sampling scale: {sorted(set(v for v in bayes_scale.values() if v))[0]}."
-               if bayes_scale else ""))
+            + (f" Sampling scale: {scales[0]}." if scales else ""))
     if payload.get("paired"):
         notes.append(
             f"Paired column: within-hitter difference in absolute error "

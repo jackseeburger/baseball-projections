@@ -1806,7 +1806,12 @@ function accuracyTable(section) {
            r.is_control ? '<span class="acc-tag acc-tag-control">control</span>' : "",
            r.is_ours ? '<span class="acc-tag acc-tag-ours">ours</span>' : "",
            r.is_production ? '<span class="acc-tag acc-tag-prod">live</span>' : ""].join("");
-        h += `<td class="name-cell">${esc(v)}${tags}</td>`;
+        // A sampled arm carries the scale it was actually fitted at, on the
+        // row. A reduced fit is evidence about a reduced fit, and a reader
+        // who never opens the JSON has to be able to see which one this is.
+        const scale = (c.key === nameKey && r.scale)
+          ? `<span class="acc-scale">${esc(r.scale)}</span>` : "";
+        h += `<td class="name-cell">${esc(v)}${tags}${scale}</td>`;
       } else {
         const isBest = (c.key in best && v === best[c.key])
           || (Array.isArray(r.best) && r.best.includes(c.key));
