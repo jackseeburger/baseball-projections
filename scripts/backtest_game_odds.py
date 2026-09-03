@@ -41,6 +41,19 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       club's own recent cards. Identical to the row above on
                       any game whose lineup is not posted, which is every
                       future game the nightly prices
+    pythag_C_sp_bpa_ip_pk
+                    — ...and the ballpark: per-venue run multipliers from the
+                      *prior* seasons' home/road splits, with the park divided
+                      out of the top-down half first (src/sim/park.py)
+    pythag_C_sp_bpa_ip_def
+                    — ...and team defence instead: the club's BABIP allowed on
+                      the road against the league, converted to runs and added
+                      to the runs-allowed side FIP cannot see (src/sim/defence.py)
+    pythag_C_sp_bpa_ip_pk_def
+                    — both of them, and `_pk_def_lu` with the card as well.
+                      **Neither term cleared its gate** (docs/market-benchmark-2026.md),
+                      so the nightly serves pythag_C_sp_bpa_ip and these are
+                      scoreboard columns only
 
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20

@@ -63,6 +63,24 @@ def completed_totals(schedule: pd.DataFrame, as_of: str,
     return tot
 
 
+def _odds_job():
+    """The nightly job as a module, so this script reads exactly what it reads.
+
+    Loaded by path rather than imported, because `scripts/` is not a package
+    and the point of this script is to ask the *production* fetch for the same
+    frames the odds job gets.
+    """
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location(
+        "run_playoff_odds_attr",
+        Path(__file__).resolve().parent / "run_playoff_odds.py")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
 def build(as_of: str, data: dict, totals: pd.DataFrame, config: gm.ChainConfig):
     lg_rs9, lg_ra9 = gm.league_run_rates(float(totals["rs"].sum()),
                                          float(totals["ra"].sum()),
@@ -85,18 +103,7 @@ def main() -> None:
                     help="write the table here as CSV")
     args = ap.parse_args()
 
-    # The odds job's own fetch, so this reads exactly what the nightly reads.
-    rp = __import__("importlib").import_module("scripts.run_playoff_odds") \
-        if "scripts" in sys.modules else None
-    if rp is None:
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "run_playoff_odds_attr",
-            Path(__file__).resolve().parent / "run_playoff_odds.py")
-        rp = importlib.util.module_from_spec(spec)
-        sys.modules[spec.name] = rp
-        spec.loader.exec_module(rp)
-
+    rp = _odds_job()
     teams = fetch_teams(args.season)
     sched = fetch_schedule(f"{args.season}-03-01", f"{args.season}-10-15")
     data = rp.fetch_chain_data(args.season, date.fromisoformat(args.as_of),

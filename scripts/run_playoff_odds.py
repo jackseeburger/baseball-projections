@@ -47,6 +47,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
@@ -451,9 +452,13 @@ def chain_terms(
         "g": (standings["wins"] + standings["losses"]).astype(float).to_numpy(),
     }, index=pd.Index(standings["team_id"].astype(int).to_numpy(),
                       name="team_id"))
-    cfg = config or gm.ChainConfig(regress_games=regress_games,
-                                   park_ballast=NOT_SERVED,
+    cfg = config or gm.ChainConfig(park_ballast=NOT_SERVED,
                                    def_ballast=NOT_SERVED)
+    # The ballast the top-down half is regressed with is this function's
+    # argument, always: `build_slate` rebuilds that regression when it
+    # neutralises the park, and a config carrying a different number would
+    # quietly change the strength model rather than the park term.
+    cfg = replace(cfg, regress_games=float(regress_games))
     slate = gm.build_slate(as_of.isoformat(), inputs, top_down, lg_rs9, lg_ra9,
                            cards=history, config=cfg, totals=totals)
     # Where each remaining game is played. The park is the one thing about a
