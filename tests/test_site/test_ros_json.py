@@ -298,14 +298,14 @@ def test_a_document_without_pitchers_still_declares_the_block(doc):
 
 
 def test_the_document_names_the_pitcher_engine_and_the_workload_method(doc_with_pitchers):
-    """The rates are gated and the workload is not, so the file has to say so
-    in a field rather than only in prose."""
-    from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
+    """Two models fill the pitcher block, so the file names both in fields
+    rather than only in prose — and the workload's name says it was scored."""
+    from src.projections.pitcher_ros import BF_METHOD, LIVE_ENGINE as PITCHER_ENGINE
 
     assert doc_with_pitchers["pitcher_engine"] == PITCHER_ENGINE == "marcel_pitcher_tuned"
-    assert doc_with_pitchers["batters_faced_method"] == "structural"
+    assert doc_with_pitchers["batters_faced_method"] == BF_METHOD == "recent_usage"
     assert "marcel_pitcher_params.json" in doc_with_pitchers["pitcher_method"]
-    assert "structural" in doc_with_pitchers["pitcher_method"]
+    assert "docs/pitcher-workload.md" in doc_with_pitchers["pitcher_method"]
 
 
 def test_the_pitcher_components_are_the_ones_that_cleared_the_gate(doc_with_pitchers):

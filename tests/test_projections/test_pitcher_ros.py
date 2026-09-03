@@ -6,7 +6,8 @@ are about honesty rather than accuracy:
   * the rate columns are the arm that cleared the serving gate, fed exactly the
     training frame the harness builds at a cutoff — so the model on the page is
     the model that was scored;
-  * the workload columns are structural and say so, and no test here pretends
+  * the workload columns are the scored `recent_usage` model, and no test here
+    pretends
     otherwise. What is tested about them is that they are arithmetic on the
     pitcher's own usage and that they cannot see the future.
 """
@@ -183,9 +184,15 @@ def test_a_pitcher_not_on_a_staff_is_not_projected(pa, seasons):
     assert set(out["pitcher"]) == {200}
 
 
-def test_the_workload_method_is_labelled_structural():
-    assert pr.BF_METHOD == "structural"
-    assert "not gated" in pr.BF_METHOD_NOTE
+def test_the_workload_method_is_labelled_with_a_scored_name():
+    """It carried `structural` while it was unscored; it is scored now.
+
+    The stamp is what the site prints, so it has to change with the status of
+    the model rather than trailing it — see docs/pitcher-workload.md.
+    """
+    assert pr.BF_METHOD == "recent_usage"
+    assert "not gated" not in pr.BF_METHOD_NOTE
+    assert "docs/pitcher-workload.md" in pr.BF_METHOD_NOTE
 
 
 # ─── rates x workload ────────────────────────────────────────────
