@@ -8,12 +8,14 @@ this file's output it does not appear in the browser.
     public/data/accuracy/YYYY-MM-DD.json    written once, never overwritten
 
 Sections:
-    components            scripts/score_2026_projections.py  (offline; data in git)
-    ros_backtest          scripts/run_intraseason_backtest.py (needs the PA parquet)
-    pitcher_ros_backtest  scripts/run_pitcher_backtest.py     (needs the PA parquet)
-    game_odds             scripts/backtest_game_odds.py      (MLB Stats API + R2 market closes)
-    team_backtest         scripts/run_team_backtest.py       (committed 2015-2025 run)
-    playoff_odds_control  docs/accuracy-2026.md §2b          (the coin-flip control run)
+    components            scripts/score_2026_projections.py    (offline; data in git)
+    contact_quality        data/models/contact_quality_{hitter,pitcher}.json (committed)
+    ros_backtest           scripts/run_intraseason_backtest.py  (needs the PA parquet)
+    pitcher_ros_backtest   scripts/run_pitcher_backtest.py      (needs the PA parquet)
+    pitcher_workload       scripts/run_pitcher_workload_backtest.py (needs data/workload/ parquet)
+    game_odds              scripts/backtest_game_odds.py        (MLB Stats API + R2 market closes)
+    team_backtest          scripts/run_team_backtest.py         (committed 2015-2025 run)
+    playoff_odds_control   docs/accuracy-2026.md §2b            (the coin-flip control run)
 
 A section that cannot be regenerated falls back to the newest committed dated
 snapshot and is marked `stale` with the reason, so the nightly job never fails
@@ -23,6 +25,7 @@ Usage:
     python scripts/build_accuracy_json.py
     python scripts/build_accuracy_json.py --skip game_odds      # fast, no network
     python scripts/build_accuracy_json.py --skip pitcher_ros_backtest
+    python scripts/build_accuracy_json.py --skip pitcher_workload  # skips the ~3min backtest
     python scripts/build_accuracy_json.py --components-json fixture.json
 """
 from __future__ import annotations
@@ -54,8 +57,12 @@ PLAYOFF_ODDS_DIR = ROOT / "public/data/playoff_odds"
 PA_PARQUET = ROOT / "data/parquet/pa_outcomes_2026.parquet"
 PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
 TEAM_BACKTEST_JSON = ROOT / "public/data/team_backtest/2015-2025.json"
+WORKLOAD_DIR = ROOT / "data/workload"
+CONTACT_HITTER_JSON = ROOT / "data/models/contact_quality_hitter.json"
+CONTACT_PITCHER_JSON = ROOT / "data/models/contact_quality_pitcher.json"
 
-SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
+SECTIONS = ("components", "contact_quality", "ros_backtest",
+            "pitcher_ros_backtest", "pitcher_workload", "game_odds",
             "team_backtest",
             "playoff_odds_control")
 
@@ -119,6 +126,62 @@ PITCHER_COMPONENT_LABELS = {
 # that src/projections/pitcher_ros.py is not running.
 PITCHER_ROS_LIVE_ARM = PITCHER_LIVE_ENGINE
 PITCHER_ROS_BASELINES = ("league_average", "previous_season", "season_to_date")
+
+# Station B-P — projected batters faced (and innings), scored walk-forward on
+# the holdout by scripts/run_pitcher_workload_backtest.py (docs/pitcher-workload.md).
+# `structural` runs pitcher_ros.projected_batters_faced — the same function the
+# nightly builder calls — so this is the served workload arithmetic, not a copy.
+WORKLOAD_LIVE_METHOD = "structural"
+WORKLOAD_HOLDOUT_SEASONS = (2024, 2025, 2026)
+# The two calibrated variants (§7 of the writeup) beat the served model on this
+# same holdout but are not served — see the note the section attaches. They
+# are not "baselines" (nothing here is a naive extrapolation) and not
+# controls in the withheld-arm sense; the page tags them their own way.
+WORKLOAD_UNSERVED_CANDIDATES = ("structural_cal", "structural_hazard")
+WORKLOAD_BASELINES = ("zero", "last_season", "season_rate", "recent_rate")
+WORKLOAD_CHALLENGERS = ("blend", "blend_il", "blend_il_share")
+WORKLOAD_METHOD_ORDER = ("zero", "last_season", "season_rate", "recent_rate",
+                         "structural_nogate", "blend_il_share", "blend_il",
+                         "blend", "structural", "structural_cal",
+                         "structural_hazard")
+WORKLOAD_LABELS = {
+    "zero": "Nobody pitches again",
+    "last_season": "Last season, prorated to games left",
+    "season_rate": "2026 rate to date, extrapolated",
+    "recent_rate": "Trailing 30 days, extrapolated",
+    "structural_nogate": "Served model, IL gate removed",
+    "blend": "Challenger: role blend (fitted horizon weight)",
+    "blend_il": "Challenger: role blend + station B's IL gate, ported",
+    "blend_il_share": "Challenger: role blend + IL gate + club-total normalization",
+    "structural": "Served model (usage + role + 40-man + IL gate)",
+    "structural_cal": "Served model x fitted per-role constant (2022-2023; not served)",
+    "structural_hazard": "Served model x per-role attrition hazard (2022-2023; not served)",
+}
+# Station A — Statcast contact quality as a covariate on the component rate
+# models, scored by scripts/run_contact_backtest.py (docs/contact-quality.md).
+# Only the components the writeup actually calls contact-quality wins or
+# misses are tracked here; the two pitcher walk-rate components clear the
+# gate too, but the writeup's own control (`contact_recal`) shows that gain is
+# a fitted recalibration of Marcel with nothing to do with contact, so they
+# are left off this page rather than counted as a contact-quality result.
+CONTACT_TRACKED = {
+    "hitter": ("iso", "hr_rate", "k_rate", "bb_rate", "babip"),
+    "pitcher": ("p_hr_rate", "p_babip", "p_k_rate"),
+}
+CONTACT_COMPONENT_LABELS = {
+    "iso": "ISO MAE (hitter)", "hr_rate": "HR/PA MAE (hitter)",
+    "k_rate": "K% MAE (hitter)", "bb_rate": "BB% MAE (hitter)",
+    "babip": "BABIP MAE (hitter)",
+    "p_hr_rate": "HR/BF MAE (pitcher)", "p_babip": "BABIP MAE (pitcher)",
+    "p_k_rate": "K% MAE (pitcher)",
+}
+CONTACT_MODEL_ORDER = ("marcel_tuned", "contact_recal", "contact", "contact_hsgp")
+CONTACT_MODEL_LABELS = {
+    "marcel_tuned": "Marcel (tuned) — the served baseline",
+    "contact_recal": "Marcel refit only, contact covariates removed (control)",
+    "contact": "Marcel + six Statcast contact aggregates (gated, not wired)",
+    "contact_hsgp": "Marcel + one learned contact-value surface (stage 2, rejected)",
+}
 
 # Display names. Text only — every number comes from a generated table.
 MODEL_LABELS = {
@@ -291,6 +354,143 @@ def section_components(payload: dict) -> dict:
                   f"{payload.get('min_trials')} plate appearances, trials-weighted.",
                   "Public systems as captured before Opening Day; ours generated "
                   "the same week. No system saw any 2026 result."],
+        "stale": False,
+        "stale_reason": None,
+    }
+
+
+def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
+    """Station A: Statcast contact-quality aggregates as covariates on the
+    component rate models, read from the two committed backtest payloads.
+
+    One row per model (the baseline, the recalibration-only control, the
+    gated candidate, and the stage-2 surface that lost), one column per
+    tracked component. Everything the framing claims — how many components
+    clear, which one misses, whether the HSGP surface loses everywhere — is
+    recomputed from the `paired` arrays rather than asserted, so it flips on
+    its own if a future run's numbers do.
+    """
+    sides = {"hitter": hitter, "pitcher": pitcher}
+    components = [(side, c) for side in ("hitter", "pitcher") for c in CONTACT_TRACKED[side]]
+
+    mae, n_by_component = {}, {}
+    for side, payload in sides.items():
+        for r in payload.get("scores", []):
+            if r["component"] not in CONTACT_TRACKED[side]:
+                continue
+            mae.setdefault(r["model"], {})[r["component"]] = num(r["mae"])
+            n_by_component[r["component"]] = int(r["n_players"])
+
+    paired = {}
+    for side, payload in sides.items():
+        for p in payload.get("paired", []):
+            if p.get("scope") != "all" or p["component"] not in CONTACT_TRACKED[side]:
+                continue
+            paired[(p["arm"], p["base"], p["component"])] = p
+
+    rows = []
+    for model in CONTACT_MODEL_ORDER:
+        if model not in mae:
+            continue
+        rows.append({
+            "model": model,
+            "label": CONTACT_MODEL_LABELS.get(model, model),
+            "is_baseline": model == "marcel_tuned",
+            "is_ours": model in ("contact", "contact_hsgp"),
+            # `contact_recal` is the ablation control that isolates a fitted
+            # recalibration of Marcel from the covariate itself — a real
+            # statistical control, unlike `contact_hsgp`, which is a losing
+            # candidate rather than a control condition.
+            "is_control": model == "contact_recal",
+            "is_market": False,
+            # Gated, not wired: no row here is the live projection.
+            "is_production": False,
+            "metrics": {c: mae[model].get(c) for _, c in components},
+        })
+
+    # `contact` vs `marcel_tuned` is the gate. Negative diff means contact wins.
+    cleared, missed = [], []
+    for side, c in components:
+        p = paired.get(("contact", "marcel_tuned", c))
+        if not p or p.get("diff") is None:
+            continue
+        label = CONTACT_COMPONENT_LABELS[c].replace(" MAE", "")
+        entry = (label, num(p["diff"]), num(p.get("t")), num(p.get("pct")))
+        (cleared if p["diff"] < 0 else missed).append(entry)
+    n_tracked = len(cleared) + len(missed)
+
+    parts = []
+    if n_tracked:
+        parts.append(
+            f"Lower is better. Clears the gate — beats `marcel_tuned`, the "
+            f"model the site serves, out of sample, t clustered by player — "
+            f"on {len(cleared)} of {n_tracked} components tracked here"
+            + (f": {', '.join(l for l, *_ in cleared)}." if cleared else "."))
+    if missed:
+        parts.append(
+            "It misses on " + ", ".join(
+                f"{l} ({pct:+.1f}% of MAE, t {t:+.2f})" for l, d, t, pct in missed
+                if t is not None and pct is not None) + ".")
+    hsgp_diffs = [paired.get(("contact_hsgp", "contact", c)) for _, c in components]
+    hsgp_diffs = [p for p in hsgp_diffs if p and p.get("diff") is not None]
+    if hsgp_diffs and all(p["diff"] > 0 for p in hsgp_diffs):
+        parts.append(
+            "The Hilbert-space Gaussian-process version of this covariate — "
+            "one learned surface standing in for the six hand-chosen "
+            "aggregates — loses to them on every one of these components and "
+            "is not the shape shown as `contact` above.")
+    parts.append(
+        "This is gated but NOT YET WIRED to the served board: the live "
+        "projection runs on an arbitrary date, this artifact is monthly and "
+        "refuses any cutoff that is not the 1st of a month rather than "
+        "rounding one forward, and shipping it needs a partial-month top-up "
+        "computed from the daily Statcast ingest, which has no walk-forward "
+        "score of its own yet.")
+    framing = " ".join(parts)
+
+    notes = [
+        "`marcel_tuned` is the live baseline untouched (the same model "
+        "src/projections/ros.py and pitcher_ros.py serve; `marcel_pitcher_tuned` "
+        "on the pitcher side, shown here under the shared label the harness "
+        "gives the baseline on both sides). `contact_recal` is the same "
+        "baseline refit with the six covariates removed — the control that "
+        "isolates a fitted recalibration of Marcel from the covariate itself.",
+        "Standard errors are clustered by player: one hitter appears at three "
+        "cutoffs across five seasons, and those rows are not independent "
+        "observations.",
+        "Two pitcher components clear the gate on their own (walk rate and "
+        "walks-plus-HBP) but are left off this table: the `contact_recal` "
+        "control shows that gain is a fitted recalibration of Marcel with "
+        "nothing to do with contact quality (docs/contact-quality.md §4).",
+        "The deployable shape, if this is wired, is `contact_additive` — the "
+        "baseline's own coefficient pinned at 1, contact quality added as a "
+        "correction rather than let the fit rescale Marcel — which keeps the "
+        "sign of every result here while giving up part of the gain "
+        "(docs/contact-quality.md §8).",
+    ]
+    if n_by_component:
+        counts = ", ".join(f"{CONTACT_COMPONENT_LABELS[c].split(' MAE')[0]} "
+                           f"{n_by_component[c]:,}" for _, c in components
+                           if c in n_by_component)
+        notes.append(f"Player-cells scored per component: {counts}.")
+
+    as_of = ((hitter.get("generated_at") or pitcher.get("generated_at") or "")[:10]
+             or None)
+
+    return {
+        "title": "Contact quality: Statcast as a covariate (station A)",
+        "framing": framing,
+        "source": "scripts/run_contact_backtest.py (docs/contact-quality.md); read "
+                  "from the committed data/models/contact_quality_{hitter,pitcher}.json",
+        "as_of": as_of,
+        "n": max(n_by_component.values()) if n_by_component else None,
+        "n_label": "player-cells, largest tracked component",
+        "n_by_component": n_by_component,
+        "columns": ([{"key": "label", "label": "Model", "type": "text"}]
+                    + [{"key": c, "label": CONTACT_COMPONENT_LABELS[c], "type": "rate"}
+                       for _, c in components]),
+        "rows": rows,
+        "notes": notes,
         "stale": False,
         "stale_reason": None,
     }
@@ -668,6 +868,190 @@ def section_pitcher_ros(payload: dict) -> dict:
     }
 
 
+def _workload_aggregate(table: list[dict]) -> dict:
+    """Mean per-cutoff MAE/RMSE/etc per method — the same aggregation
+    run_pitcher_workload_backtest.py's own headline table prints."""
+    by_method: dict[str, list[dict]] = {}
+    for row in table:
+        by_method.setdefault(row["method"], []).append(row)
+    out = {}
+    for method, rows in by_method.items():
+        k = len(rows)
+        out[method] = {
+            "cutoffs": k,
+            "n": sum(r["n"] for r in rows),
+            "mae": sum(r["mae"] for r in rows) / k,
+            "rmse": sum(r["rmse"] for r in rows) / k,
+            "wmae": sum(r["weighted_mae"] for r in rows) / k,
+            "sp_mae": sum(r["sp_mae"] for r in rows) / k,
+            "rp_mae": sum(r["rp_mae"] for r in rows) / k,
+            "top5": sum(r["top5_capture"] for r in rows) / k,
+        }
+    return out
+
+
+def section_pitcher_workload(payload: dict) -> dict:
+    """Station B-P: projected batters faced, scored against six baselines and
+    three challengers over the walk-forward holdout (docs/pitcher-workload.md).
+
+    One row per method, pooled over every holdout cutoff — the same table
+    `run_pitcher_workload_backtest.py` prints as its headline. The framing is
+    a count and a set of paired differences, both read off the `pooled`
+    table rather than asserted, so they flip on their own if a future run's
+    numbers do.
+    """
+    table = payload.get("table", [])
+    agg = _workload_aggregate(table)
+    pooled = {(p["method"], p["vs"], p.get("role", "all")): p
+             for p in payload.get("pooled", [])}
+    methods = [m for m in WORKLOAD_METHOD_ORDER if m in agg]
+
+    rows = []
+    for i, method in enumerate(sorted(methods, key=lambda m: agg[m]["mae"]), start=1):
+        a = agg[method]
+        rows.append({
+            "model": method,
+            "label": WORKLOAD_LABELS.get(method, method),
+            "rank": i,
+            "is_production": method == WORKLOAD_LIVE_METHOD,
+            "is_ours": method == WORKLOAD_LIVE_METHOD,
+            "is_baseline": method in WORKLOAD_BASELINES,
+            # Not the `is_control` tag: that reads as "control group" on the
+            # page, and these two are unserved candidates that beat
+            # production, not a baseline being controlled for. The label
+            # itself carries "not served"; the note explains why.
+            "is_control": False,
+            "is_market": False,
+            "metrics": {"mae": num(a["mae"]), "rmse": num(a["rmse"]),
+                        "wmae": num(a["wmae"]), "sp_mae": num(a["sp_mae"]),
+                        "rp_mae": num(a["rp_mae"]), "top5": num(a["top5"])},
+        })
+
+    def pair(method: str, vs: str) -> dict | None:
+        p = pooled.get((method, vs, "all"))
+        if not p or p.get("mean_mae_diff") is None:
+            return None
+        return {"diff": num(p["mean_mae_diff"]), "t": num(p.get("t"))}
+
+    # The headline sentence: what the served model beats, by how much, read
+    # off the pooled comparisons rather than typed in.
+    beat_clauses = []
+    for vs, name in [("season_rate", "season-to-date rate extrapolation"),
+                     ("recent_rate", "trailing-30-day extrapolation"),
+                     ("last_season", "last season prorated"),
+                     ("zero", "projecting nobody at all")]:
+        p = pair(WORKLOAD_LIVE_METHOD, vs)
+        if p and p["diff"] is not None and p["t"] is not None:
+            beat_clauses.append(
+                f"{name} by {abs(p['diff']):.1f} batters faced a pitcher "
+                f"(t {p['t']:+.1f})")
+    n = agg.get(WORKLOAD_LIVE_METHOD, {}).get("n")
+    n_cutoffs = agg.get(WORKLOAD_LIVE_METHOD, {}).get("cutoffs")
+    seasons = payload.get("seasons") or []
+    season_span = (f"{min(seasons)}–{max(seasons)}" if len(seasons) > 1
+                   else (str(seasons[0]) if seasons else None))
+
+    parts = [
+        "Lower is better. The served workload model — `structural`, the same "
+        "code src/projections/pitcher_ros.py runs — is projected batters "
+        "faced for a pitcher, walk-forward"
+        + (f" over {n_cutoffs} holdout cutoffs, {season_span}" if n_cutoffs else "")
+        + (f", n = {n:,}" if n else "") + "."]
+    if beat_clauses:
+        parts.append("It beats " + ", ".join(beat_clauses) + ".")
+
+    # Challengers built specifically to beat it: state the result whichever
+    # way it goes, not just when they lose.
+    challenger_results = []
+    for m in WORKLOAD_CHALLENGERS:
+        p = pair(m, WORKLOAD_LIVE_METHOD)
+        if p and p["diff"] is not None:
+            challenger_results.append((m, p))
+    if challenger_results:
+        lost = [(m, p) for m, p in challenger_results if p["diff"] > 0]
+        names = ", ".join(f"`{m}`" for m, _ in challenger_results)
+        if len(lost) == len(challenger_results):
+            sentence = (f"Three challengers were built to beat it ({names}), "
+                       f"and all three lose")
+            il = next((p for m, p in lost if m == "blend_il"), None)
+            if il is not None:
+                # `blend_il` is a direct port of station B's own winning
+                # hitter-side change (playing-time.md §5) — worth calling out
+                # by name, whichever way the number comes out.
+                sentence += (f", including a direct port of station B's own "
+                            f"winning hitter change (`blend_il`), which costs "
+                            f"{il['diff']:+.2f} batters faced a pitcher here "
+                            f"(t {il['t']:+.1f})")
+            parts.append(sentence + ".")
+        else:
+            won = [m for m, p in challenger_results if p["diff"] <= 0]
+            parts.append(
+                f"Of three challengers built to beat it ({names}), "
+                f"{', '.join(f'`{m}`' for m in won)} "
+                f"{'do' if len(won) > 1 else 'does'}.")
+    framing = " ".join(parts)
+
+    notes = [
+        "Training is every prior-season and current-season appearance strictly "
+        "before the cutoff; the realized side is every batter faced through "
+        "the end of that season's data. The same walk-forward leakage guard "
+        "the hitter and pitcher rate tables use is enforced by a synthetic "
+        "poisoned-season test (tests/test_projections/test_pitcher_workload.py).",
+        "Every method scores the same pitcher universe at a cutoff — the "
+        "union of everyone who faced a batter in the scored window and "
+        "everyone any method projects above zero — so nobody is rewarded for "
+        "declining to project someone.",
+        "The candidate constants (the blend's horizon weights, the two "
+        "calibration constants, the two attrition hazards) were all chosen "
+        "on 2022-2023 and frozen; this table is 2024-2026 only, none of "
+        "which any constant was fit on. The served model has no fitted "
+        "constants at all.",
+        "wMAE weights each pitcher's error by his realized workload — a "
+        "rotation starter's miss counts for more than a September call-up's "
+        "— and top-5 is the share of a club's realized workload taken by the "
+        "five pitchers a method ranked highest.",
+    ]
+    unserved = [m for m in WORKLOAD_UNSERVED_CANDIDATES if m in agg]
+    if unserved:
+        beaten_by = [(m, pair(m, WORKLOAD_LIVE_METHOD)) for m in unserved]
+        beaten_by = [(m, p) for m, p in beaten_by if p and p["diff"] is not None
+                    and p["diff"] < 0]
+        if beaten_by:
+            bits = ", ".join(f"`{m}` ({p['diff']:+.2f} BF, t {p['t']:+.1f})"
+                             for m, p in beaten_by)
+            notes.append(
+                f"{bits} score lower MAE than the served model on this same "
+                f"holdout but are not served: the gain does not survive on "
+                f"workload-weighted MAE or on the league total conserved, "
+                f"which the product actually cares about "
+                f"(docs/pitcher-workload.md §7).")
+    unit = payload.get("unit")
+    if unit and unit != "bf":
+        notes.append(f"This run scored '{unit}', not batters faced.")
+
+    return {
+        "title": "Rest-of-season pitcher workload (batters faced), walk-forward",
+        "framing": framing,
+        "source": "scripts/run_pitcher_workload_backtest.py (docs/pitcher-workload.md)",
+        "as_of": (payload.get("generated_at") or "")[:10] or None,
+        "n": n,
+        "n_label": "pitcher-projections, holdout",
+        "live_arm": WORKLOAD_LIVE_METHOD,
+        "columns": [{"key": "rank", "label": "#", "type": "rank"},
+                    {"key": "label", "label": "Method", "type": "text"},
+                    {"key": "mae", "label": "MAE (BF)", "type": "rank_value"},
+                    {"key": "rmse", "label": "RMSE (BF)", "type": "rank_value"},
+                    {"key": "wmae", "label": "Weighted MAE", "type": "rank_value"},
+                    {"key": "sp_mae", "label": "Starter MAE", "type": "rank_value"},
+                    {"key": "rp_mae", "label": "Reliever MAE", "type": "rank_value"},
+                    {"key": "top5", "label": "Top-5 capture", "type": "gap"}],
+        "rows": rows,
+        "notes": notes,
+        "stale": False,
+        "stale_reason": None,
+    }
+
+
 def section_game_odds(payload: dict, market_note: str | None) -> dict:
     """Walk-forward per-game table, market closes included when we have them."""
     rows = []
@@ -936,6 +1320,49 @@ def pitcher_ros_input_note(pa_parquet: Path = PA_PARQUET,
     return None
 
 
+# The parquet kinds season_frames() reads for every holdout season; transaction
+# files are not required here — the IL return-time table degrades to empty
+# rather than raising when one is absent, which is not something this note
+# needs to police.
+WORKLOAD_REQUIRED_KINDS = ("pitcher_appearances", "pitcher_rosters", "schedule",
+                          "team_games")
+
+
+def pitcher_workload_input_note(workload_dir: Path = WORKLOAD_DIR,
+                                seasons: tuple[int, ...] = WORKLOAD_HOLDOUT_SEASONS
+                                ) -> str | None:
+    """Why the pitcher workload backtest cannot run here, or None if it can.
+
+    The inputs are committed parquet under data/workload/ — no R2 credentials
+    needed — so this only fires in a checkout missing that directory.
+    """
+    missing = [f"{kind}_{season}.parquet" for season in seasons
+              for kind in WORKLOAD_REQUIRED_KINDS
+              if not (workload_dir / f"{kind}_{season}.parquet").exists()]
+    if not missing:
+        return None
+    shown = ", ".join(missing[:3]) + ("…" if len(missing) > 3 else "")
+    return (f"pitcher workload backtest not run: {shown} missing under "
+           f"{workload_dir} (rebuild with scripts/build_pitcher_workload.py "
+           f"--fetch --all)")
+
+
+def contact_quality_input_note(hitter_json: Path = CONTACT_HITTER_JSON,
+                               pitcher_json: Path = CONTACT_PITCHER_JSON
+                               ) -> str | None:
+    """Why the contact-quality section cannot read its inputs, or None if it can.
+
+    Both payloads are committed — scripts/run_contact_backtest.py is not run
+    on the nightly job — so this only fires in a checkout missing them.
+    """
+    missing = [p.name for p in (hitter_json, pitcher_json) if not p.exists()]
+    if not missing:
+        return None
+    return (f"contact-quality payload(s) missing: {', '.join(missing)} "
+           f"(rebuild with scripts/run_contact_backtest.py --side hitter/pitcher "
+           f"--json-out ...)")
+
+
 def newest_previous(out_dir: Path) -> tuple[dict | None, str | None]:
     """Newest committed dated snapshot, for section-level fallback."""
     dated = sorted(p for p in out_dir.glob("*.json") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", p.stem))
@@ -966,6 +1393,9 @@ def fallback(name: str, reason: str, previous: dict | None, previous_name: str |
 def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
                    components_json: Path | None = None, game_odds_json: Path | None = None,
                    ros_json: Path | None = None, pitcher_ros_json: Path | None = None,
+                   pitcher_workload_json: Path | None = None,
+                   contact_hitter_json: Path | None = None,
+                   contact_pitcher_json: Path | None = None,
                    market_parquet: Path | None = MARKET_PARQUET, season: int = 2026,
                    timeout: int = 3600, work_dir: Path | None = None,
                    git_sha: str | None = None) -> dict:
@@ -992,6 +1422,31 @@ def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
             sections["components"] = fallback(
                 "components", err or f"could not score components: {type(exc).__name__}: {exc}",
                 previous, previous_name)
+
+    # 1a. contact quality (station A) — two committed backtest payloads, no
+    # scorer to run. Gated but not wired to the served board (see the
+    # section's own framing); this only reads what is already on disk.
+    if "contact_quality" in skip:
+        sections["contact_quality"] = fallback(
+            "contact_quality", "skipped by --skip contact_quality", previous,
+            previous_name)
+    else:
+        hitter_path = contact_hitter_json or CONTACT_HITTER_JSON
+        pitcher_path = contact_pitcher_json or CONTACT_PITCHER_JSON
+        missing = contact_quality_input_note(hitter_path, pitcher_path)
+        if missing:
+            sections["contact_quality"] = fallback(
+                "contact_quality", missing, previous, previous_name)
+        else:
+            try:
+                sections["contact_quality"] = section_contact_quality(
+                    json.loads(hitter_path.read_text()),
+                    json.loads(pitcher_path.read_text()))
+            except Exception as exc:                              # noqa: BLE001
+                sections["contact_quality"] = fallback(
+                    "contact_quality",
+                    f"could not read the contact-quality payloads: "
+                    f"{type(exc).__name__}: {exc}", previous, previous_name)
 
     # 1b. rest-of-season walk-forward — needs the 2026 PA parquet, which comes
     # from R2. The nightly runner without R2_* credentials cannot rebuild it and
@@ -1044,6 +1499,38 @@ def build_document(*, out_dir: Path = OUT_DIR, skip: tuple[str, ...] = (),
             sections["pitcher_ros_backtest"] = fallback(
                 "pitcher_ros_backtest",
                 err or f"could not score pitcher rest-of-season arms: "
+                       f"{type(exc).__name__}: {exc}",
+                previous, previous_name)
+
+    # 1d. pitcher workload (station B-P) — projected batters faced. Inputs are
+    # committed parquet under data/workload/, so this runs anywhere; it is a
+    # ~3-minute walk-forward over 26 holdout cutoffs (2024-2026, all eleven
+    # methods), not a cheap lookup, so --skip pitcher_workload exists for a
+    # fast local build.
+    if "pitcher_workload" in skip:
+        sections["pitcher_workload"] = fallback(
+            "pitcher_workload", "skipped by --skip pitcher_workload", previous,
+            previous_name)
+    else:
+        path, err = pitcher_workload_json, ""
+        if path is None:
+            missing = pitcher_workload_input_note()
+            if missing:
+                path, err = None, missing
+            else:
+                path = tmp / "pitcher_workload.json"
+                ok, err = run_script(
+                    ["scripts/run_pitcher_workload_backtest.py",
+                     "--seasons", *[str(s) for s in WORKLOAD_HOLDOUT_SEASONS],
+                     "--json-out", str(path)], timeout)
+                path = path if ok else None
+        try:
+            sections["pitcher_workload"] = section_pitcher_workload(
+                json.loads(Path(path).read_text()))
+        except Exception as exc:                              # noqa: BLE001
+            sections["pitcher_workload"] = fallback(
+                "pitcher_workload",
+                err or f"could not score pitcher workload: "
                        f"{type(exc).__name__}: {exc}",
                 previous, previous_name)
 
@@ -1204,6 +1691,15 @@ def main() -> None:
     parser.add_argument("--pitcher-ros-json", type=Path, default=None,
                         help="use this run_pitcher_backtest --json-out file "
                              "instead of running the script (testing)")
+    parser.add_argument("--pitcher-workload-json", type=Path, default=None,
+                        help="use this run_pitcher_workload_backtest --json-out file "
+                             "instead of running the script (testing)")
+    parser.add_argument("--contact-hitter-json", type=Path, default=None,
+                        help="use this file instead of the committed "
+                             "data/models/contact_quality_hitter.json (testing)")
+    parser.add_argument("--contact-pitcher-json", type=Path, default=None,
+                        help="use this file instead of the committed "
+                             "data/models/contact_quality_pitcher.json (testing)")
     parser.add_argument("--market-parquet", type=Path, default=MARKET_PARQUET)
     args = parser.parse_args()
 
@@ -1212,6 +1708,9 @@ def main() -> None:
                          game_odds_json=args.game_odds_json,
                          ros_json=args.ros_json,
                          pitcher_ros_json=args.pitcher_ros_json,
+                         pitcher_workload_json=args.pitcher_workload_json,
+                         contact_hitter_json=args.contact_hitter_json,
+                         contact_pitcher_json=args.contact_pitcher_json,
                          market_parquet=args.market_parquet, timeout=args.timeout)
     for row in doc["meta"]["status"]:
         state = "fresh" if row["fresh"] else "STALE"
