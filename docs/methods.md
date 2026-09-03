@@ -106,7 +106,7 @@ The most useful pattern in the literature is neither pure: **learn the hard
 nonlinear measurement with a flexible model, then feed it as a covariate into a
 hierarchical model that does the pooling and returns the posterior.**
 
-Fonnesbeck's tutorial does exactly this — a Hilbert-space Gaussian process over
+The reference tutorial ([Developing Hierarchical Models for Sports Analytics](https://github.com/fonnesbeck/hierarchical_models_sports_analytics), [recording](https://www.youtube.com/watch?v=Fa64ApS0qig)) does exactly this — a Hilbert-space Gaussian process over
 (exit velocity, launch angle) produces a nonparametric "contact quality"
 surface, which then enters the linear predictor of an otherwise standard
 hierarchical model. The GP *is* machine learning. It sits inside the Bayesian
@@ -188,7 +188,61 @@ rather than hand-picking parameters, so the choice is reviewable.
 leakage guard is unit-tested with a synthetic case where post-cutoff rows are
 extreme, and a negative result is published exactly like a positive one.
 
-## 6. The failure mode to watch
+## 6. Techniques worth reusing, and where they came from
+
+Taken from the reference tutorial linked in §3. It is not in this repository —
+clone it fresh from
+`https://github.com/fonnesbeck/hierarchical_models_sports_analytics` when you
+need the working code. Recorded here because a technique that lives only in a
+conversation is a technique we will rediscover the hard way.
+
+**Predicting on players the model has never seen.** The hardest bookkeeping
+problem in an entity-indexed hierarchical model, and the one our in-season work
+runs into constantly: a September call-up has no prior season, so there is no
+fitted random effect to look up. The tutorial's answer is to draw fresh effects
+for them from the *fitted population distribution* —
+
+```python
+epsilon_new = pm.Normal('epsilon_new', mu=0, sigma=sigma, shape=len(new_players))
+```
+
+— reusing the estimated `sigma`, then feeding those through the same linear
+predictor with new index arrays. The unseen player gets the population's spread,
+not a point estimate and not an exclusion. Wrap model inputs in `pm.Data` and
+swap them with `pm.set_data` so the same fitted model can score any holdout
+without refitting.
+
+The failure here is silent: index arrays built for the fit no longer line up
+with the rows being predicted, and the model happily reads the wrong player's
+ability. Test the mapping, not just the output.
+
+**Deriving priors from population data.** Fitting a distribution to the observed
+population and using it as the prior (empirical Bayes) is not purely Bayesian —
+the data inform their own prior — but it is a defensible way to get an
+informative prior where a flat one would be silly. Say when you have done it.
+
+**Partial pooling has a closed form.** For a rate,
+
+```
+p̂ ≈ [ (n/σ²_p)·p̄_player + (1/σ²)·p̄_population ] / [ (n/σ²_p) + (1/σ²) ]
+```
+
+which is a precision-weighted average of the player and the population. You do
+not have to be Bayesian to do this — and this is exactly what Marcel's fixed
+ballast approximates, which is the quantitative reason tuning that ballast bought
+around 1% and not 10%. Reach for the full machinery when you want the pooling
+*strength* estimated rather than assumed, or when you need the posterior.
+
+**Model comparison without refitting.** `pm.compute_log_likelihood` then
+`az.loo` / `az.compare` estimates out-of-sample fit from a single fit via
+Pareto-smoothed importance sampling. This is what makes structural iteration
+affordable when a full walk-forward refit is expensive or needs Modal. Its
+limits are real: it approximates leave-*one*-out on the rows as fitted, which is
+not the same as leaving out a future season, and it degrades when the Pareto
+shape parameter runs high. Use it to choose a specification, never to clear a
+gate.
+
+## 7. The failure mode to watch
 
 Sophistication that does not pay. It is the easiest mistake to make from here,
 because the tools are more interesting than the work.
