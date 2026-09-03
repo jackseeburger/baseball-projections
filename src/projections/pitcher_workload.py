@@ -147,6 +147,11 @@ CANDIDATES = ("blend", "blend_il", "blend_il_share", "structural_cal",
               "structural_hazard")
 METHODS = BASELINES + CANDIDATES
 
+# Which method the site serves. It is the harness's key for the served
+# function, not the document's stamp: `pitcher_ros.BF_METHOD` is what the page
+# prints ("recent_usage"), and it says what the model *is* rather than which
+# row of the scoreboard it is. The gate in docs/pitcher-workload.md decides
+# this line; `structural_hazard` is the candidate it would change to.
 PRODUCTION_METHOD = "structural"
 
 PROJECTION_COLUMNS = ["pitcher", "team_id", "role", "projected"]

@@ -292,6 +292,38 @@ def test_calibration_scales_by_role():
             row["projected"] * factor)
 
 
+def test_the_served_method_is_the_one_the_site_stamps():
+    """The harness's production key and the document's stamp cannot drift.
+
+    They are deliberately different strings — one names a row of the
+    scoreboard, the other names the model — so a test has to hold them
+    together. The gate in docs/pitcher-workload.md moves both or neither.
+    """
+    assert W.PRODUCTION_METHOD in W.METHODS
+    assert W.PRODUCTION_METHOD == "structural"
+    assert pitcher_ros.BF_METHOD == "recent_usage"
+
+
+def test_the_attrition_fraction_is_a_survival_curve():
+    assert W.attrition_fraction(0.0, 0.002) == pytest.approx(1.0)
+    assert W.attrition_fraction(50.0, 0.0) == pytest.approx(1.0)
+    f = W.attrition_fraction([10.0, 60.0, 130.0], 0.002)
+    assert np.all(np.diff(f) < 0)
+    assert np.all((f > 0) & (f < 1))
+    # A starter at a three-month horizon keeps about seven-eighths of it.
+    assert W.attrition_fraction(130.0, 0.002) == pytest.approx(0.881, abs=0.005)
+
+
+def test_the_hazard_only_shrinks_and_shrinks_more_at_a_long_horizon():
+    plain = W.project(inputs(), "structural", unit="bf").set_index("pitcher")
+    shrunk = W.project(inputs(), "structural_hazard", unit="bf").set_index("pitcher")
+    assert (shrunk["projected"] <= plain["projected"] + 1e-12).all()
+    ratio = (shrunk["projected"] / plain["projected"].where(plain["projected"] > 0)).dropna()
+    assert (ratio < 1.0).all()
+    # 30 games left in the fixture, so the haircut is small.
+    assert ratio.min() > 0.9
+
+
 # --- scoring ------------------------------------------------------------
 
 def _projection(values: dict) -> pd.DataFrame:
