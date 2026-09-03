@@ -19,6 +19,12 @@ column on the page, not a set of constants — so the document also carries
 `engine`, which says outright which Marcel filled them. Dated snapshots written
 before the switch carry `engine: null` and the old `method` string.
 
+The plate appearances have the same problem and get the same treatment: the
+document carries `playing_time_method`, the station B method that filled
+`pa_ros`, taken from `playing_time.PRODUCTION_METHOD` rather than named here.
+Snapshots written before that stamp existed carry no key at all, and were
+built with the trailing-30-day share and a hard injured-list zero.
+
 Inputs, and what happens when one is missing:
 
     2026 PA outcomes      R2 (`pa_outcomes/pa_outcomes_2026.parquet`), cached
@@ -27,7 +33,8 @@ Inputs, and what happens when one is missing:
     2015-2025 seasons     data/parquet/hitter_seasons_api.parquet (gitignored;
                           rebuildable from the Stats API).
     playing time          built here from the MLB Stats API as of --as-of,
-                          reusing scripts/build_playing_time.py.
+                          reusing scripts/build_playing_time.py. Needs the
+                          transactions feed too, for the expected returns.
     preseason Bayesian    data/projections/{component}_projections_2026.parquet
                           (committed). Optional — the comparison column simply
                           goes blank without it.
@@ -54,6 +61,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import pandas as pd
 
+from src.projections.playing_time import PRODUCTION_METHOD
 from src.projections.ros import (
     ARMS,
     COMPONENT_ORDER,
@@ -71,15 +79,19 @@ PROJECTIONS_DIR = ROOT / "data/projections"
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 
-# Named in one place (src/projections/ros.py) so the document cannot claim an
-# engine the module does not use.
+# Named in one place each — src/projections/ros.py for the rate engine,
+# src/projections/playing_time.py for the playing-time method — so the
+# document cannot claim a model the modules do not run.
 ENGINE = LIVE_ENGINE
+PLAYING_TIME_METHOD = PRODUCTION_METHOD
 METHOD = ("Tuned Marcel (per-component ballast, recency weights and age curve "
           "fitted walk-forward on 2020-2024 and frozen in "
           "src/eval/marcel_params.json) trained on 2015-2025 season totals "
           "plus 2026 through the day before the as-of date, multiplied by "
-          "station B's projected rest-of-season plate appearances (30-day PA "
-          "share, IL zeroed, one-lineup-slot cap).")
+          "station B's projected rest-of-season plate appearances "
+          "(horizon-blended 30-day and season PA share, one-lineup-slot cap, "
+          "and the injured and optioned projected at their pre-injury share "
+          "times their expected return fraction).")
 FRAMING = ("Live projection: tuned Marcel with 2026 through {through}. "
            "Preseason Bayesian shown for comparison — see Model Accuracy.")
 
@@ -137,16 +149,26 @@ def build_playing_time(as_of: str, refresh: bool = False):
     Reuses `scripts/build_playing_time.py` rather than duplicating the
     fetch/assemble layer, but does not write its parquet — this is a read of
     station B, not a rebuild of it.
+
+    The method is `playing_time.PRODUCTION_METHOD`, never a literal: station B
+    is scored and re-gated on its own schedule (docs/playing-time.md) and the
+    site has to serve whatever came through that gate, not whatever was
+    current the day this file was written. Its expected-return fractions come
+    from the same helper the station's own build uses.
     """
     import build_playing_time as bpt
     from src.data.mlb_stats_api import fetch_schedule
-    from src.projections.playing_time import project_playing_time
+    from src.projections.playing_time import PRODUCTION_METHOD, project_playing_time
 
     rosters, logs, team_logs, teams = bpt.load([as_of], refresh=refresh)
     schedule = fetch_schedule(as_of, bpt.SEASON_END)
     remaining = bpt.games_remaining(schedule, as_of, bpt.SEASON_END)
+    fractions = bpt.production_fractions(rosters[as_of], as_of, bpt.SEASON_END,
+                                         refresh=refresh)
     projection = project_playing_time(rosters[as_of], logs, remaining, as_of,
-                                      team_logs=team_logs, method="last_30")
+                                      team_logs=team_logs,
+                                      method=PRODUCTION_METHOD,
+                                      active_fractions=fractions)
     return projection, teams
 
 
@@ -191,6 +213,7 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
         "title": "Rest-of-season projection",
         "n_hitters": int(len(projections)),
         "engine": ENGINE,
+        "playing_time_method": PLAYING_TIME_METHOD,
         "method": METHOD,
         "framing": FRAMING.format(through=through),
         "source": "scripts/build_ros_projections.py",
@@ -234,7 +257,8 @@ def empty_document(reason: str, as_of: str) -> dict:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": as_of, "season": SEASON, "season_end": None, "through": None,
         "git_sha": current_sha(), "title": "Rest-of-season projection",
-        "n_hitters": 0, "engine": ENGINE, "method": METHOD,
+        "n_hitters": 0, "engine": ENGINE,
+        "playing_time_method": PLAYING_TIME_METHOD, "method": METHOD,
         "framing": FRAMING.format(through="—"),
         "source": "scripts/build_ros_projections.py", "arms": [], "components": [],
         "woba": {"weights": WOBA_WEIGHTS, "triples_per_double": TRIPLES_PER_DOUBLE},
