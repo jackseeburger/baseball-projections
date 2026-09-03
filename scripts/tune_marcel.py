@@ -24,6 +24,8 @@ Usage:
     python scripts/tune_marcel.py                 # tune, then score
     python scripts/tune_marcel.py --skip-tune     # score the committed params
     python scripts/tune_marcel.py --markdown      # doc tables
+    python scripts/tune_marcel.py --league-modes  # pick "regress toward what?"
+    python scripts/tune_marcel.py --inner-validation
 """
 from __future__ import annotations
 
@@ -61,7 +63,9 @@ ARM_ORDER = ["marcel_tuned", "marcel_tuned_noage", "marcel", "marcel_preseason",
 # --- tuning -----------------------------------------------------------------
 
 def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
-                min_trials: int, passes: int, n_validate: int = 2) -> dict:
+                min_trials: int, passes: int, n_validate: int = 2,
+                constrained: bool = True,
+                league: tuple[str, float] = ("last", 0.0)) -> dict:
     """Fit inside the tuning window and validate inside it too.
 
     Splits the tuning years into fit years and the last `n_validate` of them,
@@ -76,9 +80,14 @@ def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
     fit_splits = tuning.make_splits(seasons, component, fit_years, min_trials)
     val_splits = tuning.make_splits(seasons, component, val_years, min_trials)
     stock = STOCK_PARAMS[component]
-    full, _ = tuning.coordinate_search(fit_splits, spec, start=stock, passes=passes)
-    bw, _ = tuning.coordinate_search(fit_splits, spec, start=stock, passes=passes,
-                                     axes=["ballast", "weights"])
+    start = stock.replace(league_mode=league[0], league_damp=league[1])
+    axes = [a for a in tuning.AXES if a != "league"]
+    full, _ = tuning.coordinate_search(fit_splits, spec, start=start,
+                                       passes=passes, axes=axes,
+                                       constrained=constrained)
+    bw, _ = tuning.coordinate_search(fit_splits, spec, start=start, passes=passes,
+                                     axes=["ballast", "weights"],
+                                     constrained=constrained)
     base = tuning.evaluate(val_splits, spec, stock)["mae"]
     full_mae = tuning.evaluate(val_splits, spec, full)["mae"]
     bw_mae = tuning.evaluate(val_splits, spec, bw)["mae"]
@@ -91,57 +100,148 @@ def inner_check(seasons: pd.DataFrame, component: str, years: list[int],
         "tuned_pct": 100.0 * (full_mae - base) / base,
         "tuned_ballast_weights_only_pct": 100.0 * (bw_mae - base) / base,
         "generalises": bool(full_mae < base),
+        "params": full.to_dict(),
     }
+
+
+# --- choosing the projected league rate --------------------------------------
+
+def league_mode_choice(seasons: pd.DataFrame, components: list[str],
+                       years: list[int], min_trials: int, passes: int,
+                       n_validate: int = 2, constrained: bool = True
+                       ) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Pick "regress toward what?" on the inner validation, never the holdout.
+
+    For each component and each of the three options, run the same coordinate
+    search on the fit years with `league_mode` pinned (so the other five axes
+    adapt to it) and score the fitted params on the held-back validation years
+    inside the tuning window. Returns (scores, levels): the MAE table the
+    choice is made from, and the per-season level table that says what the
+    option is *for* — a projection that sits on the league rate rather than a
+    year behind it.
+    """
+    scores, levels = [], []
+    fit_years, val_years = years[:-n_validate], years[-n_validate:]
+    for component in components:
+        spec = COMPONENTS[component]
+        fit_splits = tuning.make_splits(seasons, component, fit_years, min_trials)
+        val_splits = tuning.make_splits(seasons, component, val_years, min_trials)
+        all_splits = tuning.make_splits(seasons, component, years, min_trials)
+        stock = STOCK_PARAMS[component]
+        base = tuning.evaluate(val_splits, spec, stock)["mae"]
+        for mode, damp in tuning.LEAGUE_GRID:
+            start = stock.replace(league_mode=mode, league_damp=damp)
+            fitted, _ = tuning.coordinate_search(
+                fit_splits, spec, start=start, passes=passes,
+                axes=[a for a in tuning.AXES if a != "league"],
+                constrained=constrained)
+            val = tuning.evaluate(val_splits, spec, fitted)["mae"]
+            label = mode if mode != "drift" else f"drift@{damp:g}"
+            scores.append({
+                "component": component, "option": label,
+                "fit_mae": tuning.evaluate(fit_splits, spec, fitted)["mae"],
+                "validate_mae": val, "stock_validate_mae": base,
+                "vs_stock_pct": 100.0 * (val - base) / base,
+                "params": fitted.to_dict(),
+            })
+            # Levels are a property of the option, not of the search, so read
+            # them off stock's other constants across the whole tuning window.
+            lv = tuning.level_report(all_splits, spec,
+                                     stock.replace(league_mode=mode,
+                                                   league_damp=damp),
+                                     seasons=seasons)
+            levels.append(lv.assign(component=component, option=label))
+    return pd.DataFrame(scores), pd.concat(levels, ignore_index=True)
+
+
+def league_picks(scores: pd.DataFrame) -> dict[str, tuple[str, float]]:
+    """Lowest inner-validation MAE per component, ties going to the earlier
+    option in `LEAGUE_GRID` — which puts stock Marcel's "last" first, so a
+    tie changes nothing."""
+    order = {(m if m != "drift" else f"drift@{d:g}"): i
+             for i, (m, d) in enumerate(tuning.LEAGUE_GRID)}
+    picks = {}
+    for component, g in scores.groupby("component"):
+        g = g.assign(_rank=g["option"].map(order)).sort_values(
+            ["validate_mae", "_rank"], kind="mergesort")
+        label = str(g.iloc[0]["option"])
+        mode, _, damp = label.partition("@")
+        picks[component] = (mode, float(damp) if damp else 0.0)
+    return picks
 
 
 def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
          min_trials: int, passes: int, verbose: bool,
-         guard: bool = True) -> tuple[dict, dict, dict]:
+         guard: bool = True, constrained: bool = True,
+         picks: dict[str, tuple[str, float]] | None = None
+         ) -> tuple[dict, dict, dict]:
     """Coordinate search per component.
 
     Fits two nested variants and returns (full, restricted, in-sample summary):
 
-        full        all five axes — ballast, the weight ratios, and the three
-                    age numbers. This is what gets frozen.
-        restricted  ballast and weights only, age curve left at stock.
+        full        all six axes — ballast, the weight ratios, the projected
+                    league rate, and the three age numbers. This is what gets
+                    frozen.
+        restricted  ballast, weights and the league rate; age curve left at
+                    stock.
 
-    The restricted fit exists because the full one has a degeneracy worth
-    naming: with the peak age at an end of its grid and both slopes equal,
-    the "age curve" is a straight line in age, which is partly a *level*
-    correction — Marcel regresses to the last training season's league rate
-    while a player's own weighted history spans three, so a league trending
-    up or down leaves a bias a linear age term can absorb. Scoring both on
-    the holdout says whether the tuned age curve is aging or bookkeeping.
+    The restricted fit exists because the full one used to have a degeneracy
+    worth naming: with the peak age at an end of its grid and both slopes
+    equal, the "age curve" was a straight line in age, which is partly a
+    *level* correction — Marcel regressed to the last training season's league
+    rate while a player's own weighted history spans three, so a league
+    trending up or down left a bias a linear age term could absorb. The
+    projected league rate removes the bias and the age constraint removes the
+    straight line; the restricted arm stays as the control that says whether
+    the constrained age term is worth anything at all.
+
+    `picks` is the per-component projected-league-rate option, already chosen
+    on the inner validation by `league_picks`. It is *pinned*, not searched:
+    on the full tuning window the in-sample optimum prefers `weighted3` for
+    four of five components while the inner validation prefers `last` for
+    four of five, which is the signature of an axis the search cannot pick
+    honestly for itself.
     """
+    picks = picks or {}
     params, restricted, summary = {}, {}, {}
     for component in components:
         spec = COMPONENTS[component]
         splits = tuning.make_splits(seasons, component, years, min_trials)
         stock = STOCK_PARAMS[component]
+        league = picks.get(component, ("last", 0.0))
+        start = stock.replace(league_mode=league[0], league_damp=league[1])
         base = tuning.evaluate(splits, spec, stock)
         scored = ", ".join(f"{s.predict_year}:{len(s.realized)}" for s in splits)
         print(f"\n=== {component}: tuning on {years[0]}-{years[-1]} "
               f"(scored players {scored}) ===")
         print(f"    stock       mae={base['mae']:.6f} log_loss={base['log_loss']:.6f}")
+        print(f"    league rate: {league[0]}"
+              + (f" (damp {league[1]:g})" if league[0] == "drift" else "")
+              + " — picked on the inner validation")
 
+        axes = [a for a in tuning.AXES if a != "league"]
         best, trace = tuning.coordinate_search(
-            splits, spec, start=stock, passes=passes, verbose=verbose)
+            splits, spec, start=start, passes=passes, verbose=verbose,
+            axes=axes, constrained=constrained)
         fit = tuning.evaluate(splits, spec, best)
         gain = (fit["mae"] - base["mae"]) / base["mae"]
         print(f"    tuned       mae={fit['mae']:.6f} "
               f"log_loss={fit['log_loss']:.6f} ({gain:+.2%})")
         print(f"      {best.to_dict()}")
 
+        # constrained=False so the age curve stays *exactly* stock's: this arm
+        # is "everything except the age term".
         bw, _ = tuning.coordinate_search(
-            splits, spec, start=stock, passes=passes,
-            axes=["ballast", "weights"], verbose=verbose)
+            splits, spec, start=start, passes=passes,
+            axes=["ballast", "weights"], verbose=verbose, constrained=False)
         bw_fit = tuning.evaluate(splits, spec, bw)
         bw_gain = (bw_fit["mae"] - base["mae"]) / base["mae"]
         print(f"    no-age fit  mae={bw_fit['mae']:.6f} "
               f"log_loss={bw_fit['log_loss']:.6f} ({bw_gain:+.2%})")
         print(f"      {bw.to_dict()}")
 
-        inner = inner_check(seasons, component, years, min_trials, passes)
+        inner = inner_check(seasons, component, years, min_trials, passes,
+                            constrained=constrained, league=league)
         print(f"    inner validation (fit {inner['fit_years'][0]}-"
               f"{inner['fit_years'][1]}, score {inner['validate_years'][0]}-"
               f"{inner['validate_years'][1]}): tuned {inner['tuned_pct']:+.2f}%, "
@@ -155,6 +255,8 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
         restricted[component] = bw
         summary[component] = {
             "years": years,
+            "league_mode": {"mode": league[0], "damp": league[1],
+                            "chosen_on": "inner validation"},
             "n_scored_by_year": {str(s.predict_year): len(s.realized) for s in splits},
             "stock": {k: base[k] for k in ("mae", "rmse", "log_loss")},
             "tuned": {k: fit[k] for k in ("mae", "rmse", "log_loss")},
@@ -171,6 +273,12 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
             },
             "inner_validation": inner,
             "kept_stock": bool(guard and not inner["generalises"]),
+            "level": {
+                "stock": tuning.level_report(
+                    splits, spec, stock, seasons=seasons).to_dict("records"),
+                "tuned": tuning.level_report(
+                    splits, spec, best, seasons=seasons).to_dict("records"),
+            },
             # The last full pass, as "what each axis was worth" — the params
             # at every step would triple the file for no reader's benefit.
             "final_pass": [{k: t[k] for k in ("pass", "axis", "mae")}
@@ -183,11 +291,19 @@ def tune(seasons: pd.DataFrame, components: list[str], years: list[int],
 
 def arms(component: str, params: dict, projections_dir: Path,
          intraseason: bool, restricted: dict | None = None) -> dict:
-    """Every arm scored at one cell, including the tuned Marcel."""
+    """Every arm scored at one cell, including the tuned Marcel.
+
+    `INTRASEASON_BASELINES` registers `marcel_tuned`/`marcel_tuned_preseason`
+    bound to *no* params, i.e. reading the committed file. They are dropped
+    here and re-added bound to `params`, so scoring a fit that has not been
+    frozen yet (`--params-out` somewhere else) really scores that fit.
+    """
     base = dict(INTRASEASON_BASELINES) if intraseason else {
         k: v for k, v in INTRASEASON_BASELINES.items()
         if k not in ("season_to_date", "marcel_preseason")}
-    providers = {"marcel_tuned": marcel_tuned_provider(params), **base}
+    for k in ("marcel_tuned", "marcel_tuned_preseason"):
+        base.pop(k, None)
+    providers = {**base, "marcel_tuned": marcel_tuned_provider(params)}
     if restricted:
         providers["marcel_tuned_noage"] = marcel_tuned_provider(restricted)
     path = projections_dir / f"{component}_projections_2026.parquet"
@@ -283,11 +399,13 @@ def pooled_overall(paired: pd.DataFrame, scores: pd.DataFrame) -> pd.DataFrame:
 
 
 def inner_validation(seasons: pd.DataFrame, components: list[str],
-                     years: list[int], min_trials: int, passes: int) -> pd.DataFrame:
+                     years: list[int], min_trials: int, passes: int,
+                     constrained: bool = True) -> pd.DataFrame:
     """`inner_check` for every component, as a table."""
     rows = []
     for component in components:
-        r = inner_check(seasons, component, years, min_trials, passes)
+        r = inner_check(seasons, component, years, min_trials, passes,
+                        constrained=constrained)
         rows.append({"component": component,
                      "fit_years": f"{r['fit_years'][0]}-{r['fit_years'][1]}",
                      "validate_years":
@@ -371,6 +489,13 @@ def main() -> None:
                    help="fit on the first tuning years, validate on the last "
                         "two — a look at whether the age axes overfit that "
                         "does not spend the holdout")
+    p.add_argument("--league-modes", action="store_true",
+                   help="compare the three projected-league-rate options on "
+                        "the inner validation, with the per-season level "
+                        "table; makes no lasting change")
+    p.add_argument("--unconstrained-age", action="store_true",
+                   help="let the age term run outside the 25-31 peak window "
+                        "and take same-signed slopes, as the first fit did")
     p.add_argument("--verbose", action="store_true")
     args = p.parse_args()
 
@@ -385,16 +510,49 @@ def main() -> None:
               f"floor(age) matches the Stats API age on "
               f"{report.get('floor_matches_api_age', float('nan')):.3%} of them")
 
+    constrained = not args.unconstrained_age
+
+    if args.league_modes:
+        modes, levels = league_mode_choice(
+            seasons, args.components, args.tune_years, args.min_trials,
+            args.passes, constrained=constrained)
+        print("\n=== projected league rate: inner validation "
+              "(fit 2020-2022, score 2023-2024) ===")
+        print(modes.drop(columns="params").round(6).to_string(index=False))
+        best = (modes.groupby("option")["vs_stock_pct"].mean()
+                .sort_values().rename("mean_vs_stock_pct"))
+        print("\nmean across components, percent of stock's validation MAE:")
+        print(best.round(4).to_string())
+        print(f"\nwinner on the inner validation: {best.index[0]}")
+        print("\n=== level: mean projection vs realized league rate, "
+              "by season (stock's other constants) ===")
+        print(levels.round(6).to_string(index=False))
+        return
+
     if args.inner_validation:
         print("\n=== inner validation (inside the tuning window) ===")
         print(inner_validation(seasons, args.components, args.tune_years,
-                               args.min_trials, args.passes).round(6).to_string(index=False))
+                               args.min_trials, args.passes,
+                               constrained=constrained)
+              .round(6).to_string(index=False))
         return
 
     if not args.skip_tune:
+        print("\n=== projected league rate: inner validation "
+              "(fit 2020-2022, score 2023-2024) ===")
+        mode_scores, mode_levels = league_mode_choice(
+            seasons, args.components, args.tune_years, args.min_trials,
+            args.passes, constrained=constrained)
+        print(mode_scores.drop(columns="params").round(6).to_string(index=False))
+        picks = league_picks(mode_scores)
+        print("\npicked: " + ", ".join(
+            f"{c}={m}" + (f"@{d:g}" if m == "drift" else "")
+            for c, (m, d) in sorted(picks.items())))
+
         params, restricted, summary = tune(
             seasons, args.components, args.tune_years, args.min_trials,
-            args.passes, args.verbose, guard=not args.no_guard)
+            args.passes, args.verbose, guard=not args.no_guard,
+            constrained=constrained, picks=picks)
         path = save_marcel_params(
             params, args.params_out,
             generated="scripts/tune_marcel.py",
@@ -403,11 +561,26 @@ def main() -> None:
                     f"(train <= Y-1), objective = mean trials-weighted MAE, "
                     f"min_trials={args.min_trials}, "
                     f"ages = Chadwick register (June 30)"
+                    + ("; age term constrained to a peak in "
+                       f"{int(tuning.AGE_PEAK_WINDOW[0])}-"
+                       f"{int(tuning.AGE_PEAK_WINDOW[1])} with slopes of "
+                       "opposite signs" if constrained else
+                       "; age term unconstrained")
                     + ("; components whose fit does not beat stock on an "
                        "inner validation (fit 2020-2022, score 2023-2024) "
                        "keep stock's constants"
                        if not args.no_guard else "")),
-            grid=tuning.grid_summary(),
+            grid=tuning.grid_summary(constrained),
+            league_rate={
+                "picked": {c: {"mode": m, "damp": d}
+                           for c, (m, d) in sorted(picks.items())},
+                "chosen_on": ("inner validation inside the tuning window: fit "
+                              "2020-2022 with the league option pinned, score "
+                              "2023-2024; the holdout is never consulted"),
+                "inner_validation":
+                    mode_scores.drop(columns="params").to_dict("records"),
+                "levels": mode_levels.to_dict("records"),
+            },
             in_sample=summary,
             variants={"ballast_weights_only":
                       {k: v.to_dict() for k, v in restricted.items()}},

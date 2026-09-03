@@ -211,6 +211,28 @@ INTRASEASON_BASELINES = {
 # toward zero raises the normalized weight on the recent season and so lowers
 # the effective ballast against it. The search moves both, so it explores the
 # product space regardless.)
+#
+# **Which league rate.** `league` above is a *projection* of the target
+# season's league rate, not a measurement of a past one. Stock Marcel uses the
+# last training season's rate, which is a one-year-stale estimate of the thing
+# a player is being regressed toward; when the league is trending — and K% has
+# trended up every year of this window — every projection inherits that lag as
+# a level error, and the fitted age curve then earns MAE by absorbing it (see
+# the tuning section of docs/backtest-baselines.md). `league_mode` makes the
+# choice explicit:
+#
+#     "last"        the last training season's rate (stock Marcel).
+#     "weighted3"   the same 3 seasons and the same recency weights the
+#                   player's own history gets, so numerator and denominator of
+#                   the regression are measured over the same window.
+#     "drift"       last season plus its one-season change, damped by
+#                   `league_damp` and scaled by the projection horizon:
+#                   r_last + damp * (predict_year - last) * (r_last - r_prev).
+#                   damp = 0 is "last"; damp = 1 is a full linear extrapolation.
+#
+# At an intra-season cutoff the most recent training season *is* the target
+# season, so the horizon is zero and "drift" collapses to "last" — the partial
+# season's own rate is already a same-season measurement.
 
 
 @dataclass(frozen=True)
@@ -225,6 +247,11 @@ class MarcelParams:
     peak_age:         age at which the multiplier is exactly 1.0.
     age_slope_young:  per-year multiplier slope *below* the peak.
     age_slope_old:    per-year multiplier slope *above* the peak.
+    league_mode:      how the league rate the estimator regresses toward is
+                      projected forward — "last", "weighted3" or "drift"
+                      (module note above).
+    league_damp:      the damping constant on the one-season drift; read only
+                      when `league_mode == "drift"`.
 
     Both slopes are signed the same way — the multiplier is always
     1 + (age - peak)*slope — so a component that decays with age has negative
@@ -235,6 +262,8 @@ class MarcelParams:
     peak_age: float = 27.0
     age_slope_young: float = 0.0
     age_slope_old: float = 0.0
+    league_mode: str = "last"
+    league_damp: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -243,16 +272,23 @@ class MarcelParams:
             "peak_age": float(self.peak_age),
             "age_slope_young": float(self.age_slope_young),
             "age_slope_old": float(self.age_slope_old),
+            "league_mode": str(self.league_mode),
+            "league_damp": float(self.league_damp),
         }
 
     @classmethod
     def from_dict(cls, d: dict) -> "MarcelParams":
+        # `league_mode`/`league_damp` default to stock Marcel's behaviour, so a
+        # params file written before they existed still loads and still means
+        # exactly what it meant.
         return cls(
             ballast=float(d["ballast"]),
             weights=tuple(float(w) for w in d["weights"]),  # type: ignore[arg-type]
             peak_age=float(d["peak_age"]),
             age_slope_young=float(d["age_slope_young"]),
             age_slope_old=float(d["age_slope_old"]),
+            league_mode=str(d.get("league_mode", "last")),
+            league_damp=float(d.get("league_damp", 0.0)),
         )
 
     def replace(self, **kwargs) -> "MarcelParams":
@@ -323,6 +359,48 @@ def save_marcel_params(
     return path
 
 
+LEAGUE_MODES = ("last", "weighted3", "drift")
+
+
+def projected_league_rate(
+    train: pd.DataFrame, spec, params: MarcelParams, predict_year: int
+) -> float:
+    """The league rate `marcel_tuned` regresses toward, projected to the target season.
+
+    See the module note above for the three modes. Every one of them is a
+    trials-weighted rate over training rows only, so none of them can see the
+    year being predicted; "drift" extrapolates a *measured* one-season change
+    and is damped and horizon-scaled, so at an intra-season cutoff (horizon 0)
+    it is identically the last-season mode.
+    """
+    if params.league_mode not in LEAGUE_MODES:
+        raise ValueError(f"unknown league_mode {params.league_mode!r}; "
+                         f"expected one of {LEAGUE_MODES}")
+    last = int(train["season"].max())
+
+    if params.league_mode == "weighted3":
+        weights = {i: float(w) for i, w in enumerate(params.weights)}
+        recent = train[train["season"] >= last - 2]
+        w = (last - recent["season"]).map(weights).astype("float64")
+        den = float((w * recent[spec.trials]).sum())
+        if den > 0:
+            return float((w * recent[spec.successes]).sum() / den)
+        return _league_rate(train, spec, last)
+
+    rate = _league_rate(train, spec, last)
+    if params.league_mode == "drift":
+        horizon = max(int(predict_year) - last, 0)
+        prev = train[train["season"] == last - 1]
+        if horizon and not prev.empty and float(prev[spec.trials].sum()) > 0:
+            drift = rate - _league_rate(train, spec, last - 1)
+            rate = rate + params.league_damp * horizon * drift
+        # A damped one-year extrapolation cannot realistically leave (0, 1),
+        # but the estimator divides by it downstream, so clamp rather than
+        # trust the arithmetic.
+        rate = float(min(max(rate, 1e-6), 1.0 - 1e-6))
+    return rate
+
+
 def tuned_age_adjustment(age, params: MarcelParams) -> np.ndarray:
     """Multiplicative age factor, vectorised. 1.0 wherever age is missing.
 
@@ -361,7 +439,8 @@ def marcel_tuned(
     *,
     params: "MarcelParams | dict | None" = None,
 ) -> pd.DataFrame:
-    """Marcel with fitted per-component ballast, recency weights and age curve.
+    """Marcel with fitted per-component ballast, recency weights, projected
+    league rate and age curve.
 
     Same provider signature as `marcel`, and the same treatment of a partial
     current season: the partial row is simply the most recent season, and
@@ -376,7 +455,7 @@ def marcel_tuned(
         raise ValueError("marcel_tuned needs at least one positive year weight")
 
     last = int(train["season"].max())
-    league = _league_rate(train, spec, last)
+    league = projected_league_rate(train, spec, p, predict_year)
 
     weights = {i: float(w) for i, w in enumerate(p.weights)}
     recent = train[train["season"] >= last - 2].copy()

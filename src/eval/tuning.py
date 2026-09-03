@@ -10,14 +10,18 @@ under the harness's own rules:
   scoreboard reports).
 * **One tuning window, one holdout.** The search never sees the out-of-sample
   years. `scripts/tune_marcel.py` tunes on 2020-2024 and scores 2025/2026.
-* **Coordinate search, not a joint grid.** Five axes (ballast, the two weight
-  ratios jointly, peak age, the two age slopes) swept in turn for a few
-  passes. A joint grid over all of them is ~50k points per component per
-  year; the coordinate sweep is ~80 and finds the same shallow optimum,
-  because the axes are nearly separable at this resolution. A tie, or an
-  improvement below `TOL`, keeps the incumbent value — so a component where
-  tuning does nothing comes back holding its stock constants rather than
-  some equally-good arbitrary point.
+* **Coordinate search, not a joint grid.** Six axes (ballast, the two weight
+  ratios jointly, the projected league rate, peak age, the two age slopes)
+  swept in turn for a few passes. A joint grid over all of them is ~300k
+  points per component per year; the coordinate sweep is ~80 and finds the
+  same shallow optimum, because the axes are nearly separable at this
+  resolution. A tie, or an improvement below `TOL`, keeps the incumbent value
+  — so a component where tuning does nothing comes back holding its stock
+  constants rather than some equally-good arbitrary point.
+* **The age term is constrained.** Peak inside 25-31, slopes of opposite
+  signs, so the term has to turn over like an aging curve instead of running
+  straight across the age range as a level correction. See the block above
+  `AGE_PEAK_WINDOW`.
 
 The scoring path here is the harness's, reduced to one provider: same
 min_trials filter, same trials-weighted metrics, same realized rates. It is
@@ -48,20 +52,102 @@ PEAK_AGE_GRID = [23.0, 24.0, 25.0, 26.0, 27.0, 28.0, 29.0, 30.0, 31.0, 32.0]
 AGE_SLOPE_GRID = [-0.012, -0.008, -0.006, -0.004, -0.003, -0.002, -0.001, 0.0,
                   0.001, 0.002, 0.003, 0.004, 0.006, 0.008, 0.012]
 
+# (league_mode, league_damp) pairs. "last" is stock Marcel's behaviour and the
+# first candidate, so a tie keeps it.
+LEAGUE_GRID = [("last", 0.0), ("weighted3", 0.0),
+               ("drift", 0.25), ("drift", 0.5), ("drift", 0.75), ("drift", 1.0)]
+
+# --- the age constraint ------------------------------------------------------
+# The unconstrained search put the peak at an end of its grid (23 or 31) with
+# equal slopes either side, which is a straight line in age — half aging, half
+# a level correction for regressing three seasons of history toward one
+# season's league rate. Projecting the league rate forward removes the excuse;
+# these two rules remove the *ability*:
+#
+#   1. the peak lives in 25-31, a window an aging curve can plausibly peak in;
+#   2. the slopes have opposite signs, so the multiplier turns over at the peak
+#      instead of running monotonically across the whole age range.
+#
+# Rule 2 is signed per component by which way *performance* runs. For the four
+# components where a bigger number is a better hitter (BB%, HR/PA, BABIP, ISO)
+# the multiplier rises to the peak and falls after it. K% is the one where a
+# bigger number is worse, so its curve is mirrored: it falls to a trough at the
+# peak age and rises after, which is the shape hitters' strikeout rates
+# actually have. `AGE_DIRECTION` is that sign.
+#
+# Note that this excludes stock Marcel's own age curve, which is monotone in
+# age with a kink at 27 (rising for K%, falling for the rest) — a monotone line
+# is exactly the shape that can act as a level, so it has to go.
+AGE_PEAK_WINDOW = (25.0, 31.0)
+AGE_DIRECTION = {"k_rate": -1.0, "bb_rate": 1.0, "hr_rate": 1.0,
+                 "babip": 1.0, "iso": 1.0}
+AGE_SLOPE_MAGNITUDES = [0.0, 0.001, 0.002, 0.003, 0.004, 0.006, 0.008, 0.012]
+
 # Relative improvement a candidate must beat to displace the incumbent.
 TOL = 1e-9
 
 
-def grid_summary() -> dict:
+def constrained_peak_grid() -> list[float]:
+    lo, hi = AGE_PEAK_WINDOW
+    return [float(a) for a in range(int(lo), int(hi) + 1)]
+
+
+def constrained_slope_grid(component: str, side: str) -> list[float]:
+    """Allowed slopes for one side of the peak: sign fixed, magnitude free.
+
+    `side` is "young" (below the peak) or "old" (above it). The young side
+    moves toward the peak and the old side away from it, so their allowed signs
+    are opposite and both are flipped for a component where a bigger rate is a
+    worse hitter.
+    """
+    direction = AGE_DIRECTION.get(component, 1.0)
+    sign = direction if side == "young" else -direction
+    return [sign * m for m in AGE_SLOPE_MAGNITUDES]
+
+
+def age_curve_ok(params: MarcelParams, component: str) -> bool:
+    """Is this age term inside the constrained family?"""
+    lo, hi = AGE_PEAK_WINDOW
+    if not lo <= params.peak_age <= hi:
+        return False
+    direction = AGE_DIRECTION.get(component, 1.0)
+    return (direction * params.age_slope_young >= 0
+            and direction * params.age_slope_old <= 0)
+
+
+def constrain(params: MarcelParams, component: str) -> MarcelParams:
+    """Nearest point of the constrained family: clip the peak into the window
+    and zero any slope pointing the wrong way.
+
+    This is what a constrained search starts from, so every point it ever
+    holds — the start included — satisfies `age_curve_ok`.
+    """
+    lo, hi = AGE_PEAK_WINDOW
+    direction = AGE_DIRECTION.get(component, 1.0)
+    young, old = params.age_slope_young, params.age_slope_old
+    return params.replace(
+        peak_age=float(min(max(params.peak_age, lo), hi)),
+        age_slope_young=young if direction * young >= 0 else 0.0,
+        age_slope_old=old if direction * old <= 0 else 0.0,
+    )
+
+
+def grid_summary(constrained: bool = True) -> dict:
     """The searched grid, for the params file's provenance block."""
+    peaks = constrained_peak_grid() if constrained else PEAK_AGE_GRID
+    slopes = (AGE_SLOPE_MAGNITUDES if constrained else AGE_SLOPE_GRID)
     return {
         "ballast": BALLAST_GRID,
         "weight_ratios": WEIGHT_RATIO_GRID,
-        "peak_age": PEAK_AGE_GRID,
-        "age_slope": AGE_SLOPE_GRID,
+        "league": [{"mode": m, "damp": d} for m, d in LEAGUE_GRID],
+        "peak_age": peaks,
+        "age_slope": slopes,
+        "age_constrained": constrained,
+        "age_peak_window": list(AGE_PEAK_WINDOW) if constrained else None,
+        "age_direction": dict(AGE_DIRECTION) if constrained else None,
         "n_points_per_pass": (
-            len(BALLAST_GRID) + len(WEIGHT_RATIO_GRID) ** 2
-            + len(PEAK_AGE_GRID) + 2 * len(AGE_SLOPE_GRID)
+            len(BALLAST_GRID) + len(WEIGHT_RATIO_GRID) ** 2 + len(LEAGUE_GRID)
+            + len(peaks) + 2 * len(slopes)
         ),
     }
 
@@ -193,24 +279,70 @@ def evaluate(splits: list[Split], spec: ComponentSpec, params: MarcelParams) -> 
     }
 
 
+def level_report(
+    splits: list[Split], spec: ComponentSpec, params: MarcelParams,
+    seasons: pd.DataFrame | None = None,
+) -> pd.DataFrame:
+    """Where the projections *sit* — the level, not the spread.
+
+    One row per split: the league rate the estimator regressed toward, the
+    trials-weighted mean projection, and the rate that actually came back.
+    Marcel's job is to sit on league and distribute players around it, so a
+    mean projection that misses the realized league rate is a bias every
+    player carries, and the size of that gap is the whole reason for
+    projecting the league rate forward at all.
+    """
+    from src.eval.baselines import projected_league_rate
+
+    rows = []
+    for split in splits:
+        j = predict_split(split, spec, params)
+        w = j["trials"].to_numpy(dtype="float64")
+        realized_scored = float(np.sum(j["realized_rate"] * w) / np.sum(w))
+        proj = float(np.sum(j["predicted"] * w) / np.sum(w))
+        row = {
+            "predict_year": split.predict_year,
+            "n_players": len(j),
+            "regressed_toward": projected_league_rate(
+                split.train, spec, params, split.predict_year),
+            "mean_projected": proj,
+            "realized_scored": realized_scored,
+            "level_error": proj - realized_scored,
+        }
+        if seasons is not None:
+            g = seasons[seasons["season"] == split.predict_year]
+            row["realized_league"] = float(
+                g[spec.successes].sum() / g[spec.trials].sum())
+            row["level_error_vs_league"] = proj - row["realized_league"]
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
 # --- the search --------------------------------------------------------------
 
-def _candidates(axis: str, params: MarcelParams) -> list[MarcelParams]:
+def _candidates(axis: str, params: MarcelParams, component: str,
+                constrained: bool = True) -> list[MarcelParams]:
     if axis == "ballast":
         return [params.replace(ballast=b) for b in BALLAST_GRID]
     if axis == "weights":
         return [params.replace(weights=(1.0, r2, r3))
                 for r2 in WEIGHT_RATIO_GRID for r3 in WEIGHT_RATIO_GRID]
+    if axis == "league":
+        return [params.replace(league_mode=m, league_damp=d)
+                for m, d in LEAGUE_GRID]
     if axis == "peak_age":
-        return [params.replace(peak_age=a) for a in PEAK_AGE_GRID]
-    if axis == "age_slope_old":
-        return [params.replace(age_slope_old=s) for s in AGE_SLOPE_GRID]
-    if axis == "age_slope_young":
-        return [params.replace(age_slope_young=s) for s in AGE_SLOPE_GRID]
+        grid = constrained_peak_grid() if constrained else PEAK_AGE_GRID
+        return [params.replace(peak_age=a) for a in grid]
+    if axis in ("age_slope_old", "age_slope_young"):
+        side = "old" if axis == "age_slope_old" else "young"
+        grid = (constrained_slope_grid(component, side) if constrained
+                else AGE_SLOPE_GRID)
+        return [params.replace(**{axis: s}) for s in grid]
     raise ValueError(f"unknown axis {axis!r}")
 
 
-AXES = ["ballast", "weights", "peak_age", "age_slope_old", "age_slope_young"]
+AXES = ["ballast", "weights", "league", "peak_age",
+        "age_slope_old", "age_slope_young"]
 
 
 def coordinate_search(
@@ -220,21 +352,32 @@ def coordinate_search(
     passes: int = 3,
     axes: list[str] | None = None,
     verbose: bool = False,
+    constrained: bool = True,
 ) -> tuple[MarcelParams, list[dict]]:
     """Sweep each axis in turn, keeping the best, for `passes` rounds.
 
     Returns the chosen params and a trace (one row per axis sweep) so the
     doc can say what each knob was worth.
+
+    With `constrained` (the default) the age axes are restricted to the family
+    described at the top of this module and the start point is projected into
+    it first, so the result satisfies `age_curve_ok` no matter what was passed
+    in. The returned params are never worse than that start — but a
+    constrained start can itself be worse than an unconstrained one, which is
+    the price of the restriction and is why `tune` still measures the fit
+    against stock.
     """
     axes = axes or AXES
     best = start or STOCK_PARAMS.get(spec.name, MarcelParams())
+    if constrained:
+        best = constrain(best, spec.name)
     best_mae = evaluate(splits, spec, best)["mae"]
     trace = [{"pass": 0, "axis": "start", "mae": best_mae,
               "params": best.to_dict()}]
     for p in range(1, passes + 1):
         improved = False
         for axis in axes:
-            for cand in _candidates(axis, best):
+            for cand in _candidates(axis, best, spec.name, constrained):
                 mae = evaluate(splits, spec, cand)["mae"]
                 if mae < best_mae * (1 - TOL):
                     best, best_mae, improved = cand, mae, True
