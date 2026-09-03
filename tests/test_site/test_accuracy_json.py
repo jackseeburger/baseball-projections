@@ -386,3 +386,90 @@ def test_committed_latest_json_matches_the_contract():
         assert section["framing"], name
     for path_, value in walk_numbers(doc):
         assert not math.isnan(value) and not math.isinf(value), path_
+
+
+# ─── BAS-59: the withheld arms have to declare themselves ────────
+
+def test_withheld_arms_are_labelled_and_tagged_as_controls(doc):
+    """A row that never saw the season it is scored in must say so.
+
+    `bayes_preseason` sat in this table as "Bayes preseason (ours)" next to a
+    Marcel fed the season through the day before, and the harness puts that
+    information at 5-6% of K% MAE — the same order as the gap it was being
+    charged with. The label now carries the handicap, and `is_control` makes
+    the page render the tag it already has for controls.
+    """
+    section = doc["sections"]["ros_backtest"]
+    withheld = [r for r in section["rows"] if r["model"] in build.ROS_WITHHELD_ARMS]
+    assert withheld, "the fixture should still carry a withheld arm"
+    for row in withheld:
+        assert row["is_control"] is True, row["model"]
+        assert row["sees_current_season"] is False, row["model"]
+        assert "withheld" in row["label"].lower(), row["label"]
+    for row in section["rows"]:
+        if row["model"] not in build.ROS_WITHHELD_ARMS:
+            assert row["sees_current_season"] is True, row["model"]
+            assert row["is_control"] is False, row["model"]
+
+
+def test_framing_states_the_handicap_and_that_no_fair_arm_ran(doc):
+    """The correction stands whichever way the numbers go."""
+    section = doc["sections"]["ros_backtest"]
+    framing = section["framing"]
+    assert "2026 withheld" in framing
+    assert "in-season information first and model quality second" in framing
+    # The fixture has no refit arm, so the page has to say the fair comparison
+    # is missing rather than implying the table contains one.
+    assert "refit at the cutoff" in framing
+    assert "--bayes" in framing
+    assert any("controls for how much the current season is worth" in n
+               for n in section["notes"])
+
+
+def test_the_refit_bayes_arm_is_labelled_with_its_own_scale(tmp_path):
+    """When the fair arm is present it is named, ranked and scale-stamped.
+
+    A reduced local fit is evidence about a reduced local fit; the row carries
+    the scale so it cannot be read as the full refit.
+    """
+    payload = json.loads((FIXTURES / "ros_backtest.json").read_text())
+    scale = "2x500 draws (tune 500), numpyro, pitcher, <=300 batters"
+    extra = []
+    for row in payload["scores"]:
+        if row["model"] == "marcel_tuned" and row["component"] == "k_rate":
+            extra.append({**row, "model": "bayes", "mae": row["mae"] * 1.02})
+    payload["scores"].extend(extra)
+    payload["arms"] = ["marcel_tuned", "bayes"] + [
+        a for a in payload["arms"] if a != "marcel_tuned"]
+    payload["bayes_fits"] = [{"cutoff": c, "scale": scale}
+                             for c in payload["cutoffs"]]
+    payload["paired_base"] = "marcel_tuned"
+    payload["paired"] = [
+        {"component": "k_rate", "cutoff": payload["cutoffs"][0], "arm": "bayes",
+         "base": "marcel_tuned", "n": 300, "diff": 0.0004, "se": 0.0002,
+         "t": 2.0, "win_rate": 0.45},
+    ]
+    ros = tmp_path / "ros.json"
+    ros.write_text(json.dumps(payload))
+
+    section = build.build_document(
+        out_dir=tmp_path,
+        components_json=FIXTURES / "components_scores.json",
+        game_odds_json=FIXTURES / "game_odds_market.json",
+        ros_json=ros,
+        git_sha="deadbeef",
+    )["sections"]["ros_backtest"]
+
+    bayes_rows = [r for r in section["rows"] if r["model"] == "bayes"]
+    assert bayes_rows, "the refit arm should be in the table"
+    for row in bayes_rows:
+        assert row["is_ours"] is True
+        assert row["is_control"] is False
+        assert row["sees_current_season"] is True
+        assert "2026 to date" in row["label"]
+        assert row["scale"] == scale
+    assert "the fair comparison" in section["framing"]
+    assert scale in section["framing"]
+    assert any(scale in n for n in section["notes"])
+    paired = [r for r in bayes_rows if "paired_vs_live" in r]
+    assert paired and paired[0]["paired_vs_live"]["base"] == "marcel_tuned"

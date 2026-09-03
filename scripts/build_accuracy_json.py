@@ -65,14 +65,21 @@ SECTIONS = ("components", "ros_backtest", "pitcher_ros_backtest", "game_odds",
 ROS_COMPONENTS = ("k_rate", "bb_rate", "hr_rate", "iso")
 # `marcel_tuned` leads because it is what the site serves
 # (src/projections/ros.py); stock `marcel` stays as the arm it had to beat.
-ROS_ARMS = ("marcel_tuned", "marcel", "marcel_tuned_preseason",
+ROS_ARMS = ("marcel_tuned", "bayes", "marcel", "marcel_tuned_preseason",
             "bayes_preseason", "season_to_date")
+# Labels carry the handicap. `bayes_preseason` has never seen a plate
+# appearance from the season it is being scored in, and for a year it sat in
+# this table under a name that did not say so, next to a Marcel fed the season
+# through the day before. Whatever the numbers do, the label has to make that
+# visible to a reader who does not know the history — hence "2026 withheld",
+# the same words the tuned-Marcel control carries.
 ROS_ARM_LABELS = {
     "marcel_tuned": "Tuned Marcel + 2026 to date",
+    "bayes": "Bayes + 2026 to date (ours)",
     "marcel": "Stock Marcel + 2026 to date",
     "marcel_tuned_preseason": "Tuned Marcel, 2026 withheld",
     "marcel_preseason": "Stock Marcel, 2026 withheld",
-    "bayes_preseason": "Bayes preseason (ours)",
+    "bayes_preseason": "Bayes, 2026 withheld (ours)",
     "season_to_date": "2026 rate, regressed",
 }
 # Read from the module that serves the projection, so the page can never mark
@@ -80,6 +87,12 @@ ROS_ARM_LABELS = {
 ROS_LIVE_ARM = LIVE_ENGINE
 # The control the "is in-season data worth anything?" line is measured against.
 ROS_CONTROL_ARM = "marcel_tuned_preseason"
+# Arms that never see a plate appearance from the season they are scored in.
+# The page has to say which rows those are: a comparison between an arm fed the
+# season to date and an arm that was not is a measurement of in-season
+# information, not of the two models.
+ROS_WITHHELD_ARMS = ("marcel_tuned_preseason", "marcel_preseason",
+                     "bayes_preseason", "previous_season")
 
 # The pitcher rest-of-season section. Five cells rather than three cutoffs —
 # season-level 2025 and 2026 come along, because the pitcher arm was scored on
@@ -109,6 +122,7 @@ PITCHER_ROS_BASELINES = ("league_average", "previous_season", "season_to_date")
 
 # Display names. Text only — every number comes from a generated table.
 MODEL_LABELS = {
+    "bayes": "Bayes, refit at the cutoff (ours)",
     "bayes_preseason": "Bayes (ours)",
     "depth_charts": "Depth Charts",
     "zips": "ZiPS",
@@ -124,7 +138,7 @@ MODEL_LABELS = {
     "kalshi_close": "Kalshi close",
     "polymarket_close": "Polymarket close",
 }
-OURS = {"bayes_preseason", "pythag_60_sp"}
+OURS = {"bayes", "bayes_preseason", "pythag_60_sp"}
 BASELINE_MODELS = {"marcel", "marcel_tuned", "league_average", "home_constant",
                    "win_pct_log5"}
 COMPONENT_LABELS = {"k_rate": "K% MAE", "bb_rate": "BB% MAE", "hr_rate": "HR/PA MAE",
@@ -310,6 +324,13 @@ def section_ros(payload: dict) -> dict:
         mae[(r["cutoff"], r["model"], r["component"])] = num(r["mae"])
         n_players[(r["cutoff"], r["component"])] = int(r["n_players"])
 
+    # What the refit Bayesian arm actually was, per cutoff. A reduced local fit
+    # is evidence about a reduced local fit; the row says so on the row.
+    bayes_scale = {f.get("cutoff"): f.get("scale")
+                   for f in payload.get("bayes_fits") or []}
+    paired = {(p["cutoff"], p["component"], p["arm"]): p
+              for p in payload.get("paired") or []}
+
     rows = []
     for cutoff in cutoffs:
         best = {}
@@ -323,19 +344,35 @@ def section_ros(payload: dict) -> dict:
             metrics = {c: mae.get((cutoff, arm, c)) for c in components}
             if all(v is None for v in metrics.values()):
                 continue
-            rows.append({
+            row = {
                 "model": arm,
                 "label": ROS_ARM_LABELS.get(arm, label_for(arm)),
                 "cutoff": _cutoff_label(cutoff),
                 "cutoff_date": cutoff,
                 "is_production": arm == ROS_LIVE_ARM,
-                "is_ours": arm == "bayes_preseason",
+                "is_ours": arm in OURS,
+                # An arm that never saw the season it is scored in is not
+                # competing on the same information as the rest of the table.
+                # `is_control` is what the page already renders as a tag, so
+                # the handicap shows on the row itself and not only in prose.
+                "sees_current_season": arm not in ROS_WITHHELD_ARMS,
+                "is_control": arm in ROS_WITHHELD_ARMS,
                 "is_baseline": arm in ("marcel", "marcel_preseason",
                                        "marcel_tuned_preseason", "season_to_date"),
                 "is_market": False,
                 "metrics": metrics,
                 "best": [c for c in components if best.get(c) == arm],
-            })
+            }
+            if arm == "bayes" and bayes_scale.get(cutoff):
+                row["scale"] = bayes_scale[cutoff]
+            pair = paired.get((cutoff, components[0], arm)) if components else None
+            if pair:
+                row["paired_vs_live"] = {
+                    "component": components[0], "base": pair["base"],
+                    "diff": num(pair["diff"]), "se": num(pair["se"]),
+                    "t": num(pair["t"]), "n": int(pair["n"]),
+                }
+            rows.append(row)
 
     # The framing is a count, not a claim: it is recomputed from the table
     # every night, so it flips on its own if the result ever does.
@@ -355,7 +392,8 @@ def section_ros(payload: dict) -> dict:
     # so a payload predating an arm reads as a shorter sentence rather than
     # "0 of 0".
     clauses = [(what, won, n) for what, (won, n) in [
-        ("our preseason Bayesian components", beats("bayes_preseason")),
+        ("our Bayesian components with the season withheld",
+         beats("bayes_preseason")),
         ("the same model without 2026", beats(ROS_CONTROL_ARM)),
         ("stock Marcel", beats("marcel")),
     ] if n]
@@ -366,6 +404,35 @@ def section_ros(payload: dict) -> dict:
     counted = (parts[0] if len(parts) == 1
                else ", ".join(parts[:-1]) + f"{',' if len(parts) > 2 else ''}"
                     f" and {parts[-1]}") if parts else ""
+
+    # The handicap sentence. Every row marked "2026 withheld" was denied the
+    # information every other row was given, and this harness measures that
+    # information at 5-6% of K% MAE — the same size as the gap it was being
+    # charged with. Saying so is not optional and does not depend on which way
+    # the numbers come out.
+    withheld_present = any(a in ROS_WITHHELD_ARMS for a in arms)
+    bayes_won, bayes_n = beats("bayes") if "bayes" in arms else (0, 0)
+    if "bayes" in arms:
+        fair = (f" Our Bayesian model refit at each cutoff — the same "
+                f"information, the fair comparison — is the "
+                f"\"{ROS_ARM_LABELS['bayes']}\" row; the live arm beats it on "
+                f"{bayes_won} of {bayes_n}.")
+        if bayes_scale:
+            fair += (" That row is a "
+                     f"{sorted(set(v for v in bayes_scale.values() if v))[0]} "
+                     "fit, not the full refit — read it as the scale it is.")
+    else:
+        fair = (" No Bayesian arm in this run was refit at the cutoff, so "
+                "nothing here compares the two models on equal information; "
+                "run scripts/run_intraseason_backtest.py --bayes for that.")
+    handicap = (
+        " The rows labelled \"2026 withheld\" never saw a plate appearance "
+        "from the season they are scored in, so the gap between them and the "
+        "rows above is in-season information first and model quality second: "
+        "folding the season to date into Marcel alone is worth 5-6% of K% "
+        "MAE." + fair
+    ) if withheld_present else ""
+
     framing = (
         "Lower is better, and only within a cutoff — a later cutoff scores a "
         "shorter, noisier rest of season, so every arm's MAE rises down the "
@@ -373,6 +440,7 @@ def section_ros(payload: dict) -> dict:
         "ballast, recency weights and age curve fitted walk-forward on "
         "2020-2024 — with the season to date folded in."
         + (f" It beats {counted}." if counted else "")
+        + handicap
         + " Most of the gain is in-season information rather than a better "
           "prior — which is why the player pages lead with this number.")
 
@@ -389,7 +457,25 @@ def section_ros(payload: dict) -> dict:
         "Tuned Marcel's constants are frozen in src/eval/marcel_params.json, "
         "fitted on 2020-2024 only — every cutoff here is out of sample for "
         "them.",
+        "\"2026 withheld\" arms are fixed preseason projections scored "
+        "unchanged at every cutoff. They are controls for how much the current "
+        "season is worth, not contenders — a withheld arm losing to an arm fed "
+        "the season to date is the expected result, not a verdict on the model.",
     ]
+    if "bayes" in arms:
+        notes.append(
+            "\"Bayes + 2026 to date\" is the PA-level Bayesian K% model refit "
+            "at the cutoff on exactly the plate appearances the baselines see "
+            "(src/eval/bayes_arm.py), with the opposing-pitcher term on. It "
+            "covers K% only; the other four components have no refit arm yet."
+            + (f" Sampling scale: {sorted(set(v for v in bayes_scale.values() if v))[0]}."
+               if bayes_scale else ""))
+    if payload.get("paired"):
+        notes.append(
+            f"Paired column: within-hitter difference in absolute error "
+            f"against {payload.get('paired_base', ROS_LIVE_ARM)} on "
+            f"{COMPONENT_LABELS.get(components[0], components[0])}, "
+            f"trials-weighted. Negative means the arm is the better one.")
     if last_pa:
         notes.append(f"The current season runs through {last_pa} in this run, so "
                      f"the last cutoff's 'rest of season' is about a month.")
