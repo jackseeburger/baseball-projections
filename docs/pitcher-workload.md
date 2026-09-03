@@ -66,10 +66,17 @@ and everyone any method projects above zero — so nobody is rewarded for
 declining to project someone.
 
 **The gate.** Every constant the candidate methods carry was chosen on **2022
-and 2023** and frozen; **2024, 2025 and 2026** are the score. The served model
-has no fitted constants of its own — it is the same arithmetic it was before
-this document existed — so for it the whole five seasons are out of sample.
-Both halves are printed below.
+and 2023** and frozen; **2024, 2025 and 2026** are the score. Both halves are
+printed below.
+
+The served model has no *fitted* constants — nothing in it was chosen by a
+selection run, and it is the same arithmetic it was before this document
+existed — but it is not innocent of 2026 either: its role averages are
+commented "from 2026 league usage" and its ballasts and recency weight were
+picked by hand while looking at a 2026 board. **2024 and 2025 are therefore
+the cleanest read on it**, and they say the same thing as 2026 does (MAE 49.19
+and 49.79 against `season_rate`'s 54.53 and 56.00), so the conclusion does not
+rest on the one season where the served model had a hand on the scale.
 
 **Standard errors.** Nine cutoffs inside a season score the same pitcher nine
 times, so a pitcher-level standard error would be far too small. The paired
