@@ -10,6 +10,11 @@ It is a default, not a law. The [gate rule](architecture.md#3-the-gate-rule)
 outranks it: a method that beats its baseline out of sample ships regardless of
 which box it came from, and a method that doesn't, doesn't.
 
+For *where to point these methods next* — which questions to open, in what
+order, and what would prove the ordering wrong — see
+[modelling-roadmap.md](modelling-roadmap.md). This doc chooses a tool for a
+question already on the table; that one chooses the questions.
+
 ## 0. The result that should frame the whole discussion
 
 Sizes of real, gated gains measured in this repo, largest first:
