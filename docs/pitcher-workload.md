@@ -391,13 +391,19 @@ not, and neither is the calibration.
 
 The last row is the one to look at. The served model **over-projects starters
 by 8% and under-projects relievers by 20%**, and the two nearly cancel in the
-league total (0.943). The starter excess is a modelling failure and §7 is
-about it. The reliever shortfall is mostly not one: 7.9% of all realized
-workload is taken by arms nobody's 40-man carried at the cutoff, and every
-method — including every baseline — projects those at zero. `season_rate`
-(1.142), `recent_rate` (1.151) and `structural_nogate` (1.208) over-project
-starters by more than the served model does; only the shrunk candidates and
-`blend` land nearer 1.
+league total (0.943).
+
+The starter excess is a modelling failure, and §7 is about it. The reliever
+shortfall is mostly not one. **14.9% of the reliever bucket's realized
+workload is taken by arms nobody's 40-man carried at the cutoff** — against
+1.0% of the starters' — and every method, every baseline included, projects
+those at zero, because the universe of pitchers to project is the 40-man plus
+whoever pitched. Netting that out, the served model's conservation on the
+relievers it could have projected is **0.939**, not 0.799, and the honest
+statement is that it is well calibrated on relievers and 8% high on starters.
+`season_rate` (1.142), `recent_rate` (1.151) and `structural_nogate` (1.208)
+over-project starters by more than it does; only the shrunk candidates of §7
+and `blend` land nearer 1.
 
 Two structural questions about role were tested and neither changed anything.
 **Reading role off `gamesStarted` rather than off a twelve-batter threshold**
@@ -478,8 +484,9 @@ of MAE — 3.3% — and pays for it in two places:
   will never appear — is not the loss function the page has.
 - The role split makes the case sharper and also makes it un-shippable *as
   fitted*: the starter half of the hazard is clearly right (conservation
-  0.991 against 1.084) and the reliever half is clearly wrong (0.702 against
-  0.799, in the wrong direction on an already-low number). Keeping λ_SP and
+  0.991 against the served model's 1.084) and the reliever half is clearly
+  wrong (0.825 against 0.939 once the off-roster arms of §6 are netted out —
+  it takes a well-calibrated number and pushes it 17% low). Keeping λ_SP and
   zeroing λ_RP would be choosing a parameter on the holdout, which is the one
   thing the gate rule forbids.
 
@@ -553,10 +560,12 @@ The served model has no fitted constants at all.
    often than its long men, and the model treats both as `RP` regressed toward
    0.40 appearances a club game. The appearance log's inherited-runner and
    inning-entered fields distinguish them and are unused.
-6. **Pitchers outside the 40-man.** 7.9% of the workload the holdout scores
-   was taken by arms nobody's 40-man carried at the cutoff, and every method —
-   every baseline included — projects them at zero. That is a floor on the
-   reliever MAE no amount of modelling of the projected pitchers can reach.
+6. **Pitchers outside the 40-man.** 7.9% of the workload the holdout scores —
+   **14.9% of the relievers'** — was taken by arms nobody's 40-man carried at
+   the cutoff, and every method, every baseline included, projects them at
+   zero. That is a floor on the reliever MAE no amount of modelling of the
+   projected pitchers can reach, and it is why the reliever conservation
+   numbers in §6 look worse than the model is.
 
 ## 10. Today's board (as-of 2026-09-03)
 
