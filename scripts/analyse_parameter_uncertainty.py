@@ -201,6 +201,55 @@ def spread_table(scored: pd.DataFrame, arms) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def effective_lambda(scored: pd.DataFrame, arm: str, prob: str = "p_playoffs",
+                     by=()) -> pd.DataFrame:
+    """How much shrinkage the width *amounts to*, expressed as a λ.
+
+    The bridge between the two halves of the question. `λ_applied` is the
+    least-squares slope of the arm's probability on the served chain's, taken
+    about the base rate — i.e. the single linear shrinkage that best mimics
+    what the width did. `λ_best` is the shrinkage of the served chain that
+    would actually have minimised Brier on the same rows. Comparing them says
+    whether the width shrank by roughly the right amount, far too much, or too
+    little, in one number that a Brier difference cannot show.
+    """
+    truth = OUTCOME_OF[prob]
+    left = scored[scored["arm"] == BASE_ARM]
+    right = scored[scored["arm"] == arm]
+    keys = ["season", "as_of", "team_id"]
+    m = left[keys + [prob, truth] + list(by)].merge(
+        right[keys + [prob]], on=keys, suffixes=("_base", "_arm"))
+    rows = []
+    groups = ([(k, g) for k, g in m.groupby(list(by), observed=True)]
+              if by else [((), m)])
+    for key, g in groups:
+        key = key if isinstance(key, tuple) else (key,)
+        c = float(g[truth].mean())
+        d = g[f"{prob}_base"].to_numpy() - c
+        a = g[f"{prob}_arm"].to_numpy() - c
+        denom = float(np.sum(d * d))
+        rows.append({**dict(zip(by, key)), "arm": arm, "prob": prob,
+                     "n": int(len(g)), "base_rate": c,
+                     "lambda_applied": float(np.sum(d * a) / denom)
+                     if denom > 0 else float("nan"),
+                     "lambda_best": best_lambda(
+                         g[f"{prob}_base"].to_numpy(),
+                         g[truth].to_numpy(), c)})
+    return pd.DataFrame(rows)
+
+
+def per_season(scored: pd.DataFrame, arm: str,
+               against: str = BASE_ARM) -> pd.DataFrame:
+    """The paired difference season by season — is it one season carrying it?"""
+    rows = []
+    for season in sorted(scored["season"].unique()):
+        g = scored[scored["season"] == season]
+        p = tb.paired(g, arm, against, metrics=PU_METRICS)
+        p.insert(0, "season", season)
+        rows.append(p)
+    return pd.concat(rows, ignore_index=True)
+
+
 def _fmt(v, nd=4):
     if v is None or (isinstance(v, float) and not np.isfinite(v)):
         return "—"
@@ -286,6 +335,35 @@ def markdown(scored: pd.DataFrame, arms, lams) -> str:
         lines.append(f"| {r.arm} | {r.bucket} | {r.n} | {r.sd_p_playoffs:.4f} | "
                      f"{r.mean_abs_dev:.4f} | {r.frac_extreme:.3f} |")
 
+    lines += ["", "### The width expressed as a shrinkage, against the "
+                  "shrinkage that would have been right", "",
+              "`λ_applied` is the linear shrinkage toward the base rate that "
+              "best mimics what the width did to the board; `λ_best` is the "
+              "shrinkage of the served chain that would have minimised Brier "
+              "on the same rows. 1.0 is no shrinkage.", "",
+              "| Arm | Outcome | Bucket | n | λ applied | λ best |",
+              "|---|---|---|---:|---:|---:|"]
+    for arm in arms:
+        if arm in (BASE_ARM, CONTROL_ARM) or scored[scored["arm"] == arm].empty:
+            continue
+        for prob in ("p_playoffs", "p_pennant"):
+            r = effective_lambda(scored, arm, prob).iloc[0]
+            lines.append(f"| {arm} | {prob[2:]} | all | {r.n} | "
+                         f"{r.lambda_applied:.3f} | {r.lambda_best:.3f} |")
+    for r in effective_lambda(scored, PU_ARM, "p_playoffs",
+                              by=("bucket",)).itertuples(index=False):
+        lines.append(f"| {PU_ARM} | playoffs | {r.bucket} | {r.n} | "
+                     f"{r.lambda_applied:.3f} | {r.lambda_best:.3f} |")
+
+    ps = per_season(scored, PU_ARM)
+    ps = ps[ps["metric"].isin(("brier_playoffs", "wins_abs_err"))]
+    lines += ["", f"### `{PU_ARM}` minus `{BASE_ARM}`, season by season", "",
+              "| Season | Metric | chain_pu | chain | Δ |",
+              "|---|---|---:|---:|---:|"]
+    for r in ps.itertuples(index=False):
+        lines.append(f"| {r.season} | {r.metric} | {_fmt(r.mean_a, 5)} | "
+                     f"{_fmt(r.mean_b, 5)} | {_fmt(r.diff, 5)} |")
+
     lines += ["", "### Fitted shrinkage constants", "", "```",
               json.dumps(lams, indent=1, default=float), "```"]
     return "\n".join(lines)
@@ -323,6 +401,20 @@ def payload(scored: pd.DataFrame, arms, lams) -> dict:
         "spread": json.loads(spread_table(
             scored, [BASE_ARM, PU_ARM, "chain_pu_double"]
         ).to_json(orient="records")),
+        "effective_lambda": json.loads(pd.concat(
+            [effective_lambda(scored, a, p)
+             for a in arms if a not in (BASE_ARM, CONTROL_ARM)
+             and not scored[scored["arm"] == a].empty
+             for p in PROB_COLUMNS]
+            + [effective_lambda(scored, PU_ARM, "p_playoffs", by=("bucket",))],
+            ignore_index=True).to_json(orient="records")),
+        "per_season": json.loads(
+            per_season(scored, PU_ARM).to_json(orient="records")),
+        "calibration": {
+            arm: json.loads(tb.calibration(scored, arm).to_json(
+                orient="records"))
+            for arm in (BASE_ARM, PU_ARM, CONTROL_ARM)
+            if not scored[scored["arm"] == arm].empty},
     }
 
 
