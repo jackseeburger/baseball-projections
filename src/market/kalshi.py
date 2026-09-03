@@ -11,6 +11,16 @@ Series we archive (verified live 2026-09-02):
     KXMLBAL/NL    pennant                        KXMLB{AL,NL}{EAST,CENT,WEST}
     KXMLBBESTRECORD
 
+Player props (verified live 2026-09-02) reuse the game event ticker and add a
+player-and-strike suffix to the market ticker:
+
+    KXMLBHIT-26SEP022010CWSHOU-HOULWADE31-3   "LaMonte Wade Jr.: 3+ hits?"
+
+The trailing `-3` is the integer threshold; `floor_strike` is 2.5 and
+`strike_type` is "greater", so YES is *at least* that many. The player is
+named only in `title` / `yes_sub_title` — `custom_strike.baseball_player` is a
+vendor UUID, not an MLBAM id — so `src/market/players.py` resolves the name.
+
 Game event tickers encode the ET first pitch and the away/home pair:
     KXMLBGAME-26SEP042210WSHLAD  →  2026-09-04 22:10 ET, WSH @ LAD
 """
@@ -22,10 +32,23 @@ from zoneinfo import ZoneInfo
 
 from src.market import teams as T
 from src.market.http import get_json
-from src.market.schema import empty_record, mid_price
+from src.market.schema import PROP_MARKET_TYPES, empty_record, mid_price
 
 BASE = "https://api.elections.kalshi.com/trade-api/v2"
 ET = ZoneInfo("America/New_York")
+
+# One series per prop stat. Kept apart from SERIES so the snapshot job and the
+# prop backfill can ask for props alone (they are ~10x the market count of
+# everything else put together).
+PROP_SERIES = {
+    "KXMLBHR": "prop_hr",
+    "KXMLBKS": "prop_k",
+    "KXMLBHIT": "prop_hits",
+    "KXMLBTB": "prop_tb",
+    "KXMLBRBI": "prop_rbi",
+    "KXMLBSB": "prop_sb",
+    "KXMLBOUTS": "prop_outs",
+}
 
 SERIES = {
     "KXMLBGAME": "moneyline",
@@ -43,6 +66,7 @@ SERIES = {
     "KXMLBNLCENT": "futures_division",
     "KXMLBNLWEST": "futures_division",
     "KXMLBBESTRECORD": "futures_best_record",
+    **PROP_SERIES,
 }
 
 _GAME_EVENT = re.compile(
@@ -111,6 +135,41 @@ def parse_event(event_ticker: str) -> dict:
 
 
 _OVER = re.compile(r"over ([\d.]+)", re.I)
+# "LaMonte Wade Jr.: 3+" / "Bubba Chandler: 16+ Outs Recorded?" — the player is
+# everything before the last colon, the threshold the integer after it.
+_PROP_LABEL = re.compile(r"^(?P<name>.+):\s*(?P<n>\d+)\+")
+
+
+def parse_prop_label(text: str | None) -> tuple[str | None, float | None]:
+    """('LaMonte Wade Jr.: 3+', ...) → ("LaMonte Wade Jr.", 2.5).
+
+    The line returned is the *over/under* number (one below the "N+"
+    threshold), so YES pays on strictly more than `prop_line` — the same
+    convention as a total and as Polymarket's `line` field.
+    """
+    m = _PROP_LABEL.match((text or "").strip())
+    if not m:
+        return None, None
+    return m["name"].strip(), float(m["n"]) - 0.5
+
+
+def prop_team_id(ticker: str) -> int | None:
+    """The club the prop's player is on, from the ticker's player segment.
+
+    `KXMLBHIT-26SEP022010CWSHOU-HOULWADE31-3` → the `HOULWADE31` segment is the
+    team abbreviation followed by an opaque player code, so the abbreviation is
+    the longest known prefix. Useful because a prop is a *player* market with
+    no home/away side of its own.
+    """
+    parts = ticker.split("-")
+    if len(parts) < 4:
+        return None
+    seg = parts[-2]
+    for n in (3, 2):
+        tid = T.KALSHI_ABBREV_TO_ID.get(seg[:n])
+        if tid:
+            return tid
+    return None
 
 
 def normalize(market: dict, ts: str) -> dict:
@@ -147,7 +206,17 @@ def normalize(market: dict, ts: str) -> dict:
     suffix = market["ticker"].rsplit("-", 1)[-1]
     label = market.get("yes_sub_title") or ""
     mtype = r["market_type"]
-    if mtype == "total":
+    if mtype in PROP_MARKET_TYPES:
+        name, line = parse_prop_label(label or market.get("title"))
+        # `floor_strike` is the same number and is authoritative when the
+        # label ever changes shape; the label is the only source of the name.
+        floor = _f(market.get("floor_strike"))
+        r["prop_stat"] = PROP_MARKET_TYPES[mtype]
+        r["prop_line"] = floor if floor is not None else line
+        r["player_name"] = name
+        r["outcome"] = "Over"
+        r["team_id"] = prop_team_id(market["ticker"])
+    elif mtype == "total":
         m = _OVER.search(market.get("title") or "")
         r["outcome"] = "Over"
         r["line"] = float(m.group(1)) if m else None

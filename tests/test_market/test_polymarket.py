@@ -84,7 +84,7 @@ def test_event_start_time_beats_stale_market_game_start():
                           "outcomePrices": '["0.2","0.8"]', "sportsMarketType": "baseball_player_home_runs",
                           "gameStartTime": "2026-06-14 17:40:00+00", "active": True}]}
     r = polymarket.normalize_event(event, TS)[0]
-    assert r["market_type"] == "player_prop"
+    assert r["market_type"] == "prop_hr"
     assert r["game_date"] == "2026-09-04" and r["team_id"] is None
 
 

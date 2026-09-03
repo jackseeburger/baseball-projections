@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pandas as pd
 
-from src.market import kalshi, oddsapi, polymarket
+from src.market import kalshi, oddsapi, players, polymarket
 from src.market.games import assign_game_pk
-from src.market.schema import FIELDS, validate
+from src.market.schema import FIELDS, PROP_MARKET_TYPES, validate
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 SNAPSHOT_DIR = ROOT / "data/market/snapshots"
@@ -31,8 +31,15 @@ def now_iso() -> str:
 
 
 def collect(ts: str | None = None, schedule: pd.DataFrame | None = None,
-            venues: tuple[str, ...] = ("kalshi", "polymarket"), session=None) -> tuple[list[dict], dict]:
-    """Pull every venue, normalize, map to game_pk. Returns (records, stats)."""
+            venues: tuple[str, ...] = ("kalshi", "polymarket"), session=None,
+            resolver: "players.NameResolver | None" = None,
+            season: int | None = None) -> tuple[list[dict], dict]:
+    """Pull every venue, normalize, map to game_pk and player_id.
+
+    `resolver` is built from the season roster list on first use (one cached
+    request); pass one in — or `players.NameResolver(season, people=[],
+    search=False)` — to keep a caller offline.
+    """
     ts = ts or now_iso()
     records: list[dict] = []
     stats: dict = {"ts": ts}
@@ -56,11 +63,30 @@ def collect(ts: str | None = None, schedule: pd.DataFrame | None = None,
         stats["oddsapi_events"] = len(events)
         stats["oddsapi_rows"] = len(recs)
         stats["oddsapi_quota"] = quota
+    if any(r["market_type"] in PROP_MARKET_TYPES for r in records):
+        season = season or int(ts[:4])
+        resolver = resolver or players.NameResolver(season, session=session)
+        stats["props"] = assign_player_ids_and_count(records, resolver)
     for r in records:
         validate(r)
     if schedule is not None:
         stats["mapping"] = assign_game_pk(records, schedule)
     return records, stats
+
+
+def assign_player_ids_and_count(records: list[dict], resolver) -> dict:
+    """Resolve every prop's player and report the counts per stat."""
+    stats = players.assign_player_ids(records, resolver)
+    per_stat: dict = {}
+    for r in records:
+        if r["market_type"] not in PROP_MARKET_TYPES:
+            continue
+        cell = per_stat.setdefault(r["prop_stat"], {"markets": 0, "resolved": 0})
+        cell["markets"] += 1
+        cell["resolved"] += int(r["player_id"] is not None)
+    stats["by_stat"] = dict(sorted(per_stat.items()))
+    stats["unresolved_sample"] = sorted(resolver.misses)[:20]
+    return stats
 
 
 def snapshot_path(ts: str, out_dir: Path = SNAPSHOT_DIR) -> Path:

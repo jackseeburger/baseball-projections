@@ -19,7 +19,7 @@ from zoneinfo import ZoneInfo
 
 from src.market import teams as T
 from src.market.http import get_json
-from src.market.schema import empty_record, mid_price
+from src.market.schema import PROP_MARKET_TYPES, empty_record, mid_price
 
 GAMMA = "https://gamma-api.polymarket.com"
 CLOB = "https://clob.polymarket.com"
@@ -34,6 +34,23 @@ SPORTS_TYPES = {
     "baseball_team_first_five_total": "first5_total",
     "baseball_team_first_five_spread": "first5_spread",
     "baseball_game_extra_innings": "extra_innings",
+}
+
+# Player props, keyed the same way Kalshi's prop series are so the two venues
+# land in one table. Gamma's question is "Angel Martínez: Home Runs O/U 0.5"
+# with outcomes ["Over", "Under"] and `line` 0.5, so the *first* outcome — the
+# one the schema prices — is the over, exactly like a Kalshi prop's YES.
+# Only home runs and strikeouts were live on 2026-09-02; the rest are listed
+# because the slug vocabulary is stable and an unlisted `baseball_player_*`
+# still falls back to the generic `player_prop`.
+PLAYER_PROP_TYPES = {
+    "baseball_player_home_runs": "prop_hr",
+    "baseball_player_strikeouts": "prop_k",
+    "baseball_player_hits": "prop_hits",
+    "baseball_player_total_bases": "prop_tb",
+    "baseball_player_rbis": "prop_rbi",
+    "baseball_player_stolen_bases": "prop_sb",
+    "baseball_player_outs": "prop_outs",
 }
 
 _SLUG_TYPES = [
@@ -102,6 +119,8 @@ def market_type_for(market: dict, event: dict) -> str:
     st = market.get("sportsMarketType")
     if st in SPORTS_TYPES:
         return SPORTS_TYPES[st]
+    if st in PLAYER_PROP_TYPES:
+        return PLAYER_PROP_TYPES[st]
     if st and st.startswith("baseball_player"):
         return "player_prop"
     slug = event.get("slug") or ""
@@ -109,6 +128,15 @@ def market_type_for(market: dict, event: dict) -> str:
         if pat.search(slug):
             return mtype
     return "other"
+
+
+_PROP_QUESTION = re.compile(r"^(?P<name>.+?):\s*(?P<stat>.+?)\s+O/U\s*[\d.]+\s*$", re.I)
+
+
+def parse_prop_question(text: str | None) -> str | None:
+    """'Angel Martínez: Home Runs O/U 0.5' → 'Angel Martínez'."""
+    m = _PROP_QUESTION.match((text or "").strip())
+    return m["name"].strip() if m else None
 
 
 def normalize_event(event: dict, ts: str) -> list[dict]:
@@ -152,6 +180,11 @@ def normalize_event(event: dict, ts: str) -> list[dict]:
             "status": "closed" if mk.get("closed") else ("active" if mk.get("active") else "inactive"),
             "close_time": mk.get("endDate"),
         })
+        if mtype in PROP_MARKET_TYPES:
+            r["prop_stat"] = PROP_MARKET_TYPES[mtype]
+            r["prop_line"] = r["line"]
+            r["player_name"] = parse_prop_question(mk.get("question")) \
+                or parse_prop_question(mk.get("groupItemTitle"))
         if r["game_start"]:
             r["game_date"] = datetime.fromisoformat(r["game_start"]).astimezone(ET).date().isoformat()
         r["mid"] = mid_price(r["bid"], r["ask"])
@@ -171,7 +204,8 @@ def normalize_event(event: dict, ts: str) -> list[dict]:
     return records
 
 
-_GAME_TYPES = set(SPORTS_TYPES.values()) | {"player_prop"}
+_GAME_TYPES = (set(SPORTS_TYPES.values()) | set(PLAYER_PROP_TYPES.values())
+               | {"player_prop"})
 
 
 def fetch_price_history(token_id: str, fidelity_minutes: int = 60, session=None) -> list[dict]:

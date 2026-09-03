@@ -33,12 +33,32 @@ FIELDS = [
     "result",         # settlement ("yes"/"no"/outcome label) once resolved
     "close_time",     # venue's market close / expiry, ISO
     "odds_decimal",   # quoted decimal odds (sportsbooks only)
+    # ── player props (None on every non-prop row) ──
+    "player_id",      # MLBAM id for `player_name`, None until resolved
+    "player_name",    # the venue's spelling of the player the prop is about
+    "prop_stat",      # "hr" | "k" | "hits" | "tb" | "rbi" | "sb" | "outs"
+    "prop_line",      # the over/under number; YES pays on strictly more
 ]
+
+# One market type per prop stat rather than a single `player_prop`, because
+# the stat is what decides which model prices it and the Brier table is per
+# stat. `PROP_MARKET_TYPES[t]` is the `prop_stat` the type carries.
+PROP_MARKET_TYPES = {
+    "prop_hr": "hr",
+    "prop_k": "k",
+    "prop_hits": "hits",
+    "prop_tb": "tb",
+    "prop_rbi": "rbi",
+    "prop_sb": "sb",
+    "prop_outs": "outs",
+}
+PROP_STATS = tuple(PROP_MARKET_TYPES.values())
 
 MARKET_TYPES = {
     "moneyline", "total", "spread",
     "first5_moneyline", "first5_total", "first5_spread",
     "nrfi", "extra_innings", "player_prop",
+    *PROP_MARKET_TYPES,
     "futures_ws", "futures_pennant", "futures_division", "futures_playoffs",
     "futures_best_record", "futures_wins", "futures_award",
     "other",
@@ -48,6 +68,7 @@ GAME_MARKET_TYPES = {
     "moneyline", "total", "spread",
     "first5_moneyline", "first5_total", "first5_spread",
     "nrfi", "extra_innings", "player_prop",
+    *PROP_MARKET_TYPES,
 }
 
 
@@ -81,3 +102,9 @@ def validate(record: dict) -> None:
             raise ValueError(f"{f}={v} out of [0,1] for {record['market_id']}")
     if not record["market_id"] or not record["ts"]:
         raise ValueError("market_id and ts are required")
+    if record["market_type"] in PROP_MARKET_TYPES:
+        if record["prop_stat"] != PROP_MARKET_TYPES[record["market_type"]]:
+            raise ValueError(f"prop_stat {record['prop_stat']!r} does not match "
+                             f"market_type {record['market_type']!r}")
+    elif any(record[f] is not None for f in ("prop_stat", "prop_line", "player_id")):
+        raise ValueError(f"prop fields set on non-prop market {record['market_id']}")

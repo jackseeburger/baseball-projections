@@ -15,14 +15,24 @@ offset 2100, which newest-first reaches back to early July.
 
 One row per (venue, game): P(home) at the close, the quote around it, and
 how long before first pitch the last observation was.
+
+**Player props** (`kalshi_prop_closes`) work the same way one level down: one
+row per settled *contract* rather than per game, because a prop is a player at
+a line and a game carries dozens of them. Kalshi's prop series start
+2026-06-27 and list every hitter at every strike whether or not anyone traded
+it, so the listing pass keeps only contracts with volume and the candlestick
+pass — one request each, no bulk endpoint — runs on a small thread pool.
 """
 from __future__ import annotations
 
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 
 import pandas as pd
+import requests
 
 from src.market import kalshi, polymarket
 from src.market import teams as T
@@ -45,23 +55,49 @@ def _ts(iso: str) -> int:
 
 # ───────────────────────────── Kalshi ─────────────────────────────
 
-def kalshi_settled_games(season: int, session=None, window_days: int = 7) -> list[dict]:
-    """Every settled KXMLBGAME market for a season, paged by close-time window."""
-    start = datetime(season, 3, 15, tzinfo=timezone.utc)
-    end = datetime.now(timezone.utc) + timedelta(days=1)
+def kalshi_settled(series_ticker: str, season: int, session=None,
+                   window_days: int = 7, start: str | None = None,
+                   end: str | None = None, follow_cursor: bool = False) -> list[dict]:
+    """Every settled market in a series, paged by close-time window.
+
+    The default listing only reaches back about a month, so the window is the
+    only way to walk a season. `follow_cursor` also pages *within* a window,
+    which the moneyline series never needs (30 games a day) and the prop series
+    always do (several thousand).
+    """
+    lo = datetime.fromisoformat(start).replace(tzinfo=timezone.utc) if start \
+        else datetime(season, 3, 15, tzinfo=timezone.utc)
+    hi = datetime.fromisoformat(end).replace(tzinfo=timezone.utc) if end \
+        else datetime.now(timezone.utc) + timedelta(days=1)
     out: list[dict] = []
-    cursor = start
-    while cursor < end:
-        nxt = cursor + timedelta(days=window_days)
-        params = {"series_ticker": "KXMLBGAME", "status": "settled", "limit": 1000,
-                  "min_close_ts": int(cursor.timestamp()), "max_close_ts": int(nxt.timestamp())}
-        page = get_json(f"{kalshi.BASE}/markets", params, session=session)
-        markets = page.get("markets", [])
-        out.extend(markets)
-        if page.get("cursor"):
-            logger.warning("Kalshi window %s..%s had a cursor; shrink window_days", cursor.date(), nxt.date())
+    cursor = lo
+    while cursor < hi:
+        nxt = min(cursor + timedelta(days=window_days), hi)
+        page_cursor = None
+        while True:
+            params = {"series_ticker": series_ticker, "status": "settled", "limit": 1000,
+                      "min_close_ts": int(cursor.timestamp()),
+                      "max_close_ts": int(nxt.timestamp())}
+            if page_cursor:
+                params["cursor"] = page_cursor
+            page = get_json(f"{kalshi.BASE}/markets", params, session=session)
+            markets = page.get("markets", [])
+            out.extend(markets)
+            page_cursor = page.get("cursor")
+            if not follow_cursor:
+                if page_cursor:
+                    logger.warning("Kalshi %s window %s..%s had a cursor; shrink window_days",
+                                   series_ticker, cursor.date(), nxt.date())
+                break
+            if not page_cursor or not markets:
+                break
         cursor = nxt
     return out
+
+
+def kalshi_settled_games(season: int, session=None, window_days: int = 7) -> list[dict]:
+    """Every settled KXMLBGAME market for a season, paged by close-time window."""
+    return kalshi_settled("KXMLBGAME", season, session=session, window_days=window_days)
 
 
 def kalshi_close_for_market(market: dict, first_pitch_ts: int, session=None) -> dict | None:
@@ -119,6 +155,189 @@ def kalshi_closes(season: int, session=None, markets: list[dict] | None = None,
             "home_won": {"yes": True, "no": False}.get(m.get("result")),
         })
     return rows
+
+
+# ──────────────────────── Kalshi player props ────────────────────────
+
+PROP_CLOSE_COLUMNS = [
+    "venue", "game_pk", "game_date", "game_start", "team_id",
+    "player_id", "player_name", "prop_stat", "prop_line",
+    "p_over_close", "bid", "ask", "last_trade", "close_ts", "minutes_before_pitch",
+    "volume_pre", "volume_total", "n_obs", "market_id", "result", "over_hit",
+]
+
+
+def kalshi_settled_props(season: int, series: dict | None = None, session=None,
+                         window_days: int = 1, start: str | None = None,
+                         end: str | None = None, min_volume: float = 1.0) -> list[dict]:
+    """Settled prop markets across every prop series, one listing pass.
+
+    `min_volume` drops the markets that never traded. An untraded contract has
+    a quote but no price anyone paid, and Kalshi lists a line for every hitter
+    in the game at every strike, so most of the universe is untraded noise that
+    would cost one candlestick request each to discover.
+    """
+    series = series if series is not None else kalshi.PROP_SERIES
+    out = []
+    for ticker in series:
+        markets = kalshi_settled(ticker, season, session=session,
+                                 window_days=window_days, start=start, end=end,
+                                 follow_cursor=True)
+        kept = [m for m in markets if float(m.get("volume_fp") or 0) >= min_volume]
+        logger.info("%s: %d settled, %d traded", ticker, len(markets), len(kept))
+        out.extend(kept)
+    return out
+
+
+def _first_dollars(block: dict | None, *keys) -> float | None:
+    for k in keys:
+        v = (block or {}).get(k)
+        if v not in (None, ""):
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def candle_price(candle: dict) -> tuple:
+    """(price, bid, ask, last_trade) in dollars from one candle, or Nones.
+
+    A prop contract can go a whole hour without a trade — most of them do —
+    and Kalshi then returns `price: {}` or only `previous_dollars`, the last
+    trade carried forward. So the price here is **the last trade when it still
+    lies inside the closing quote, and the midpoint of that quote otherwise**,
+    which differs from the moneyline reconstruction (`kalshi_closes`, last
+    trade full stop) for a reason: a game market trades every hour and its
+    last print is current, while a prop's last print can be hours stale and
+    sit right outside a book that has since moved. On one day of props the
+    two rules disagree on 12% of contracts, and where they disagree the stale
+    print is *outside* the book — which would hand the P&L a free edge against
+    a price nobody was showing.
+
+    A zero bid or ask means no quote on that side rather than a free option,
+    so it becomes None.
+    """
+    last = _first_dollars(candle.get("price"), "close_dollars", "previous_dollars")
+    bid = _first_dollars(candle.get("yes_bid"), "close_dollars")
+    ask = _first_dollars(candle.get("yes_ask"), "close_dollars")
+    if ask is not None and ask <= 0:
+        ask = None
+    if bid is not None and bid <= 0:
+        bid = None
+    if bid is not None and ask is not None:
+        inside = last is not None and bid <= last <= ask
+        price = last if inside else round((bid + ask) / 2, 4)
+    else:
+        price = last
+    return price, bid, ask, last
+
+
+def _prop_row(market: dict, candles: list[dict]) -> dict | None:
+    """One settled prop market + its candles → a close row (None if no price)."""
+    ev = kalshi.parse_event(market.get("event_ticker", ""))
+    if not ev.get("game_start"):
+        return None
+    fp = _ts(ev["game_start"])
+    c = last_before(candles, fp, key="end_period_ts")
+    if c is None:
+        return None
+    price, bid, ask, last = candle_price(c)
+    if price is None:
+        return None
+    stat = kalshi.PROP_SERIES.get(ev["series"])
+    name, line = kalshi.parse_prop_label(
+        market.get("yes_sub_title") or market.get("title"))
+    floor = market.get("floor_strike")
+    result = (market.get("result") or "").lower() or None
+    return {
+        "venue": "kalshi",
+        "game_date": ev["game_date"], "game_start": ev["game_start"],
+        "home_id": T.KALSHI_ABBREV_TO_ID.get(ev.get("home_abbrev")),
+        "away_id": T.KALSHI_ABBREV_TO_ID.get(ev.get("away_abbrev")),
+        "team_id": kalshi.prop_team_id(market["ticker"]),
+        "player_name": name,
+        "prop_stat": kalshi.PROP_MARKET_TYPES.get(stat) if stat else None,
+        "prop_line": float(floor) if floor is not None else line,
+        "p_over_close": price, "bid": bid, "ask": ask, "last_trade": last,
+        "close_ts": int(c["end_period_ts"]),
+        "minutes_before_pitch": round((fp - int(c["end_period_ts"])) / 60, 1),
+        "volume_pre": c["_volume_pre"], "n_obs": c["_n_pre"],
+        "volume_total": float(market.get("volume_fp") or 0),
+        "market_id": market["ticker"], "result": result,
+        "over_hit": {"yes": True, "no": False}.get(result),
+    }
+
+
+def kalshi_prop_closes(season: int, session=None, markets: list[dict] | None = None,
+                       workers: int = 6, pace_seconds: float = 0.0,
+                       **kwargs) -> list[dict]:
+    """Pre-first-pitch close for every settled prop market that traded.
+
+    One candlestick request per market — there is no bulk endpoint — so this
+    is the expensive half of the archive: tens of thousands of calls. Kalshi
+    429s a burst and `http.get_json` backs off, and a small thread pool holds
+    the sustained rate around 10-15/s without tripping it for long.
+
+    YES on every prop series is "at least N", i.e. **over** `prop_line`, so
+    `p_over_close` needs no orientation the way a moneyline does.
+    """
+    markets = markets if markets is not None else kalshi_settled_props(
+        season, session=session, **kwargs)
+    local = threading.local()
+
+    def fetch(m: dict) -> dict | None:
+        sess = session
+        if sess is None:
+            if not hasattr(local, "session"):
+                local.session = requests.Session()
+            sess = local.session
+        series = m["ticker"].split("-", 1)[0]
+        try:
+            candles = kalshi.fetch_candlesticks(
+                series, m["ticker"], _ts(m["open_time"]), _ts(m["close_time"]),
+                period_minutes=60, session=sess)
+        except Exception as exc:       # one bad market must not sink the run
+            logger.warning("candlesticks failed for %s: %s", m["ticker"], exc)
+            return None
+        if pace_seconds:
+            time.sleep(pace_seconds)
+        return _prop_row(m, candles)
+
+    rows: list[dict] = []
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for i, row in enumerate(pool.map(fetch, markets), 1):
+            if row is not None:
+                rows.append(row)
+            if i % 2000 == 0:
+                logger.info("props: %d/%d markets, %d with a pre-pitch close",
+                            i, len(markets), len(rows))
+    return rows
+
+
+def prop_frame(rows: list[dict], schedule: pd.DataFrame, resolver=None) -> pd.DataFrame:
+    """Attach `game_pk` and `player_id`, and return the PROP_CLOSE_COLUMNS frame."""
+    recs = []
+    for r in rows:
+        rec = empty_record()
+        rec.update({"ts": "backfill", "venue": r["venue"], "market_id": r["market_id"],
+                    "market_type": "moneyline", "game_date": r["game_date"],
+                    "game_start": r["game_start"], "home_id": r["home_id"],
+                    "away_id": r["away_id"]})
+        recs.append(rec)
+    logger.info("game_pk mapping: %s", assign_game_pk(recs, schedule))
+    for r, rec in zip(rows, recs):
+        r["game_pk"] = rec["game_pk"]
+        r["player_id"] = resolver.resolve(r["player_name"]) if resolver else None
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=PROP_CLOSE_COLUMNS)
+    df = df[df["game_pk"].notna()].copy()
+    df["game_pk"] = df["game_pk"].astype(int)
+    df = df.drop_duplicates(subset=["venue", "market_id"], keep="first")
+    return (df[PROP_CLOSE_COLUMNS]
+            .sort_values(["game_date", "game_pk", "prop_stat", "player_id", "prop_line"])
+            .reset_index(drop=True))
 
 
 # ─────────────────────────── Polymarket ───────────────────────────
