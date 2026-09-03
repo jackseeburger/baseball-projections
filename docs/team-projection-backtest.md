@@ -210,10 +210,12 @@ errors clustered by season (10 clusters). Negative favours the chain.
 | coin_flip | **−5.907** | 0.379 | −15.57 | **−.1260** | .0078 | −16.10 | **−.3344** | .0219 | −15.24 |
 
 The projection beats every baseline on both headline metrics, pooled over the
-whole season. The chain wins on projected wins in **all ten seasons
-individually** (4.50 mean, best in every year), and on playoff Brier in eight
-of ten — it loses to `record_500` in 2025 (.1601 vs .1445) and to
-`record_wpct` in 2023 (.1076 vs .1044).
+whole season, and it is not one season carrying the rest: **the chain has the
+lowest projected-wins MAE in every one of the ten seasons individually**, from
+3.28 in 2016 to 5.80 in 2021. On playoff Brier it wins **eight of ten** —
+it loses to `record_500` in 2023 (.1076 vs .1068) and 2025 (.1601 vs .1445),
+and to `record_wpct` in 2023 (.1076 vs .1044). Both of those are recent
+seasons, which is worth watching rather than explaining away.
 
 ### The three tail probabilities, with the small-n caveat said plainly
 
@@ -387,7 +389,7 @@ dates, with the crossing point located: **late July.**
 
 ## 10. The sensitivity check on the starter window
 
-§4.1 named the one place this harness could flatter the chain: for a season
+§4's first item named the one place this harness could flatter the chain: for a season
 already played the Stats API serves the pitcher who *actually* started, so the
 nightly job's seven-day probables window reaches about 110 of the remaining
 games in a backtest where a live run sees about 30 — and knowing six days out
@@ -448,7 +450,7 @@ python scripts/run_team_backtest.py --stage project --seasons 2022-2025 \
    Charts, ZiPS) would be a much stronger arm, and this repository has no
    archive of one for 2015. The margin over `preseason` here is therefore an
    upper bound on what a real preseason projection would concede.
-4. **The starter window is generous** (§4.1) — §10 measures it and
+4. **The starter window is generous** (§4, item 1) — §10 measures it and
    finds it worth 1.3% of the margin, in the wrong direction on the
    probabilities.
 5. **`--sims 2000`**. The Monte Carlo adds about 1.2 × 10⁻⁴ to every arm's
