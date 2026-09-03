@@ -566,6 +566,12 @@ def main() -> None:
                              "with the starting-pitcher term alone on the "
                              "games that have probables. Keeps the old answer "
                              "reproducible for a before/after")
+    parser.add_argument("--coin-flip", action="store_true",
+                        help="the control docs/playoff-odds-validation.md "
+                             "names: no strength model at all, every club a "
+                             ".500 coin flip, so the board is pure standings "
+                             "arithmetic. Implies --no-starters and never "
+                             "writes a snapshot")
     parser.add_argument("--no-lineups", action="store_true",
                         help="skip the posted-card term. It is a no-op at the "
                              "nightly job's hour (no lineup is up at 5am) and "
@@ -603,6 +609,13 @@ def main() -> None:
     schedule = fetch_schedule(f"{args.season}-03-01", f"{args.season}-10-15")
     state = from_schedule(schedule, teams)
     strength = regressed_strength(standings, regress_games=args.regress_games)
+    if args.coin_flip:
+        # The control: 26 games out, playoff odds are ~90% standings
+        # arithmetic, and this is what that looks like with the arithmetic and
+        # nothing else (docs/playoff-odds-validation.md, accuracy-2026.md §2b).
+        strength = pd.Series(0.5, index=pd.Index(state.team_ids, name="team_id"),
+                             name="strength")
+        args.no_starters, args.dry_run = True, True
     hfa = estimate_hfa(state.completed)
     print(f"{len(state.completed)} games played, {len(state.remaining)} remaining, "
           f"HFA={hfa:.4f}, sims={args.sims}, seed={seed}")

@@ -66,10 +66,6 @@ from src.sim.strength import HFA_PRIOR, home_win_prob, pythagenpat
 # rates; it is here so a degenerate input cannot raise inside a Monte Carlo.
 MIN_R9 = 0.5
 
-# The regression ballast station D applies to season-to-date run rates, and
-# therefore the top-down half of station C's blend.
-REGRESS_GAMES = 60.0
-
 
 @dataclass(frozen=True)
 class ChainConfig:
@@ -417,4 +413,4 @@ def strength_series(slate: Slate, team_ids=None) -> pd.Series:
 
 __all__ = ["ChainConfig", "ChainInputs", "Slate", "build_slate",
            "home_win_probability", "side_run_rates", "strength_series",
-           "league_run_rates", "MIN_R9", "REGRESS_GAMES"]
+           "league_run_rates", "MIN_R9"]

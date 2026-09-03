@@ -1508,9 +1508,9 @@ function renderPlayoffs() {
   renderOddsTable("playoffs-table-nl", d.teams.filter(t => t.league_id === 104));
   renderBracket(d.teams);
   document.getElementById("playoffs-method").textContent = d.method +
-    ". Team strength regresses each club's runs scored and allowed 60 games toward league average, " +
-    "then Pythagenpat converts run rates to a talent win%. Every remaining game is drawn with log5 plus " +
-    "a home-field multiplier; ties are broken by head-to-head, intradivision, then intraleague-second-half record. " +
+    ". Pythagenpat converts each club's run rates to a talent win%, and every remaining game whose starters " +
+    "nobody has announced yet is drawn with log5 plus a home-field multiplier; ties are broken by head-to-head, " +
+    "intradivision, then intraleague-second-half record. " +
     "Snapshots are archived daily and never overwritten.";
 }
 

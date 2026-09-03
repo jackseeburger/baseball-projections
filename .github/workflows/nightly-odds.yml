@@ -33,6 +33,12 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-ci.txt
+      # Station C + E, the whole per-game chain (docs/playoff-odds-validation.md,
+      # "the full chain is wired"). It pulls every pitcher's and every hitter's
+      # game log for the season — ~1,500 player-seasons, eight at a time — so
+      # the run is 1m34 against 1m25 for the starter term alone. A fetch that
+      # fails leaves the job printing a warning and shipping team-strength
+      # odds rather than failing.
       - name: Simulate season and write snapshot
         run: python scripts/run_playoff_odds.py --sims 20000
       # Station A, live (docs/ros-projections.md). Marcel fed the season to
