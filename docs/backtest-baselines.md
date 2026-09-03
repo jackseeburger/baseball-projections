@@ -1271,28 +1271,42 @@ the hitter. Positive means the live arm is better.
 **The deficit was the withheld season — essentially all of it.** The same
 estimator, refit on the same information, moves from losing to `marcel_tuned`
 by .0027–.0044 at t = 2.6–2.7 to losing by .0000–.0009 at t ≤ 1.6: not
-separable from noise at any cutoff, and a dead heat at Aug 1. Against the
-preseason file it replaces:
+separable from noise at any cutoff, and a dead heat at Aug 1.
 
-| Cutoff | `bayes` refit | `bayes_preseason` | gain |
-|---|---|---|---|
-| May 1 | .0278 | .0296 | −6.2% |
-| Jul 1 | .0302 | .0325 | −7.0% |
-| Aug 1 | .0341 | .0386 | −11.4% |
+**The control that isolates the season.** `bayes_preseason` cannot answer "what
+is the current season worth to this model", because it is the legacy April 10
+projection file — a different code path, no opposing-pitcher term, fit under the
+old `cutoff_year` semantics — so refit-minus-`bayes_preseason` mixes the
+withheld season together with every change since April. The clean control is
+*this* estimator and *this* code fitted on 2024 + 2025 only, scored at the same
+three cutoffs (`--bayes-seasons 2024 2025`; the fit does not depend on the
+cutoff, so it is one 1,471-cell fit over 662 batters scored three times, r-hat
+1.0077, 0 divergences):
 
-**That 6–11% is not purely an information difference**, and it is worth being
-careful about which comparison is which. `bayes_preseason` is the legacy April
-10 projection file — a different code path, no opposing-pitcher term, fit under
-the old `cutoff_year` semantics — so refit-minus-`bayes_preseason` mixes the
-withheld season together with every change since April. The clean control for
-"what is the season worth to *this* model" is the same estimator and the same
-code fitted on 2024 + 2025 only, which is the `bayes_withheld` row in the next
-table. The old sentence — "the
-Bayesian components buy nothing over Marcel on the same information" — was
-reading a handicap as a model result. On the same information the refit arm is
-level with **stock** Marcel-with-partial (.00001 behind at May 1, .0006 behind
-at Jul 1, .0002 ahead at Aug 1) and statistically indistinguishable from the
-tuned one.
+| Cutoff | `bayes` refit | `bayes_withheld` (same code, no 2026) | `bayes_preseason` (Apr 10 file) | the season is worth | for comparison: Marcel's own increment |
+|---|---|---|---|---|---|
+| May 1 | .02777 | .02867 | .02961 | **3.2%** | 6.4% |
+| Jul 1 | .03020 | .03212 | .03248 | **6.0%** | 5.0% |
+| Aug 1 | .03415 | .03633 | .03856 | **6.0%** | 4.5% |
+
+So the season is worth **3–6%** to this model — the same order as the 4.5–6.4%
+it is worth to tuned Marcel, which is what you would expect of two estimators
+reading the same plate appearances. The remaining 1.1–5.8% between
+`bayes_withheld` and `bayes_preseason` is the model and code moving on since
+April, not information. Quoting the full 6–11% as an information gain would
+have been the same kind of conflation this section exists to undo, in our own
+favour.
+
+**And the control still loses.** Paired against `marcel_tuned`,
+`bayes_withheld` is +.00176 / +.00284 / +.00221 at t = 2.37 / 2.94 / 1.61 —
+significantly behind at two of three cutoffs. The refit arm, same code, same
+model, is +.00086 / +.00092 / +.00003 at t = 1.57 / 1.58 / 0.04. **Withholding
+the season is the difference between losing significantly and not losing at
+all.** The old sentence — "the Bayesian components buy nothing over Marcel on
+the same information" — was reading a handicap as a model result. On the same
+information the refit arm is level with **stock** Marcel-with-partial (.00001
+behind at May 1, .0006 behind at Jul 1, .0002 ahead at Aug 1) and
+statistically indistinguishable from the tuned one.
 
 **It still does not clear the gate, and that matters.** Not losing
 significantly is not winning. `marcel_tuned` is better on the point estimate at
@@ -1380,10 +1394,11 @@ Aug 1 problem from 2,156 cells to 248,195. Hitter coverage is the one the
 walk-forward comparison cannot do without: subsampling batters cuts cells
 roughly linearly but barely touches the parameter count (the pitchers stay —
 1,152 of them at 40 batters against 1,236 at all 719), and a fit restricted to
-the 60 busiest batters covers only 15% / 19% / 31% of the hitters the three
-cutoffs actually score. Everyone else falls back to a population-level
-projection, so a subsampled arm's MAE measures the fallback rather than the
-model.
+the 60 busiest batters can cover at most 60 of the 315 / 231 / 126 hitters the
+three cutoffs score — 19% / 26% / 48% in the best case, and measured against
+the busiest-batter subsample it is 15% / 19% / 31%. Everyone else falls back to
+a population-level projection, so a subsampled arm's MAE would be measuring
+that fallback rather than the model.
 
 **So the honest statement is:** the pitcher term is strongly favoured for
 predicting held-out plate appearances within the fitted window, and it has
@@ -1447,6 +1462,11 @@ python scripts/validate_pa_k_rate.py --cutoff 2026-07-01 \
 python scripts/run_intraseason_backtest.py \
        --components k_rate bb_rate hr_rate iso \
        --bayes --bayes-no-pitcher --bayes-seasons 2024 2025 2026 \
+       --bayes-sampler pymc --bayes-draws 1500 --bayes-tune 1500 --bayes-chains 4
+
+# the same-code control: this estimator with 2026 withheld entirely (~10 min)
+python scripts/run_intraseason_backtest.py --components k_rate \
+       --bayes --bayes-no-pitcher --bayes-seasons 2024 2025 \
        --bayes-sampler pymc --bayes-draws 1500 --bayes-tune 1500 --bayes-chains 4
 
 # the accuracy page, from that run
