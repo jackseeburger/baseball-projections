@@ -77,10 +77,37 @@ HITTING_FIELDS = {
 }
 
 
+# A cold season is ~4,000 requests and `_fetch_many` runs them a dozen at a
+# time; at that rate the odd connection is dropped mid-handshake or served a
+# 429/503. Those are transient and retrying fixes them, while a 404 for a
+# player who never pitched is not and must still raise on the first try.
+RETRY_STATUS = (429, 500, 502, 503, 504)
+RETRIES = 4
+RETRY_BACKOFF = 1.5
+
+
 def _get(path: str, base: str = BASE, **params) -> dict:
-    resp = requests.get(f"{base}/{path}", params=params, timeout=60)
-    resp.raise_for_status()
-    return resp.json()
+    """One Stats API call, retried through transient network and server errors."""
+    last = None
+    for attempt in range(RETRIES):
+        try:
+            resp = requests.get(f"{base}/{path}", params=params, timeout=60)
+            if resp.status_code in RETRY_STATUS:
+                raise requests.HTTPError(f"{resp.status_code} for {path}",
+                                         response=resp)
+            resp.raise_for_status()
+            return resp.json()
+        except (requests.ConnectionError, requests.Timeout,
+                json.JSONDecodeError) as exc:
+            last = exc
+        except requests.HTTPError as exc:
+            status = getattr(exc.response, "status_code", None)
+            if status not in RETRY_STATUS:
+                raise
+            last = exc
+        if attempt < RETRIES - 1:
+            time.sleep(RETRY_BACKOFF * (2 ** attempt))
+    raise last
 
 
 def _get_cached(cache_key: str, path: str, refresh: bool = False,
@@ -222,7 +249,11 @@ def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
     the home club's park for all but the handful of neutral-site games a season
     and is what `src.sim.park` keys its run multipliers on. Taken from the
     schedule rather than from a static park table so a club that moves, a
-    London series and a temporary home all come out right.
+    London series and a temporary home all come out right. `day_night` comes
+    free on the same response; it and the venue are the two pre-game
+    circumstances no station models, and the learned challenger of station E
+    reads both (`src/sim/game_features.py`). All are `.get`-guarded, so a
+    caller serving a trimmed fixture keeps working and simply gets a null.
     """
     data = _get("schedule", sportId=1, startDate=start_date, endDate=end_date)
     rows = []
@@ -241,6 +272,8 @@ def fetch_schedule(start_date: str, end_date: str) -> pd.DataFrame:
                 "away_id": g["teams"]["away"]["team"]["id"],
                 "home_score": g["teams"]["home"].get("score"),
                 "away_score": g["teams"]["away"].get("score"),
+                "venue_id": (g.get("venue") or {}).get("id"),
+                "day_night": g.get("dayNight"),
             })
     return pd.DataFrame(rows)
 

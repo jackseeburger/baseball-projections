@@ -7,6 +7,12 @@ polars>=0.20.0
 # Baseball data
 pybaseball>=2.2.7
 
+# Learned models (station E's gradient-boosted challenger). Pinned: the
+# walk-forward numbers in docs/market-benchmark-2026.md were produced by
+# these versions, and a boosting library's defaults move between minors.
+scikit-learn==1.7.2
+lightgbm==4.6.0
+
 # Bayesian modeling (Phase 2+)
 pymc>=5.10.0
 arviz>=0.17.0
