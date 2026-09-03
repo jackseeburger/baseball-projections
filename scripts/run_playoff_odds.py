@@ -96,8 +96,8 @@ ROTATION_POOL_EXTRA = 2
 # the ball. Two, matching the 5/4/3 weights in `src.sim.starters`.
 PRIOR_SEASONS = 2
 # How many player-season game logs to pull at a time. The chain needs every
-# pitcher's appearances and every hitter's plate appearances *today*: ~2,200
-# requests, six minutes sequentially and about one at eight at a time.
+# pitcher's appearances and every hitter's plate appearances *today*: ~1,500
+# requests, eleven minutes one at a time and about eighty seconds at eight.
 CHAIN_WORKERS = 8
 LINEUP_SLOTS = 9
 

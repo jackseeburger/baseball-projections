@@ -95,14 +95,14 @@ def _fetch_many(ids, build, workers: int = 1) -> list:
     """`build(id)` for every id, results in the order given.
 
     One player-season game log is one request, and a caller that wants the
-    whole league wants a couple of thousand of them: the nightly odds job
+    whole league wants about fifteen hundred of them: the nightly odds job
     needs every pitcher's appearances (for the pen, the rotation and who is
     available) and every hitter's plate appearances (for the club's shares)
     *today*, not eventually. `workers > 1` runs them through a small thread
     pool — the requests are independent GETs and the cache writes go to
-    distinct files — which is the difference between a six-minute fetch and a
-    one-minute one. The order of the returned list never depends on it, so the
-    frame this builds is byte-identical either way.
+    distinct files — which is the difference between an eleven-minute fetch
+    and an eighty-second one. The order of the returned list never depends on
+    it, so the frame this builds is byte-identical either way.
     """
     ids = list(ids)
     if workers and int(workers) > 1 and len(ids) > 1:
