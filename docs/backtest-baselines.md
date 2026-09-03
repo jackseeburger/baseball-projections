@@ -160,14 +160,18 @@ components that carry information at all. Two things follow. First, **the
 increment is not small in context**: 5% of K% MAE is about half the entire
 preseason spread between Marcel and Depth Charts, the best public system
 ([accuracy-2026.md](accuracy-2026.md)), and we get it for free by not
-throwing away April. Second, **it is bigger than our model's edge**:
-`marcel` beats `bayes_preseason` on K% by 6% at May 1 and 11% at Aug 1, and
-`bayes_preseason` never beats `marcel_preseason` on K% either (a tie at May 1,
-5% behind at Jul 1 and Aug 1) — so the Bayesian components buy nothing over
-Marcel on the same information, while the *same* information advantage that
-in-season data provides is larger than the entire gap between them. The route to a
-better rest-of-season number runs through *ingesting the current season*, not
-through a fancier prior. It also matters **how** you ingest it:
+throwing away April. Second, **it is bigger than the gap this table reads as our model's edge**:
+`marcel` beats `bayes_preseason` on K% by 6% at May 1 and 11% at Aug 1 — but
+`bayes_preseason` is a fixed preseason file and `marcel` is not, so that gap is
+mostly the information difference and not a model difference. **Refitting the
+Bayesian model at the cutoff removes essentially all of it**: see
+[the fair fight](#the-fair-fight--the-bayesian-arm-refit-at-the-cutoff-bas-59)
+(Sept 3), where the refit arm gains the same 6–11% over its own withheld self
+and lands statistically level with tuned Marcel. The route to a better
+rest-of-season number still runs through *ingesting the current season* rather
+than through a fancier prior — that conclusion survives — but the evidence for
+it is the in-season increment itself, not a Bayes-versus-Marcel gap that was
+never measured on equal footing. It also matters **how** you ingest it:
 `season_to_date` — this year's rate regressed with the right ballast — loses
 to Marcel-with-partial at every cutoff and every component, though its
 disadvantage on K% shrinks from +21% at May 1 to +1.5% at Aug 1 as the sample
@@ -187,15 +191,21 @@ prior, not in replacing it.
 - **`bayes_preseason` is a fixed file, not a refit.** It is our Apr 10
   projection for 2026 (`projection_year == 2026`), scored unchanged at all
   three cutoffs — deliberately, since it is the no-in-season-information arm.
-  It is *not* an answer to "how good would our model be if refit on July 1";
-  that is what this harness exists to judge once the Modal refits land.
+  It is *not* an answer to "how good would our model be if refit on July 1".
+  That question was finally answered on Sept 3 —
+  [the fair fight](#the-fair-fight--the-bayesian-arm-refit-at-the-cutoff-bas-59)
+  — and the answer moves the arm from 2.6–2.7 standard errors behind the live
+  one to inside noise at every cutoff.
 - **PA-derived seasons are not identical to the Stats API totals.** The
   Statcast universe runs ~0.7% more PA per player (mean +1.8 PA over 2026;
   AB, K, BB, HR all within a few counts). Training mixes the two — prior
   seasons from the API table, the partial current season from PA data — so a
   hair of the in-season increment could be universe drift rather than signal.
-  Rebuilding prior seasons from `pa_outcomes_<year>.parquet` would close it;
-  only 2026 exists in R2 today.
+  Rebuilding prior seasons from `pa_outcomes_<year>.parquet` would close it.
+  Only 2026 exists in R2, but 2024 and 2025 can now be rebuilt locally from the
+  Statcast parquets — see
+  [the fair fight](#the-fair-fight--the-bayesian-arm-refit-at-the-cutoff-bas-59),
+  which does exactly that so both arms read the same three seasons.
 - Components are derived from the PA outcome flags with the standard
   identities (AB = PA − BB − HBP − SF − SH − interference; BIP = AB − K − HR
   + SF; xb_points = 2B + 2·3B + 3·HR). All five components are fully
@@ -1171,3 +1181,342 @@ python scripts/build_ros_projections.py              # the site's pitcher block
 python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
        --market data/parquet/market_closes_2026.parquet
 ```
+
+---
+
+# The fair fight — the Bayesian arm refit at the cutoff (BAS-59)
+
+**Run:** Sept 3, 2026 · **Data:** PA-level 2024, 2025 and partial-2026
+outcomes · **Method:** the Bayesian workflow this repo expects
+([methods.md §5](methods.md#5-workflow-by-family)) — prior predictive,
+convergence, posterior predictive, LOO for structure, walk-forward for the
+gate · **Scale: every table below is labelled with the fit that produced it,
+and none of it is the full Modal refit.**
+
+Every published comparison between our Bayesian components and Marcel had been
+rigged — not on purpose, but structurally. `bayes_preseason` is a fixed April
+10 file that has never seen a 2026 plate appearance; `marcel` had seen every
+one before the cutoff. And `src/models/` had no dated cutoff at all: it knew
+only `cutoff_year`, which filters *active batters*, not plate appearances, so
+there was no way to refit the Bayesian model on the partial season the
+baselines were being fed. The section above prices that information at 4.6–6.1%
+of K% MAE — the same order as the entire deficit the Bayesian arm was being
+charged with. **The comparison had never been run.**
+
+`src/models/cutoff.py` and `src/eval/bayes_arm.py` run it. `apply_cutoff` keeps
+exactly `game_date < cutoff`, the same strict inequality
+`intraseason.split_at_cutoff` uses, so a game played *on* the cutoff date is
+withheld from both arms; `assert_no_post_cutoff` is the model-side twin of
+`assert_split_clean` and fires twice on the way into a fit.
+
+## Giving both arms the same three seasons
+
+The caveat above used to read "only 2026 exists in R2 today". It no longer
+holds: `src/data/pa_outcomes_pipeline.py` rebuilt **2024 and 2025** from the
+Statcast parquets in R2, so the Bayesian arm reads 2024 + 2025 + partial 2026
+while `marcel` reads its 5/4/3 window over the same three seasons. **Same
+seasons, same cutoff, same plate appearances** — that is what makes it a fair
+fight rather than another handicap. Ages come from the Chadwick register
+(`scripts/build_birthdates.py`; 649 batters, 100% matched) instead of the
+`first_year − 23` fallback.
+
+## K% MAE by arm and cutoff (bold = best arm at that cutoff)
+
+**Scale: 4 chains × 1500 draws (tune 1500), PyMC's own NUTS, opposing-pitcher
+term off, full hitter coverage.** See
+[the pitcher term](#the-opposing-pitcher-term--loo-says-yes-and-loo-is-not-a-gate)
+for why it is off here — and for the one cutoff scored with it on, where it
+turns out to make the projection *worse* despite LOO preferring it by 11 dSE.
+
+| Arm | Sees 2026? | MAE May 1 | MAE Jul 1 | MAE Aug 1 |
+|---|---|---|---|---|
+| `marcel_tuned` (live) | **yes** | **.0269** | **.0293** | **.0341** |
+| **`bayes` — refit at the cutoff** | **yes** | .0278 | .0302 | .0341 |
+| `marcel` (stock, + partial) | **yes** | .0278 | .0296 | .0343 |
+| `marcel_tuned_preseason` | no | .0287 | .0308 | .0357 |
+| `marcel_preseason` | no | .0293 | .0310 | .0365 |
+| `bayes_preseason` | no | .0296 | .0325 | .0386 |
+| `previous_season` | no | .0319 | .0342 | .0363 |
+| `season_to_date` | **yes** | .0355 | .0340 | .0371 |
+| `league_average` | **yes** | .0507 | .0518 | .0588 |
+
+Two cells are closer than four decimals show: at May 1 stock `marcel` is
+.027755 against the refit arm's .027767, and at Aug 1 `marcel_tuned` is .034120
+against .034148. Tuned Marcel is still the best arm in every column; at Aug 1 it
+is ahead by three parts in a hundred thousand.
+
+Hitters scored: 315 at May 1, 231 at Jul 1, 126 at Aug 1 — **identical to the
+run without the Bayesian arm**, so adding it did not shrink the common player
+set. Batters the fit never saw (a call-up, or anyone under the 50-PA career
+floor) are projected from the fitted population rather than dropped, which is
+what keeps that number stable.
+
+## The paired test — within-hitter, against the live arm
+
+Trials-weighted difference in absolute error against `marcel_tuned`, paired on
+the hitter. Positive means the live arm is better.
+
+| Arm | Cutoff | n | diff | SE | t |
+|---|---|---|---|---|---|
+| **`bayes` refit** | May 1 | 315 | +.00086 | .00055 | **1.57** |
+| **`bayes` refit** | Jul 1 | 231 | +.00092 | .00058 | **1.58** |
+| **`bayes` refit** | Aug 1 | 126 | +.00003 | .00072 | **0.04** |
+| `bayes_preseason` | May 1 | 315 | +.00270 | .00099 | 2.73 |
+| `bayes_preseason` | Jul 1 | 231 | +.00320 | .00122 | 2.62 |
+| `bayes_preseason` | Aug 1 | 126 | +.00444 | .00163 | 2.72 |
+| `marcel` (stock, + partial) | May 1 | 315 | +.00084 | .00034 | 2.47 |
+| `marcel` (stock, + partial) | Jul 1 | 231 | +.00031 | .00041 | 0.75 |
+| `marcel` (stock, + partial) | Aug 1 | 126 | +.00019 | .00050 | 0.38 |
+
+## Reading it
+
+**The deficit was the withheld season — essentially all of it.** The same
+estimator, refit on the same information, moves from losing to `marcel_tuned`
+by .0027–.0044 at t = 2.6–2.7 to losing by .0000–.0009 at t ≤ 1.6: not
+separable from noise at any cutoff, and a dead heat at Aug 1.
+
+**The control that isolates the season.** `bayes_preseason` cannot answer "what
+is the current season worth to this model", because it is the legacy April 10
+projection file — a different code path, no opposing-pitcher term, fit under the
+old `cutoff_year` semantics — so refit-minus-`bayes_preseason` mixes the
+withheld season together with every change since April. The clean control is
+*this* estimator and *this* code fitted on 2024 + 2025 only, scored at the same
+three cutoffs (`--bayes-seasons 2024 2025`; the fit does not depend on the
+cutoff, so it is one 1,471-cell fit over 662 batters scored three times, r-hat
+1.0077, 0 divergences):
+
+| Cutoff | `bayes` refit | `bayes_withheld` (same code, no 2026) | `bayes_preseason` (Apr 10 file) | the season is worth | for comparison: Marcel's own increment |
+|---|---|---|---|---|---|
+| May 1 | .02777 | .02867 | .02961 | **3.2%** | 6.4% |
+| Jul 1 | .03020 | .03212 | .03248 | **6.0%** | 5.0% |
+| Aug 1 | .03415 | .03633 | .03856 | **6.0%** | 4.5% |
+
+So the season is worth **3–6%** to this model — the same order as the 4.5–6.4%
+it is worth to tuned Marcel, which is what you would expect of two estimators
+reading the same plate appearances. The remaining 1.1–5.8% between
+`bayes_withheld` and `bayes_preseason` is the model and code moving on since
+April, not information. Quoting the full 6–11% as an information gain would
+have been the same kind of conflation this section exists to undo, in our own
+favour.
+
+**And the control still loses.** Paired against `marcel_tuned`,
+`bayes_withheld` is +.00176 / +.00284 / +.00221 at t = 2.37 / 2.94 / 1.61 —
+significantly behind at two of three cutoffs. The refit arm, same code, same
+model, is +.00086 / +.00092 / +.00003 at t = 1.57 / 1.58 / 0.04. **Withholding
+the season is the difference between losing significantly and not losing at
+all.** The old sentence — "the Bayesian components buy nothing over Marcel on
+the same information" — was reading a handicap as a model result. On the same
+information the refit arm is level with **stock** Marcel-with-partial (.00001
+behind at May 1, .0006 behind at Jul 1, .0002 ahead at Aug 1) and
+statistically indistinguishable from the tuned one.
+
+**It still does not clear the gate, and that matters.** Not losing
+significantly is not winning. `marcel_tuned` is better on the point estimate at
+every cutoff; the refit arm costs an MCMC fit per cutoff against a closed form;
+and [the gate rule](architecture.md#3-the-gate-rule) asks a challenger to
+*beat* its baseline out of sample. It does not. What changed is that the reason
+it does not is now an honest one, and the honest gap is roughly a tenth of the
+one we had been publishing.
+
+## What each refit actually was
+
+| Cutoff | Cells | PA | Batters | max r-hat | min ESS | divergences | BFMI |
+|---|---|---|---|---|---|---|---|
+| May 1 | 1,970 | 398,229 | 679 | 1.0045 | 851 | 0 | .66–.72 |
+| Jul 1 | 2,116 | 459,421 | 719 | 1.0101 | 769 | 0 | .61–.67 |
+| Aug 1 | 2,156 | 487,422 | 732 | 1.0124 | 486 | 0 | .68–.73 |
+
+Zero divergences everywhere and BFMI comfortably above the 0.3 alarm line. Two
+of the three worst r-hats sit a hair over the 1.01 convention (1.0101 and
+1.0124), and in all three fits both the worst r-hat and the worst ESS land on
+the age terms `beta_age`/`beta_age2` — never on a player, league or park term.
+An independent 2-chain × 1000-draw run of the same three fits put the arm's K%
+MAE at .027764 / .030246 / .034167 against the .027767 / .030204 / .034148
+above: agreement to within 4×10⁻⁵, an order of magnitude smaller than the gap
+being reported, so the result is not a sampling artefact.
+
+## Is the fit trustworthy? (`scripts/validate_pa_k_rate.py`)
+
+Run at the Jul 1 cutoff with the pitcher term **on**, at the largest scale that
+completed here: **2 chains × 300 draws (tune 500), 60 busiest batters, 97,001
+PA in 43,374 cells, 1,176 pitchers, 12 minutes.**
+
+- **Prior predictive.** A hitter's implied strikeout rate has median .242 and a
+  5–95 band of .107–.482, with 2.7% of mass outside .05–.55. Loose, but not on
+  impossible rates — which is the whole question this check exists to answer,
+  and it costs seconds (`--prior-only`) against hours of sampling.
+- **Convergence.** 0 divergences; BFMI .94 / .91. Every scalar has r-hat ≤ 1.01
+  (`sigma_pitcher` 1.00 at ESS 386). Worst r-hat over the whole trace is 1.044
+  on an individual `z_ability` coordinate at ESS 68 — the per-batter terms are
+  the under-sampled part of this reduced fit, and the reason it is reported as
+  a reduced fit.
+- **Posterior predictive**, rolled up to a hitter's rate at his real exposure
+  (a cell holds ~2 PA once the pitcher is in the key, so a per-cell rate is
+  almost always 0, ½ or 1 and checks nothing):
+
+  | | observed | replicated (mean) | replicated 5–95 |
+  |---|---|---|---|
+  | league K rate | .2062 | .2064 | .2037–.2093 |
+  | SD across hitters | .0549 | .0550 | .0522–.0577 |
+
+  The model reproduces both the level and the spread of hitters. That is the
+  check that says the partial pooling is not over- or under-shrinking.
+
+## The opposing-pitcher term — LOO says yes, and LOO is not a gate
+
+The term is partially pooled, non-centered, with the mean fixed at zero (a free
+mean is exactly confounded with `league_init`). Its posterior scale is
+**`sigma_pitcher` = .249, 94% HDI [.225, .273]**, r-hat 1.00 at ESS 386 —
+tightly identified, and close to the .23 the prior was constructed to put its
+mass near. On the logit scale .25 is about the gap between a league-average arm
+and a good one, so the term is picking up something real rather than absorbing
+noise.
+
+PSIS-LOO on the **same cells** (both models built on the pitcher-keyed
+partition, so the pointwise log-likelihoods are over identical observations):
+
+| Model | elpd_loo | SE | p_loo | elpd_diff | dSE | weight |
+|---|---|---|---|---|---|---|
+| with pitcher | −33,210.8 | 136.9 | 463.6 | — | — | .98 |
+| no pitcher | −33,491.2 | 138.4 | 67.8 | 280.4 | 24.7 | .02 |
+
+**280 nats at a differential SE of 24.7 — 11.3 dSE.** The term earns its ~396
+effective parameters by a wide margin.
+
+**Two things that difference is not.** First, `az.compare` raised the Pareto-k
+warning on the with-pitcher model: with ~2 PA per cell and a random effect that
+varies within the cell, some observations are highly influential and the
+importance sampling behind PSIS is doing badly on them. Second, and more
+important, **LOO chooses a specification; only walk-forward scoring clears a
+gate** ([methods.md §5](methods.md#5-workflow-by-family)). Leaving out a cell
+is not leaving out the rest of a season. The K% table above was run with the
+term *off*, because the term joins the cell key — it is the one effect that
+varies inside the old (batter, season, team, stand) cell — and that takes the
+Aug 1 problem from 2,156 cells to 248,195, which is 2h44m of sampling for a
+single cutoff on 4 cores against about 8 minutes without it. One such cutoff
+was affordable here and is scored below; three, plus the withheld control, were
+not. Hitter coverage is the one the
+walk-forward comparison cannot do without: subsampling batters cuts cells
+roughly linearly but barely touches the parameter count (the pitchers stay —
+1,152 of them at 40 batters against 1,236 at all 719), and a fit restricted to
+the 60 busiest batters can cover at most 60 of the 315 / 231 / 126 hitters the
+three cutoffs score — 19% / 26% / 48% in the best case, and measured against
+the busiest-batter subsample it is 15% / 19% / 31%. Everyone else falls back to
+a population-level projection, so a subsampled arm's MAE would be measuring
+that fallback rather than the model.
+
+### One walk-forward cell, and it disagrees with LOO
+
+One cutoff was affordable with the term on at full hitter coverage: **Aug 1,
+248,195 cells, 1,260 pitchers, 2,031 parameters, 4 chains × 600 draws (tune
+600), 2 hours 44 minutes** — r-hat 1.0160, min ESS 221, 0 divergences, BFMI
+.62–.75.
+
+| Aug 1 arm | K% MAE | paired vs `marcel_tuned` | t |
+|---|---|---|---|
+| `marcel_tuned` (live) | .03412 | — | — |
+| `bayes`, pitcher term **off** | .03415 | +.00003 | 0.04 |
+| `bayes`, pitcher term **on** | .03615 | +.00203 | 1.28 |
+
+**The term makes the rest-of-season projection worse** — .0020 of MAE, 5.9%,
+against run-to-run sampling noise of 4×10⁻⁵. It moves the arm from a dead heat
+with the live engine to visibly behind it. The two fits are not matched on
+sampling effort (600 draws against 1,500, because the with-pitcher problem is
+115× the cells), so treat the exact size as soft; the direction is not soft,
+and it is the opposite of what LOO said by 11.3 dSE.
+
+That is worth stating plainly, because it is the concrete version of the rule
+[methods.md §5](methods.md#5-workflow-by-family) states in the abstract.
+Leaving out a *cell* — two plate appearances against a pitcher whose effect is
+estimated from the surrounding cells — is an easy prediction, and the pitcher
+term is very good at it. Projecting the rest of a season is a different
+question: the projection is made at a neutral pitcher, so everything the term
+learned is deliberately discarded at exactly the moment it would be used, while
+the extra 1,260 partially pooled parameters take estimation noise out of the
+batter terms and put it nowhere useful. **LOO measured the thing the term is
+good at and the gate measured the thing we need.**
+
+**So the honest statement is:** the opposing-pitcher term is decisively
+favoured by LOO for predicting held-out plate appearances inside the fitted
+window, and the one rest-of-season cell we could afford to score walk-forward
+says it costs 5.9% of K% MAE. Those are different claims about different
+quantities; only the second is a gate, and on the gate the term currently
+fails. It should not go into a served projection on the LOO evidence alone.
+A full Modal refit should score it at all three cutoffs before the question is
+called either way.
+
+## Caveats
+
+- **Every number here is a reduced local fit.** No JAX and no NumPyro in this
+  sandbox, so all of it ran on PyMC's own NUTS on 4 cores. The scale is stated
+  on every table above. A reduced fit is evidence about a reduced fit.
+- **Park factors were neutral.** `data/parquet/park_factors.parquet` was not
+  present, so `log_pf_k` entered as 1.0 for every team-year. Marcel has no park
+  term either, so this does not favour one arm, but the Bayesian model was
+  running without a feature it normally has.
+- **K% only.** `src/eval/bayes_arm.py` wraps `src/models/pa_k_rate.py`; the
+  other four components are separate models in `modal_functions/app.py` with
+  their own denominators, and the provider raises rather than quietly serving
+  the K% number under another name. BB%, HR/PA and ISO in the accuracy table
+  still have no refit arm.
+- **The prior-season universe still differs slightly between the arms.** Marcel
+  reads prior seasons from the Stats API table; the Bayesian arm reads them
+  from the Statcast-derived PA parquets, which run ~0.7% more PA per player.
+  The current-season slice is bit-identical. Rebuilding 2024–25 closed the
+  larger version of this gap; this is what is left of it.
+- **The 2026 season here ends Sept 1**, so the Aug 1 "rest of season" is one
+  month and n = 126.
+- **`min_pa = 50` career floor.** Batters under it are projected from the
+  fitted population rather than dropped; at these cutoffs that is 2–10% of the
+  scored set.
+
+## Reproducing
+
+```
+# prior-season PA data (needs R2 credentials; ~290 MB of Statcast in, 8 MB out).
+# The pitch-level parquets are only needed once and can be deleted afterwards.
+python -c "
+from src.data.r2 import get_s3_client, bucket
+s3, b = get_s3_client(), bucket()
+for y in (2024, 2025):
+    s3.download_file(b, f'statcast/statcast_{y}.parquet', f'data/raw/statcast_{y}.parquet')
+"
+python -c "
+from src.data.pa_outcomes_pipeline import build_pa_dataset
+build_pa_dataset(years=[2024, 2025])
+"
+cp data/parquet/pa_outcomes_2026.parquet data/parquet/pa_outcomes/   # the R2 copy
+python scripts/build_birthdates.py \
+       --pa-parquet data/parquet/pa_outcomes/pa_outcomes_2026.parquet
+
+# the prior predictive alone — seconds, and it is the check worth doing first
+python scripts/validate_pa_k_rate.py --cutoff 2026-07-01 \
+       --seasons 2024 2025 2026 --max-batters 60 --prior-only --sampler pymc
+
+# convergence + posterior predictive + the LOO ablation (~20 min)
+python scripts/validate_pa_k_rate.py --cutoff 2026-07-01 \
+       --seasons 2024 2025 2026 --max-batters 60 \
+       --draws 300 --tune 500 --chains 2 --sampler pymc --ablation
+
+# the fair fight (~25 min)
+python scripts/run_intraseason_backtest.py \
+       --components k_rate bb_rate hr_rate iso \
+       --bayes --bayes-no-pitcher --bayes-seasons 2024 2025 2026 \
+       --bayes-sampler pymc --bayes-draws 1500 --bayes-tune 1500 --bayes-chains 4
+
+# the same-code control: this estimator with 2026 withheld entirely (~10 min)
+python scripts/run_intraseason_backtest.py --components k_rate \
+       --bayes --bayes-no-pitcher --bayes-seasons 2024 2025 \
+       --bayes-sampler pymc --bayes-draws 1500 --bayes-tune 1500 --bayes-chains 4
+
+# the one with-pitcher walk-forward cell (2h44m on 4 cores — Modal for the rest)
+python scripts/run_intraseason_backtest.py --components k_rate \
+       --cutoffs 2026-08-01 --bayes --bayes-seasons 2024 2025 2026 \
+       --bayes-sampler pymc --bayes-draws 600 --bayes-tune 600 --bayes-chains 4
+
+# the accuracy page, from that run
+python scripts/build_accuracy_json.py --ros-json <the --json-out from above>
+```
+
+Drop `--bayes-sampler pymc` wherever JAX and NumPyro are installed; the
+defaults are NumPyro and the full `SAMPLER_KWARGS` in `src/models/pa_k_rate.py`.

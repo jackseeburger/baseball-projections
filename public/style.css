@@ -464,6 +464,10 @@ select:focus { border-color: var(--accent); }
 .acc-tag-ours { color: var(--accent); background: var(--accent-dim); }
 .acc-tag-control { color: var(--orange); background: rgba(251, 191, 36, 0.14); }
 .acc-tag-prod { color: var(--green); background: rgba(52, 211, 153, 0.12); }
+/* The sampling scale of a fitted arm, beside its name: quiet, but present, so
+   a reduced local fit cannot be read as the full refit. */
+.acc-scale { display: block; font-size: 10px; color: var(--text-muted);
+  font-family: var(--font); font-weight: 400; margin-top: 2px; }
 
 /* The market is the bar: its rows read as a rule, not another contender. */
 .acc-table tr.acc-market-row td { background: rgba(167, 139, 250, 0.07); font-weight: 600; }
