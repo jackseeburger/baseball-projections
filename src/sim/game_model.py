@@ -16,20 +16,26 @@ This module is the assembly, once:
     RA/9 = C's blended runs allowed
            + (ip/9)     · (starter FIP RA/9 − league RA/9)             ← starters.py
            + (1 − ip/9) · (available pen RA/9 − league available pen)  ← reliever_usage.py
+           + λ/9        · (5.5 − ip)                                   ← starters.py
 
     P(home) = log5(Pythagenpat(RS, RA) both sides) with home-field advantage
 
 where `ip` is *this* starter's own expected innings rather than a flat 5.5,
 and the blended run environment underneath both lines is station C's
 bottom-up rebuild mixed half-and-half with the top-down regressed rates
-(`run_environment.py`). That is the model
-`scripts/backtest_game_odds.py` scores as `pythag_C_sp_bpa_ip` — Brier .24388
-on the 756 market-priced 2026 games against the production model's .24619
-(docs/market-benchmark-2026.md) — plus one branch it does not have: when a
-club's card for the game is already posted, the lineup delta above fires. With
-no card posted the delta is exactly zero, because the club's own recent cards
-are what it is measured against, and the served probability is the scored one
-to the last bit.
+(`run_environment.py`). The last line is that same `ip` a second time, as a
+**level** rather than as the split — a club is charged λ runs per nine for each
+inning of the flat 5.5 its announced starter is not expected to cover — which
+is the term issue #66 added after a model with no functional form kept asking
+for it (`starters.starter_length_delta`; `ChainConfig.ip_level = 0` is the
+chain without it, to the last bit). That is the model
+`scripts/backtest_game_odds.py` scores as `pythag_C_sp_bpa_ip_lvl` — Brier
+.24364 on the 737 market-priced 2026 games against the rung below it at .24396
+and the production model's .24654 (docs/market-benchmark-2026.md) — plus one
+branch it does not have: when a club's card for the game is already posted, the
+lineup delta above fires. With no card posted the delta is exactly zero,
+because the club's own recent cards are what it is measured against, and the
+served probability is the scored one to the last bit.
 
 Two further terms are assembled here and **not** served, because neither beat
 that model out of sample (docs/market-benchmark-2026.md):
@@ -97,6 +103,9 @@ class ChainConfig:
     sp_ballast: dict = field(default_factory=lambda: dict(sp_model.BALLAST_BF))
     starter_ip: float = sp_model.STARTER_IP
     ip_ballast: float = sp_model.IP_BALLAST_STARTS
+    # Expected innings as a *level* as well as the split. A nesting: 0.0 is the
+    # chain without the term, to the last bit (`starters.starter_length_delta`).
+    ip_level: float = sp_model.IP_LEVEL_RUNS
     # bullpen / availability
     roster_days: int = bp_model.ROSTER_WINDOW_DAYS
     hard_1d: float = ru_model.HARD_1D_PITCHES
@@ -326,6 +335,13 @@ def side_run_rates(slate: Slate, team_id: int, starter_id=None,
             flags["pen_shift"] = abs(pen - base)
             ra9 = float(bp_model.blend_bullpen_team(
                 pen, ra9, base, relief_ip=sp_model.GAME_IP - ip))
+        # ...and the same expected innings once more, as a level. The two uses
+        # are independent: the split above says who throws the innings, this
+        # says what a club whose starter is expected to go four is worth. Zero
+        # `ip_level` leaves the line above untouched to the last bit.
+        if cfg.ip_level:
+            ra9 += float(sp_model.starter_length_delta(
+                ip, cfg.ip_level, prior=cfg.starter_ip))
     return max(rs9, MIN_R9), max(ra9, MIN_R9), flags
 
 

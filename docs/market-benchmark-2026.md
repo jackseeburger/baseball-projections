@@ -13,7 +13,14 @@ python scripts/build_game_features.py --seasons 2015-2026 --workers 8
 python scripts/train_game_learned.py --score-season 2026 \
     --market data/parquet/market_closes_2026.parquet
 python scripts/train_game_learned.py --score-season 2025
+python scripts/sweep_starter_ip_level.py --score-season 2026
 ```
+
+Each section names the run it was produced by. **The exchange archives are not
+frozen** — both venues' listings of settled markets roll forward — so a section
+written on a later date is scored on a slightly different set of games than the
+one above it, and says so where that matters. Numbers are never restated across
+sections.
 
 ## What "market close" means here
 
@@ -1214,7 +1221,243 @@ everywhere. Three consequences:
    a level term is the concrete one, consistent across both seasons and
    currently worth nothing to the chain by construction. A pen delta at closer
    to twice its present weight is the other, and the market's own deviation
-   said the same thing first.
+   said the same thing first. *(The first of the two was spent the same day and
+   cleared the gate — see the section below.)*
+
+## Station E — the lead was real: expected innings as a level (Sept 3, 2026)
+
+The learned model's one consistent disagreement with the chain was the
+starter's expected innings: it put ten to twenty times the chain's weight on
+them in both scored seasons, and the chain's own weight was near zero *by
+construction*, because `ip` only ever decided the split between two staffs.
+Issue #66 spends that information as a term.
+
+```
+ra9 = C's runs allowed
+      + (ip/9)     · (starter FIP RA9       − league RA9)      ← starters.py
+      + ((9−ip)/9) · (available pen FIP RA9 − league pen RA9)  ← reliever_usage.py
+      + (λ/9)      · (5.5 − ip)                                ← starters.py, new
+```
+
+One free constant, λ, in runs per nine per inning of the flat 5.5 the announced
+starter is not expected to cover. λ = 0 is the chain without the term to the
+last bit, so the ladder stays a clean nesting, and a starter expected to cover
+exactly 5.5 leaves the club's rate where the split put it — the same delta
+discipline every other term in the chain keeps. Produced by:
+
+```
+python scripts/sweep_starter_ip_level.py --score-season 2026     # the constant
+python scripts/backfill_market_closes.py --season 2026
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+    --market data/parquet/market_closes_2026.parquet
+python scripts/backtest_game_odds.py --season 2025 --min-games 20
+```
+
+**The exchange archives were re-pulled for this run and they are not the same
+games as the tables above.** Kalshi's settled-market listing now reaches back
+to 06-28 rather than 06-26 (846 games with a pre-pitch candle, not 876) and
+Polymarket's closed-event listing to 07-07 rather than 07-04 (738, not 756),
+which leaves **737** games priced by both venues instead of 756; the season has
+also finished eight more games. So every number in this section comes from one
+run on that set, the older tables are left exactly as they were recorded, and
+the two are not comparable in the fifth decimal. Nothing in the ordering moved.
+
+### Scoreboard — 737 games priced by both venues, 2026-07-07 → 09-02
+
+| Model | Brier | Log loss | Mean P(home) |
+|---|---|---|---|
+| **Kalshi close** | **0.24201** | **0.67687** | 0.537 |
+| **Polymarket close** | **0.24212** | **0.67710** | 0.532 |
+| **`pythag_C_sp_bpa_ip_lvl`** (+ expected innings as a level, new — **served**) | **0.24364** | **0.68026** | 0.532 |
+| `pythag_C_sp_bpa_ip_pk` (+ park, not served) | 0.24391 | 0.68082 | 0.532 |
+| `pythag_C_sp_bpa_ip` (the gate — what was served until now) | 0.24396 | 0.68094 | 0.532 |
+| `pythag_C_sp_bpa` (+ available pen) | 0.24411 | 0.68124 | 0.532 |
+| `pythag_C_sp` (station C + starter) | 0.24439 | 0.68183 | 0.532 |
+| `pythag_60_sp` (starters) | 0.24502 | 0.68313 | 0.533 |
+| `pythag_C` (station C alone) | 0.24590 | 0.68494 | 0.532 |
+| `pythag_60` (production team strength) | 0.24654 | 0.68624 | 0.533 |
+
+**It clears the gate**, and the sign is the same on all three sets:
+
+| | 737 market games | all 1,787 of 2026 | all 2,105 of 2025 |
+|---|---|---|---|
+| `pythag_C_sp_bpa_ip` (baseline) | 0.24396 | 0.24608 | 0.24360 |
+| `pythag_C_sp_bpa_ip_lvl` | **0.24364** | **0.24585** | **0.24343** |
+| paired vs baseline | **−0.00032** (se 0.00036, t −0.89) | **−0.00023** (se 0.00025, t −0.95) | **−0.00017** (se 0.00020, t −0.82) |
+
+It is the largest single term added to station E since the starter himself:
+0.00032 against the available pen's 0.00028 and the innings *split*'s 0.00014
+on the same games. Against `pythag_C_sp` — the run environment with the starter
+on top, before either bullpen term — the two pen-side terms and this one now
+come to −0.00075 (se 0.00050, t = −1.49) together on the 737, and to −0.00058
+(se 0.00030, **t = −1.93**) on 2025's 2,105, which is the first time anything
+above the starter has reached two standard errors on a whole season. The
+market's residual edge over us falls from 0.00195 to **0.00163**.
+
+### How the constant was chosen
+
+`scripts/sweep_starter_ip_level.py` reads the recorded feature tables
+(`data/features/game_features_<season>.parquet`, one row per game read off a
+`game_model.build_slate` slate) instead of walking a season again, and
+reproduces the recorded `chain_p` to **1.3e-7** before it sweeps anything —
+which is what makes **eleven** prior seasons affordable where
+`sweep_reliever_usage.py` could only afford one. λ is the maximum-likelihood
+fit of that one parameter on 2015–2025 with nothing else refit — not the blend
+weight, not a ballast, not the home-field edge:
+
+    λ = 0.89 runs per nine,  se 0.30,  t = 2.95   (21,414 games)
+
+The paired-Brier argmin on the same games is 0.88 and the curve is flat across
+0.62–1.12, every point within 0.00002 of every other. The shipped constant is
+**0.9**.
+
+| λ (2015–2025 pool) | 0.25 | 0.5 | 0.75 | 1.0 | 1.25 | 1.5 | 2.0 |
+|---|---|---|---|---|---|---|---|
+| paired Brier (×1e-5) | −4.72 | −7.87 | −9.46 | −9.52 | −8.07 | −5.13 | +5.16 |
+| t | −2.52 | −2.10 | −1.69 | −1.28 | −0.87 | −0.46 | +0.35 |
+
+**The choice does not carry the result.** On the held-out season (all 1,779
+games the feature table holds for 2026) the term is worth −0.00009 at λ = 0.25
+and −0.00027 at λ = 1.5, negative at every point of the declared grid. And the
+wider pool is the *conservative* reading rather than a flattering one: fitted on 2025 alone — the way the constants a station ago were
+chosen — the answer is λ = 1.37, which scores **better** on 2026 than the one
+that ships.
+
+**Eleven walk-forward folds**, λ chosen on every completed season strictly
+before and scored on the season, is a harder test than one held-out year and it
+is the reason to believe the sign:
+
+| season | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| λ\* | 0.25 | 1.00 | 1.00 | 0.75 | 0.75 | 0.75 | 0.75 | 0.75 | 0.75 | 0.75 | 1.00 |
+| paired (×1e-5) | −17.1 | −3.7 | **+7.6** | −15.8 | −10.0 | −0.7 | −11.9 | **+0.2** | −24.8 | −15.3 | −24.8 |
+
+Better in 9 of 11, pooled **−0.00010 (t = −1.73, n = 21,088)**. The two misses
+are 2018 and 2023. 2015 is not a fold — nothing precedes it — and it is the one
+season that dislikes the term outright (+0.00032 at λ = 1); it is also the
+season with the deepest starts in the file, a mean expected start of 5.91
+innings against 2026's 5.22, so it is the season where there was least for the
+term to say.
+
+### The alternative encodings — and why this one
+
+The learned model's preference is evidence that the information is *there*, not
+that a level is the right way to spend it. Three encodings were swept over the
+same eleven seasons; each is the same `ip`, differently placed. Each is scored
+at its own maximum-likelihood λ on the prior pool, then on the held-out season:
+
+| | what it says | prior pool (21,414) | held-out 2026 (1,779) |
+|---|---|---|---|
+| **level** `+λ(5.5−ip)/9` | a short start costs the club runs, wherever they end up coming from | λ 0.89, **−0.00010** (t −1.46) | **−0.00023** (t −0.96) |
+| **rate** `−(ip/9)·λ(ip−5.5)` | the same level, charged only over the innings he himself throws | λ 0.18, −0.00011 (t −1.57) | −0.00028 (t −1.28) |
+| **interact** `+(ip/9)·λ(ip−5.5)(sp−lg)` | expected length is a *multiplier on his quality*, with no level at all | λ 0.14, −0.00002 (t −0.68) | −0.00002 (t −0.26) |
+
+**The interaction is the alternative worth caring about and it is worth
+nothing.** If what expected innings carried were "how much to trust this
+starter's FIP", the third row would pay and the first would not; instead the
+third row is flat over eleven seasons and flat on the held-out season. What
+`ip` carries is a **level** — information about the club, not a weight on
+information the chain already has. It is also the encoding the **old protocol would have
+chosen**: fitted on 2025 alone, the interaction lands at λ = 1.05 and scores
+−0.00060 there — three times what the level manages on that season (−0.00019
+at its own 2025 fit of λ = 1.37) — and then delivers **+0.00024** on 2026,
+worse than not having it. The level fitted the same way delivers −0.00027.
+One season is not a fold, and this is what that costs.
+
+The second row is the same level with curvature, and on the prior pool it is
+indistinguishable from the first (−0.00011 against −0.00010; locally the two
+are nearly the same function). It is rejected on fragility rather than on
+score: it is negative at exactly one point of the declared grid and is
+**+0.00202** by λ = 1, where the level term is still negative at λ = 1.75. A
+term whose sign depends on its constant landing in the bottom eighth of its own
+grid is not a term.
+
+One more thing was checked and does not ship: clipping the `ip` the *level*
+reads to [4, 7] while the split still reads the raw number scores −0.00012 on
+the prior pool against −0.00010, a second free constant for two hundred-
+thousandths. The clip the chain already has — [3, 9], from `expected_starter_ip`
+— stays the only guard.
+
+### Reading it
+
+- **It is the second-largest thing on the runs-allowed side, after the starter
+  himself.** The term moves a game's probability by **0.0077** on average
+  (sd 0.0066, max 0.033) on the 737. The starter's FIP delta moves 0.026, the
+  available pen 0.0061, and the innings split on its own 0.0026. The same
+  number the chain was already reading, read a second way, is worth three times
+  the split it was bought for.
+- **Why it should be there.** A club whose starter is expected to go four
+  innings is not merely a club whose pen throws five; it is a club whose pen
+  throws five of its *worst* innings — the long man and the mop-up arm, not the
+  workload-weighted average the pen term prices — and it is a club whose
+  starter has been getting pulled early for reasons FIP is deliberately blind
+  to. The mean charge is **+0.028** runs per nine per club-game with a standard
+  deviation of 0.073, bounded by the existing clip at −0.35 and +0.25.
+- **It is not the openers.** Cut by the expected length of the game's starters
+  on the prior pool: −0.00028 where a starter is expected under 4.5 innings
+  (n 3,523), +0.00002 in 4.5–5.0 (n 4,613), −0.00013 in 5.0–5.5 (n 9,802),
+  −0.00010 in 5.5–6.0 (n 11,629) and −0.00015 above six (n 7,589). Spread
+  across the whole range, which is what a level should look like and what a
+  term that was really about the two-inning opener would not.
+- **The chain now spends what the learned model was asking for.** Regressing
+  the outcome on the chain's log-odds plus `sp_ip_diff` over 2015–2025, the
+  chain as it stood left **+0.0467 (t = 3.43)** unspent on that feature —
+  almost exactly the +0.041 / +0.037 the gradient-boosted model put on it in
+  its own probe. With the level term in, what is left is **+0.0121 (t = 0.82)**
+  at λ = 0.9 and +0.0057 at the maximum-likelihood 0.89. The disagreement is
+  closed, which is the sharpest evidence available that this is the right
+  encoding of it and not a coincidence with the same sign.
+- **Calibration gets very slightly worse, in the direction the term implies.**
+  The slope of a logistic recalibration goes 0.915 → 0.896 on 2026 and 0.890 →
+  0.881 on 2025 (1.0 is perfect, below it is overconfident). The term makes the
+  model more confident and it is right more often; the net is a better Brier
+  and marginally more overconfidence. The top bucket — every station E model's
+  soft spot — is unmoved: 24 of the 737 at 0.674 predicted / 0.750 realized
+  before, 29 at 0.678 / 0.793 after. That is the same standard error the last
+  three write-ups reported, wearing the same hat.
+- **It is still inside one standard error.** t = −0.89 on the 737, like every
+  term above the starter (−0.08 to −1.06 on the same games). The reason to
+  believe this one is not its t on one season; it is nine of eleven
+  walk-forward folds and a mechanism a model with no functional form found on
+  its own first.
+
+### Leakage
+
+The term reads `starters.expected_starter_ip` and nothing else, and that table
+is built from starts **strictly before** the date because how long tonight's
+start lasts is the outcome being predicted. The guard was already unit-tested
+for the split; it is now asserted again through the level itself
+(`tests/test_sim/test_starters.py`), including the half that matters — that
+letting the future in *does* move the number, so the test is not passing on a
+constant. The clean nesting is pinned end to end on a synthetic season:
+`--ip-level 0` reproduces `pythag_C_sp_bpa_ip` to the last bit and the shipped
+constant does not, and the sign is checked through the chain rather than
+through the formula
+(`tests/test_sim/test_chain_agreement.py::TestTheExpectedInningsLevel`).
+
+The centring constant is the flat 5.5 rather than the day's own mean start,
+deliberately: the centre is common to both clubs and cancels in log5 to within
+0.000012 of Brier whichever of the three is used (a fixed 5.5, the season's own
+mean, that date's own mean — checked on all twelve seasons), and a fixed
+constant introduces no new walk-forward quantity for anything to leak through.
+
+### What this changes
+
+`pythag_C_sp_bpa_ip_lvl` is what the nightly serves, through the same
+`game_model.home_win_probability` the harness scores; the agreement test is now
+pinned to that column, and `pythag_C_sp_bpa_ip_lvl_lu` is the branch that fires
+when a club has posted its card. `pythag_C_sp_bpa_ip` stays on the board as the
+gate baseline. The park and defence columns stay where they were scored — on
+top of the old chain rather than the new one — because neither cleared and
+re-basing a rejected term would not change that.
+
+One artifact is now behind the code: `data/features/game_features_*.parquet`
+were built before this term, so their `chain_p` column is the pre-#66 chain.
+Nothing in the feature *set* moves — `sp_ip` was already a feature and the level
+is a function of it alone — but the learned model's baseline column is one term
+out of date until `scripts/build_game_features.py --refresh-table` runs.
+`sweep_starter_ip_level.py` prints which chain the table it read carries, so
+this cannot go unnoticed.
 
 ## What this does not yet show
 

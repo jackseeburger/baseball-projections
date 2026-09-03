@@ -23,9 +23,16 @@ The protocol, which is the whole point of the script:
     shuffled training labels. It has to land at ~0.25 Brier. If it does not,
     the harness is leaking and every other number here is worthless.
 
-Scored against the hand-built chain (`pythag_C_sp_bpa_ip`, the model the
-nightly serves), the production `pythag_60`, and — where the season has them —
-the exchange closes, on exactly the games every venue priced.
+Scored against the hand-built chain (`chain_p`, the model the nightly serves),
+the production `pythag_60`, and — where the season has them — the exchange
+closes, on exactly the games every venue priced.
+
+The chain moved under this script on Sept 3 (issue #66: the starter's expected
+innings as a level as well as the split, `pythag_C_sp_bpa_ip_lvl`), and the
+tables under `data/features/` predate it, so their `chain_p` is the rung below
+what is served until `scripts/build_game_features.py --refresh-table` runs. No
+*feature* moves — the level is a function of `sp_ip`, which was already one —
+but the baseline scored against here is one term out of date until then.
 """
 from __future__ import annotations
 
@@ -43,7 +50,7 @@ from src.sim import game_features as gf
 from src.sim import learned_game as lg
 
 FEATURES_DIR = Path(__file__).resolve().parent.parent / "data" / "features"
-CHAIN = "chain_p"          # pythag_C_sp_bpa_ip — the gate baseline
+CHAIN = "chain_p"          # the chain the nightly serves — the gate baseline
 PRODUCTION = "pythag_60"
 
 # The inner grid. Three knobs and nothing else: how fast the model learns, how

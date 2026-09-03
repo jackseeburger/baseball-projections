@@ -510,3 +510,58 @@ def test_tonight_s_start_never_sets_its_own_workload_split():
                                     start_log(1, "2026-05-09", 3)]))
     assert (st.expected_starter_ip(after, "2026-05-02")
             == st.expected_starter_ip(before, "2026-05-02"))
+
+
+# ─── starter_length_delta: the same innings again, as a level (issue #66) ───
+
+def test_a_start_of_exactly_the_prior_length_carries_no_level():
+    """The delta form: the term can only ever redistribute runs, never add."""
+    assert st.starter_length_delta(st.STARTER_IP) == pytest.approx(0.0, abs=1e-15)
+
+
+def test_no_level_runs_is_the_term_switched_off():
+    for ip in (3.0, 4.2, 5.5, 7.1, 9.0):
+        assert st.starter_length_delta(ip, level_runs=0.0) == 0.0
+
+
+def test_a_short_start_is_charged_and_a_long_one_credited():
+    short = float(st.starter_length_delta(4.0))
+    long = float(st.starter_length_delta(7.0))
+    assert short > 0 > long, "a short expected start has to cost runs allowed"
+    # ...and by the runs the constant names, per missing inning of the flat 5.5
+    assert short == pytest.approx(st.IP_LEVEL_RUNS * 1.5 / st.GAME_IP)
+    assert long == pytest.approx(-st.IP_LEVEL_RUNS * 1.5 / st.GAME_IP)
+
+
+def test_the_level_is_linear_in_the_innings_and_vectorized():
+    ip = np.arange(3.0, 9.01, 0.5)
+    out = st.starter_length_delta(ip)
+    assert out.shape == ip.shape
+    assert np.allclose(np.diff(out, 2), 0.0)
+    assert out[list(ip).index(st.STARTER_IP)] == pytest.approx(0.0, abs=1e-15)
+
+
+def test_the_level_scales_with_the_constant():
+    assert (st.starter_length_delta(4.0, level_runs=1.5)
+            == pytest.approx(2 * st.starter_length_delta(4.0, level_runs=0.75)))
+
+
+def test_the_level_reads_only_starts_strictly_before_the_game():
+    """The same leakage guard as the split, asserted through the level term.
+
+    The level is a function of `expected_starter_ip` and nothing else, so
+    appending tonight's start — or next week's — to the log has to leave the
+    number a club is charged exactly where it was.
+    """
+    before = st.start_innings(frame([start_log(1, "2026-05-01", 12)]))
+    after = st.start_innings(frame([start_log(1, "2026-05-01", 12),
+                                    start_log(1, "2026-05-02", 27),
+                                    start_log(1, "2026-05-09", 27)]))
+    ip_before = st.expected_starter_ip(before, "2026-05-02")[1]
+    ip_after = st.expected_starter_ip(after, "2026-05-02")[1]
+    assert (float(st.starter_length_delta(ip_after))
+            == float(st.starter_length_delta(ip_before)))
+    # ...and the guard is doing work: with the future allowed in, it would move
+    assert (float(st.starter_length_delta(
+        st.expected_starter_ip(after, "2026-05-10")[1]))
+        != float(st.starter_length_delta(ip_before)))

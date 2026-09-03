@@ -34,8 +34,20 @@ Metrics: Brier score and log loss (lower is better). Baselines:
     pythag_C_sp_bpa_ip
                     — the same, splitting the game between starter and pen at
                       *this* starter's expected innings instead of a flat 5.5.
-                      This is the chain the live odds job serves, and both are
+                      The chain the live odds job served until issue #66, and
+                      now the baseline the row below has to beat; both are
                       computed by one function (src/sim/game_model.py)
+    pythag_C_sp_bpa_ip_lvl
+                    — ...and that same expected start length once more, as a
+                      **level**: a club is charged runs for every inning of the
+                      flat 5.5 its announced starter is not expected to cover,
+                      independently of who then throws them. `--ip-level 0`
+                      reproduces the row above it exactly (src/sim/starters.py).
+                      **This is the chain the live odds job serves**
+    pythag_C_sp_bpa_ip_lvl_lu
+                    — ...and the posted card on top of the served chain, which
+                      is what the nightly prices a game whose lineup is already
+                      out. Identical to `_lvl` on every game with no card
     pythag_C_sp_bpa_ip_lu
                     — ...and the posted card on top, measured against the
                       club's own recent cards. Identical to the row above on
@@ -116,6 +128,15 @@ C_PK_MODEL = "pythag_C_sp_bpa_ip_pk"
 C_DEF_MODEL = "pythag_C_sp_bpa_ip_def"
 C_PK_DEF_MODEL = "pythag_C_sp_bpa_ip_pk_def"
 C_PK_DEF_LU_MODEL = "pythag_C_sp_bpa_ip_pk_def_lu"
+# Issue #66: the starter's expected innings as a *level* as well as the split
+# that already uses them. Same slate, same blend, one extra runs-allowed delta
+# per side (`starters.starter_length_delta`), and `--ip-level 0` reproduces the
+# rung below it exactly.
+C_LVL_MODEL = "pythag_C_sp_bpa_ip_lvl"
+# ...and the posted card on top of *that*, which is what the nightly serves for
+# a game whose lineup is already out. Identical to `_lvl` on every game with no
+# card posted, for the same reason `_lu` is identical to `_ip` there.
+C_LVL_LU_MODEL = "pythag_C_sp_bpa_ip_lvl_lu"
 # The learned challenger, scored only when `--learned` names an artifact. It is
 # not gated (docs/market-benchmark-2026.md, Sept 3): on the market's own game
 # set it loses to the chain by .0007, inside one standard error, so the chain
@@ -144,6 +165,11 @@ BPA_BASELINE = ru_model.BASELINE
 # when his expected innings, not 5.5, set the starter/bullpen split. Chosen
 # walk-forward on 2025 only (docs/market-benchmark-2026.md).
 SP_IP_BALLAST = sp_model.IP_BALLAST_STARTS
+# ...and how many runs per nine an inning of that expected start is worth on
+# its own, over and above the split it already sets. Fitted on the eleven
+# completed seasons before 2026 and never on a 2026 score
+# (docs/market-benchmark-2026.md); 0 is the model without the term.
+IP_LEVEL = sp_model.IP_LEVEL_RUNS
 # Station C: how much of the bottom-up run environment to use, what trailing
 # window defines a club's hitters and their plate-appearance shares, and how
 # many days of starts define a rotation. All three chosen walk-forward on 2025
@@ -251,8 +277,9 @@ def walk_forward(completed: pd.DataFrame, team_ids, min_games: int,
             if learned_ctx is not None:
                 sp_ids = sp_day["probables"].get(int(g.game_pk))
                 cards = (c_day.get("lineups") or {}).get(int(g.game_pk))
-                learned_rows.append(gf.game_features(c_day["slate"], learned_ctx,
-                                                     g, sp_ids, cards))
+                learned_rows.append(gf.game_features(c_day["served_slate"],
+                                                     learned_ctx, g, sp_ids,
+                                                     cards))
                 learned_at.append(len(rows))
             rows.append(row)
         if learned_rows:
@@ -678,7 +705,7 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
     # `pythag_C` / `pythag_C_sp` columns, which do not use it.
     slate = slates = None
     if "available" in bp_day:
-        def _slate(team_frame, factors):
+        def _slate(team_frame, factors, ip_level=0.0):
             return gm.Slate(
                 as_of=str(date), team=team_frame, sp_ra9=sp_day["sp_ra9"],
                 lg_ra9=lg_ra9,
@@ -695,11 +722,15 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
                 config=gm.ChainConfig(starter_ip=sp_day["starter_ip"],
                                       lineup_weight=c_ctx["lu_weight"],
                                       blend_weight=c_ctx["weight"],
+                                      ip_level=float(ip_level),
                                       park_ballast=c_ctx.get("park_ballast",
                                                              PARK_BALLAST),
                                       def_ballast=c_ctx.get("def_ballast",
                                                             DEF_BALLAST)))
 
+        # The gate baseline carries `ip_level=0.0` explicitly rather than by
+        # default, so the rung the new term is measured against stays the chain
+        # without it however the served default is set.
         slate = _slate(blended, {})
         # One slate per combination of the two new terms, each differing from
         # the one above only in what it is meant to differ in: the park slates
@@ -711,10 +742,19 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
             "pk": _slate(blended_pk, park_factors),
             "def": _slate(blended_def, {}),
             "pk_def": _slate(blended_pk_def, park_factors),
+            # The same blend and the same factors as the gate baseline; the
+            # only difference is that this one charges a club runs for the
+            # innings its announced starter is not expected to cover.
+            "lvl": _slate(blended, {}, ip_level=c_ctx.get("ip_level", IP_LEVEL)),
         }
     return {
         "team": blended,
         "slate": slate,
+        # The slate the nightly actually prices with — the one above plus the
+        # expected-innings level. It is what the learned challenger's feature
+        # rows are read off, so the `chain_p` column beside them is the chain
+        # that is served rather than the rung below it.
+        "served_slate": (slates or {}).get("lvl", slate),
         "slates": slates,
         "def_deltas": def_deltas,
         "def_diag": def_diag,
@@ -806,7 +846,7 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
         venue = getattr(g, "venue_id", None)
         slates = c_day.get("slates") or {}
         for tag, model in (("pk", C_PK_MODEL), ("def", C_DEF_MODEL),
-                           ("pk_def", C_PK_DEF_MODEL)):
+                           ("pk_def", C_PK_DEF_MODEL), ("lvl", C_LVL_MODEL)):
             sl = slates.get(tag)
             if sl is None:
                 continue
@@ -820,6 +860,10 @@ def run_env_game_probs(g, c_day: dict, sp_day: dict, hfa: float,
                 slates["pk_def"], g.home_id, g.away_id, sp_ids, hfa,
                 lineups=cards, venue_id=venue)
             out[C_PK_DEF_LU_MODEL] = p_lu
+        if "lvl" in slates:
+            p_lu, _ = gm.home_win_probability(
+                slates["lvl"], g.home_id, g.away_id, sp_ids, hfa, lineups=cards)
+            out[C_LVL_LU_MODEL] = p_lu
     return out
 
 
@@ -829,7 +873,8 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
                     control: str = "none", schedule: pd.DataFrame | None = None,
                     park_ballast: float = PARK_BALLAST,
                     park_prior_seasons: int = PARK_PRIOR_SEASONS,
-                    def_ballast: float = DEF_BALLAST) -> dict:
+                    def_ballast: float = DEF_BALLAST,
+                    ip_level: float = IP_LEVEL) -> dict:
     """Fetch the club-attributed hitting logs station C needs, once.
 
     `lu_ctx["game_logs"]` cannot be reused for this: `fetch_batter_game_logs`
@@ -863,6 +908,7 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
             "park_factors": park_factors, "park_ballast": park_ballast,
             "season_games": pk_model.completed_venue_games(schedule),
             "bip": bp_ctx.get("bip"), "def_ballast": def_ballast,
+            "ip_level": ip_level,
             # Carried through so the shared per-game function reads the same
             # lineup knobs the `_lu` ladder above it does.
             "lu_weight": lu_ctx["weight"], "lu_baseline": lu_ctx["baseline"],
@@ -1024,6 +1070,12 @@ def main() -> None:
                         help="league-average starts of ballast on a starter's "
                              "own innings per start, for the model that splits "
                              "the game there instead of at 5.5")
+    parser.add_argument("--ip-level", type=float, default=IP_LEVEL,
+                        help="runs per nine charged for each inning of the "
+                             "flat 5.5 the announced starter is not expected "
+                             "to cover — his expected length as a level and "
+                             "not only as the starter/bullpen split "
+                             "(0 is the model without the term)")
     parser.add_argument("--relief-ip", type=float, default=bp_model.RELIEF_IP,
                         help="innings the bullpen is assumed to cover")
     parser.add_argument("--no-run-env", action="store_true",
@@ -1127,7 +1179,7 @@ def main() -> None:
             args.c_rotation_top_n, lu_ctx["pa_per_game"], args.c_control,
             schedule=sched, park_ballast=args.park_ballast,
             park_prior_seasons=args.park_prior_seasons,
-            def_ballast=args.def_ballast)
+            def_ballast=args.def_ballast, ip_level=args.ip_level)
 
     learned = None
     if args.learned is not None:
@@ -1149,9 +1201,9 @@ def main() -> None:
     if c_ctx is not None:
         models += [C_MODEL, C_SP_MODEL]
         if bp_ctx is not None:
-            models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL,
-                       C_SP_BPA_IP_LU_MODEL, C_PK_MODEL, C_DEF_MODEL,
-                       C_PK_DEF_MODEL, C_PK_DEF_LU_MODEL]
+            models += [C_SP_BPA_MODEL, C_SP_BPA_IP_MODEL, C_LVL_MODEL,
+                       C_LVL_LU_MODEL, C_SP_BPA_IP_LU_MODEL, C_PK_MODEL,
+                       C_DEF_MODEL, C_PK_DEF_MODEL, C_PK_DEF_LU_MODEL]
     if learned is not None and LEARNED_MODEL in preds.columns:
         models.append(LEARNED_MODEL)
     print(f"{len(preds)} games scored (from the date every team had {args.min_games}+ games)\n")
@@ -1183,6 +1235,18 @@ def main() -> None:
               f"{preds['c_starter_ip'].sum() / (2 * len(preds)):.2f} innings "
               f"against the flat {sp_model.STARTER_IP}; "
               f"ip_ballast={args.sp_ip_ballast:.0f} starts.")
+        if C_LVL_MODEL in preds.columns:
+            # `c_starter_ip` is the two clubs' expected starts added together,
+            # so the mean charge is over club-games; the extremes are the clip
+            # `expected_starter_ip` already applies, not anything measured.
+            gap = 2 * sp_model.STARTER_IP - preds["c_starter_ip"]
+            k = args.ip_level / sp_model.GAME_IP
+            print(f"{C_LVL_MODEL}: that same start length as a level at "
+                  f"{args.ip_level:.2f} runs per nine per missing inning — "
+                  f"mean club-game charge {k * gap.mean() / 2:+.3f} runs/9, "
+                  f"between {k * (sp_model.STARTER_IP - sp_model.GAME_IP):+.3f} "
+                  f"and {k * (sp_model.STARTER_IP - sp_model.MIN_STARTER_IP):+.3f} "
+                  f"at the clip.")
         if C_PK_MODEL in preds.columns:
             pf = preds["c_park_factor"].astype(float)
             print(f"{C_PK_MODEL}: {int((pf != 1.0).sum())} of {len(preds)} games "
@@ -1255,6 +1319,12 @@ def main() -> None:
                       # against the served chain, then the two together.
                       (C_PK_MODEL, C_SP_BPA_IP_MODEL),
                       (C_DEF_MODEL, C_SP_BPA_IP_MODEL),
+                      # The expected-innings level gate: the one new term
+                      # against the chain that already uses the same number
+                      # for the split and nothing else.
+                      (C_LVL_MODEL, C_SP_BPA_IP_MODEL),
+                      (C_LVL_MODEL, C_SP_MODEL),
+                      (C_LVL_LU_MODEL, C_LVL_MODEL),
                       (C_PK_DEF_MODEL, C_SP_BPA_IP_MODEL),
                       (C_PK_DEF_MODEL, C_PK_MODEL),
                       (C_PK_DEF_MODEL, C_DEF_MODEL)]

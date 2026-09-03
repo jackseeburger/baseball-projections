@@ -397,9 +397,9 @@ def chain_terms(
 
     *Overrides.* Every remaining game whose probables are both posted, priced
     by `game_model.home_win_probability` — the same function
-    `scripts/backtest_game_odds.py` scores as `pythag_C_sp_bpa_ip` (and, when a
-    card is up, `pythag_C_sp_bpa_ip_lu`). The live number and the scored number
-    are one call, not two implementations.
+    `scripts/backtest_game_odds.py` scores as `pythag_C_sp_bpa_ip_lvl` (and,
+    when a card is up, `pythag_C_sp_bpa_ip_lvl_lu`). The live number and the
+    scored number are one call, not two implementations.
 
     *Rotations.* The bracket gets each club's ordered `(pitcher_id, RA/9
     delta)` pairs off the slate's own rate table, applied to the slate's run

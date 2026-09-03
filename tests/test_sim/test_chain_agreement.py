@@ -391,14 +391,18 @@ def _patch(mp, module, fakes: dict) -> None:
 def backtest_probabilities(season: dict, fakes: dict, mp, *,
                            park_ballast: float = float("inf"),
                            def_ballast: float = float("inf"),
+                           ip_level: float | None = None,
                            learned=None) -> pd.DataFrame:
     """The harness's own walk-forward frame for the target date.
 
     The two ballasts default to infinite, which is the park and defence terms
     switched off — what the nightly serves, and therefore what the columns
-    above them have to keep matching. `learned` is passed straight through to
-    `walk_forward`, so the same call that scores the chain also scores the
-    learned challenger off the same slate (`--learned`).
+    above them have to keep matching. `ip_level` is the expected-innings level
+    term's constant on the `_lvl` column; None takes the shipped one, and 0
+    switches it off so that column has to be the rung below it exactly.
+    `learned` is passed straight through to `walk_forward`, so the same call
+    that scores the chain also scores the learned challenger off the same slate
+    (`--learned`).
     """
     bt = _load("backtest_game_odds_chain", ROOT / "scripts/backtest_game_odds.py")
     _patch(mp, bt, fakes)
@@ -424,7 +428,8 @@ def backtest_probabilities(season: dict, fakes: dict, mp, *,
         SEASON, lu_ctx, bp_ctx, rn_model.BLEND_WEIGHT,
         rn_model.SHARE_WINDOW_DAYS, rn_model.ROTATION_WINDOW_DAYS,
         rn_model.ROTATION_TOP_N, lu_ctx["pa_per_game"], schedule=sched,
-        park_ballast=park_ballast, def_ballast=def_ballast)
+        park_ballast=park_ballast, def_ballast=def_ballast,
+        ip_level=bt.IP_LEVEL if ip_level is None else ip_level)
     preds = bt.walk_forward(scored, teams_frame()["team_id"].to_numpy(),
                             0, [REGRESS_GAMES], sp_ctx, lu_ctx, bp_ctx, c_ctx,
                             learned)
@@ -433,8 +438,14 @@ def backtest_probabilities(season: dict, fakes: dict, mp, *,
 
 def nightly_probabilities(season: dict, fakes: dict, use_lineups: bool, mp, *,
                           park_ballast: float = float("inf"),
-                          def_ballast: float = float("inf")) -> dict:
-    """The odds job's overrides for the target date, from the same season."""
+                          def_ballast: float = float("inf"),
+                          ip_level: float | None = None) -> dict:
+    """The odds job's overrides for the target date, from the same season.
+
+    `ip_level` None serves whatever `ChainConfig` ships; a number pins it, which
+    is how the park and defence assembly test below stays on the same rung as
+    the harness's own park and defence columns.
+    """
     rp = _load("run_playoff_odds_chain", ROOT / "scripts/run_playoff_odds.py")
     _patch(mp, rp, fakes)
 
@@ -449,7 +460,9 @@ def nightly_probabilities(season: dict, fakes: dict, use_lineups: bool, mp, *,
         refresh=False, workers=1, use_lineups=use_lineups,
         config=gm.ChainConfig(regress_games=REGRESS_GAMES,
                               park_ballast=park_ballast,
-                              def_ballast=def_ballast))
+                              def_ballast=def_ballast,
+                              **({} if ip_level is None
+                                 else {"ip_level": float(ip_level)})))
     return {"overrides": overrides, "rotations": rotations,
             "strength": strength, "diagnostics": diag, "hfa": hfa,
             "state": state}
@@ -471,7 +484,7 @@ class TestOneGameTwoPaths:
         for game_pk, row in scored.iterrows():
             assert int(game_pk) in live["overrides"], game_pk
             assert live["overrides"][int(game_pk)] == pytest.approx(
-                row["pythag_C_sp_bpa_ip"], abs=1e-12)
+                row["pythag_C_sp_bpa_ip_lvl"], abs=1e-12)
 
     def test_a_posted_card_is_the_same_on_both_sides(self, season, monkeypatch):
         """...and so is the branch that fires when a club has posted its card."""
@@ -482,10 +495,10 @@ class TestOneGameTwoPaths:
         assert (scored["c_lineup_slots"] > 0).all(), "no card reached the model"
         for game_pk, row in scored.iterrows():
             assert live["overrides"][int(game_pk)] == pytest.approx(
-                row["pythag_C_sp_bpa_ip_lu"], abs=1e-12)
+                row["pythag_C_sp_bpa_ip_lvl_lu"], abs=1e-12)
         # The card moved something, or the test above would be vacuous.
-        assert (scored["pythag_C_sp_bpa_ip_lu"]
-                != scored["pythag_C_sp_bpa_ip"]).any()
+        assert (scored["pythag_C_sp_bpa_ip_lvl_lu"]
+                != scored["pythag_C_sp_bpa_ip_lvl"]).any()
 
     def test_a_game_with_no_starter_named_is_the_strength_the_sim_draws(self, season, monkeypatch):
         """The horizon is a boundary in what is known, not in how it is priced.
@@ -545,13 +558,17 @@ class TestParkAndDefenceAgreeToo:
 
     def test_the_nightly_and_the_backtest_agree_with_both_terms_on(self, season,
                                                                    monkeypatch):
+        """Both sides pinned to `ip_level=0`, which is the rung the harness's
+        park and defence columns sit on: those two were scored against the
+        pre-#66 chain and are kept there, so what this compares is the park and
+        defence assembly and nothing else."""
         fakes = _fake_fetchers(season, cards_for_target=False)
         scored = backtest_probabilities(season, fakes, monkeypatch,
                                         park_ballast=PARK_BALLAST,
                                         def_ballast=DEF_BALLAST)
         live = nightly_probabilities(season, fakes, False, monkeypatch,
                                      park_ballast=PARK_BALLAST,
-                                     def_ballast=DEF_BALLAST)
+                                     def_ballast=DEF_BALLAST, ip_level=0.0)
         assert len(scored) and live["overrides"], "the fixture priced nothing"
         for game_pk, row in scored.iterrows():
             assert int(game_pk) in live["overrides"], game_pk
@@ -590,9 +607,10 @@ class TestParkAndDefenceAgreeToo:
             self, season, monkeypatch):
         """What the gate rule means in code: the baseline runs until it loses.
 
-        Neither term cleared, so the odds job asks for them switched off, and
-        its answer is the scored `pythag_C_sp_bpa_ip` — not the park-and-
-        defence column beside it.
+        Park and defence did not clear, so the odds job asks for them switched
+        off; the expected-innings level did, so it is on. Its answer is the
+        scored `pythag_C_sp_bpa_ip_lvl` — not the park-and-defence column
+        beside it, and not the rung below it either.
         """
         fakes = _fake_fetchers(season, cards_for_target=False)
         scored = backtest_probabilities(season, fakes, monkeypatch)
@@ -602,9 +620,62 @@ class TestParkAndDefenceAgreeToo:
                                             def_ballast=DEF_BALLAST)
         for game_pk, row in scored.iterrows():
             assert live["overrides"][int(game_pk)] == pytest.approx(
+                row["pythag_C_sp_bpa_ip_lvl"], abs=1e-12)
+            assert live["overrides"][int(game_pk)] != pytest.approx(
                 row["pythag_C_sp_bpa_ip"], abs=1e-12)
             assert live["overrides"][int(game_pk)] != pytest.approx(
                 with_terms.loc[game_pk, "pythag_C_sp_bpa_ip_pk_def"], abs=1e-12)
+
+
+class TestTheExpectedInningsLevel:
+    """The starter's expected innings used twice: as the split and as a level.
+
+    The split has been in the chain since `pythag_C_sp_bpa_ip`; the level is
+    issue #66, and it reads the *same* `expected_starter_ip` table. So the two
+    things worth pinning are that the term is a clean nesting — zero runs per
+    nine gives back the rung below it to the last bit, which is what the gate
+    comparison rests on — and that at the shipped constant it is not silently
+    doing nothing.
+    """
+
+    def test_switching_the_level_off_is_the_rung_below_it(self, season, monkeypatch):
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch, ip_level=0.0)
+        assert (scored["pythag_C_sp_bpa_ip_lvl"]
+                == scored["pythag_C_sp_bpa_ip"]).all()
+
+    def test_the_level_moves_the_price_at_the_shipped_constant(self, season,
+                                                               monkeypatch):
+        fakes = _fake_fetchers(season, cards_for_target=False)
+        scored = backtest_probabilities(season, fakes, monkeypatch)
+        assert sp_model.IP_LEVEL_RUNS > 0, "the shipped constant is off"
+        assert (scored["pythag_C_sp_bpa_ip_lvl"]
+                != scored["pythag_C_sp_bpa_ip"]).any()
+
+    def test_a_deeper_starter_lowers_his_club_s_runs_allowed(self):
+        """The sign, through the chain rather than through the formula.
+
+        Two identical slates but for one club's announced starter's expected
+        innings: the club whose man is expected to go deeper has to be given
+        the lower runs-allowed rate, and with no level term neither does.
+        """
+        from src.sim import game_model as gm
+        slate = gm.Slate(
+            as_of="2026-05-15",
+            team=pd.DataFrame({"rs_pg": [4.5], "ra_pg": [4.5]}, index=[1]),
+            sp_ra9={99: 4.5}, lg_ra9=4.5, lg_rs9=4.5,
+            expected_ip={99: 4.0}, available_pen=None, pen_baseline=4.5,
+            runs_lookup={}, lineup_baseline={}, pa_per_game=38.0,
+            config=gm.ChainConfig(ip_level=sp_model.IP_LEVEL_RUNS))
+        short = gm.side_run_rates(slate, 1, 99)[1]
+        deep = gm.side_run_rates(
+            gm.Slate(**{**slate.__dict__, "expected_ip": {99: 7.0}}), 1, 99)[1]
+        assert short > deep
+        flat = gm.Slate(**{**slate.__dict__, "config": gm.ChainConfig(ip_level=0.0)})
+        assert (gm.side_run_rates(flat, 1, 99)[1]
+                == gm.side_run_rates(
+                    gm.Slate(**{**flat.__dict__, "expected_ip": {99: 7.0}}),
+                    1, 99)[1])
 
 
 class TestTheStrengthTheSimDraws:
@@ -687,5 +758,5 @@ class TestTheLearnedChallengerIsScoredOffTheSameSlate:
         # ...and the chain column the two paths compute agrees too, which is
         # what makes the comparison between them a comparison of models.
         for game_pk, row in scored.iterrows():
-            assert float(row["pythag_C_sp_bpa_ip"]) == pytest.approx(
+            assert float(row["pythag_C_sp_bpa_ip_lvl"]) == pytest.approx(
                 float(expected.loc[int(game_pk), "chain_p"]), abs=1e-12), game_pk
