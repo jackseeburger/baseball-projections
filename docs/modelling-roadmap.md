@@ -1,11 +1,54 @@
-# Where to Expand the Non-Marcel Modelling
+# Replacing Marcel
 
 Companion to [methods.md](methods.md). That doc says how to *pick* a tool for a
 question already on the table. This one says *which questions to put on the
 table next*, and in what order, given what the repo has actually measured.
 
+The goal is not to supplement Marcel. It is to replace it — with a model that
+works at the plate appearance rather than the season aggregate, conditions on
+context Marcel cannot represent, and returns a posterior. Marcel stays
+permanently as the baseline every replacement must beat, which is the job it is
+actually good at.
+
 It exists because "we should do more hierarchical Bayes and more ML" is not a
 plan. Both sentences are true and neither tells you what to build on Monday.
+
+## A calibration, before anything else
+
+The public evidence is worth knowing, because it sets expectations that are
+otherwise easy to get wrong in both directions.
+
+Hierarchical Bayes and ML are what serious systems use — that is not in
+question. PyMC Labs has published a
+[Bayesian Marcel](https://www.pymc-labs.com/blog-posts/bayesian-marcel) that
+replaces hard-coded regression with a beta-binomial hierarchical model (pooling
+by sample size instead of a fixed ballast) and Dirichlet-distributed season
+weights estimated from data instead of Marcel's fixed 5/4/3. There is a
+substantial academic literature doing the same for
+[hitting](https://arxiv.org/pdf/0902.1360),
+[fielding](https://arxiv.org/pdf/0802.4317) and
+[team strength](https://arxiv.org/pdf/1712.05879).
+
+**And the frontier is closer to Marcel than its reputation suggests.** ZiPS,
+Steamer and PECOTA layer in pitch-level data, minor-league translations and
+machine learning, and
+[only marginally outperform Marcel on aggregate accuracy](https://www.beyondtheboxscore.com/2016/2/22/11079186/projections-marcel-pecota-zips-steamer-explained-guide-math-is-fun).
+The system that has separated itself — THE BAT X, most accurate for four
+straight years — did it by
+[layering Statcast on top of an already solid foundation](https://www.fantasypros.com/2024/01/most-accurate-fantasy-baseball-projections-2023/),
+not by changing estimator family.
+
+Two conclusions follow, and they pull in opposite directions on purpose:
+
+1. **Do not expect the replacement to win on aggregate MAE by much.** Nobody
+   does. If we judge the Bayesian track by component MAE against Marcel, we
+   will conclude it failed even if it is working exactly as the best systems in
+   the world work.
+2. **Which means MAE is the wrong scoreboard for this decision.** The reason to
+   replace Marcel is the set of things it structurally cannot do at all —
+   condition on context, carry uncertainty, model a player whose skill changed
+   in June. Those are worth building for their own sake, and the aggregate MAE
+   tie is the expected result, not the disappointing one.
 
 ## 0. What the evidence has already ruled out
 
@@ -18,13 +61,18 @@ correlated, a linear function of six chain terms explaining 81–90% of its
 log-odds — and lost by .00073 with no |t| above 1.4. *More flexible models over
 the same inputs are not the move.* A new model needs new information.
 
-**The Bayesian arm is no longer losing on component accuracy, and that is not
-the reason to build it.** Given the current season and an opposing-pitcher term,
-the hierarchical model moves from losing significantly (t 2.4–2.9) to inside
-noise (t 1.57 / 1.58 / 0.04). It still does not clear the gate. Honest headroom
-over a well-tuned Marcel on component MAE is a few percent, because Marcel's
-fixed ballast is a hand-set approximation of partial pooling and the
-approximation is close. **Chasing MAE with Bayes is chasing the few percent.**
+**The Bayesian arm is no longer losing on component accuracy.** Given the
+current season and an opposing-pitcher term, the hierarchical model moves from
+losing significantly (t 2.4–2.9) to inside noise (t 1.57 / 1.58 / 0.04). That
+is one handicap removed, and it moved the result most of the way. There are
+more handicaps: it has no Statcast input, no within-season skill drift, and no
+context beyond the opposing pitcher.
+
+A tie on component MAE is what the calibration above predicts, and it is not a
+verdict on the method. **The gate decides what we serve, not what we
+research.** A model that fails the gate is an iteration, not a dead end — the
+mistake would be to read "did not clear the gate" as "this approach does not
+work" and stop.
 
 **The largest gains came from data and framing, not method.** Injury/option
 return share: 6.4 PA per hitter at two months (t −5.4). Feeding Marcel the
@@ -34,6 +82,45 @@ survival curve on a transaction feed nobody had read.
 So the expansion is not "the same questions with fancier machinery." It is:
 **where does a non-Marcel model buy something Marcel structurally cannot?**
 There are exactly three such places.
+
+## The replacement path, component by component
+
+The three directions below (§1 posterior, §2 new information, §3 actuarial) are
+the *ingredients*. This is the order they get assembled in, and the unit of
+progress is one component at a time — not one grand model that either works or
+does not.
+
+`src/models/pa_k_rate.py` is the beachhead. It is already a real hierarchical
+model — PA-level binomial cells, a random walk on the league trend, non-centered
+partially pooled player ability, handedness, zero-sum park effects, a quadratic
+age curve — and K-rate is the component with the most signal and the fastest
+stabilization, so it is the fairest place for the approach to prove itself.
+
+The staircase, each step gated against tuned Marcel on the same component:
+
+1. **Context Marcel cannot represent.** Opposing pitcher (shipped), then park,
+   platoon, and count state. Marcel is a season aggregate and structurally
+   cannot condition on any of these; a PA-level model gets them nearly free.
+   This is the clearest structural advantage and it should be exhausted first.
+2. **Statcast as covariates**, then as an HSGP surface — the two-stage pattern of
+   [methods.md §3](methods.md#3-the-two-are-not-a-wall). This is what separated
+   THE BAT X from the field, so it is the step with the best outside evidence.
+3. **Within-season skill drift.** A state-space/random-walk on player ability so
+   a hitter who changed in June is not modelled as one flat season. Marcel
+   cannot express this at all; neither can our current hierarchical model.
+4. **Estimated pooling instead of a fixed ballast**, and season weights inferred
+   rather than hard-coded 5/4/3 — the Bayesian Marcel construction. Expect this
+   to be worth about a percent on its own, because the closed form in
+   [methods.md §6](methods.md#6-techniques-worth-reusing-and-where-they-came-from)
+   shows Marcel's ballast is already a close approximation. Do it for the
+   principle and the posterior, not for the MAE.
+5. **Roll out to the remaining components** once the pattern holds on K-rate,
+   then retire Marcel from production and keep it as the baseline.
+
+Steps 1–3 are where the accuracy is. Step 4 is where the posterior is. Neither
+is optional, and doing 4 first — which is the tempting order, because it is the
+most obviously "Bayesian" — would produce a tie on MAE, no new information, and
+a false read that the approach does not work.
 
 ## 1. The posterior — things that need a distribution and are handed a number
 
@@ -134,9 +221,15 @@ Stated in advance, so we notice:
 - If Statcast contact quality turns out to only restate the realized outcome
   rate with less noise, then the "new information" premise of §2 is weaker than
   claimed and the pitch-level work should be re-argued before it is built.
-- If a posterior-aware Kelly does not change P&L measurably, the money argument
-  for Bayes collapses and the honest conclusion is that this project should
-  stay largely non-Bayesian.
+- If a posterior-aware Kelly does not change P&L measurably, then the *money*
+  argument for the posterior is weaker than claimed and §1's ordering should be
+  rethought. Note what this does not imply: the accuracy case for a PA-level
+  contextual model in steps 1–3 above stands on its own and is unaffected.
+
+None of these is a reason to stop. Each is a reason to reorder — and the whole
+point of writing them down now is that a tie on MAE, which the calibration
+section says to expect, is the single most likely thing to be misread as
+failure.
 
 The gate rule ([architecture.md §3](architecture.md#3-the-gate-rule)) decides
 every one of these, and a negative result on any of them gets published exactly
