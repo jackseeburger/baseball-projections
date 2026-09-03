@@ -68,9 +68,18 @@ def attach_outcomes(projections: pd.DataFrame,
         df["season_fraction"],
         bins=[b[0] for b in SEASON_BUCKETS] + [SEASON_BUCKETS[-1][1]],
         labels=BUCKET_LABELS, right=False, include_lowest=True)
+    # Log loss needs a floor, and the honest floor is the Monte Carlo's own
+    # resolution: nought out of 4,000 simulations means p < 1/4,000, not p = 0.
+    # Clipping at machine epsilon instead would make a single surprise worth 27
+    # nats and turn the statistic into a count of surprises times a constant
+    # chosen by the float format.
+    floor = (1.0 / (2.0 * df["n_sims"].clip(lower=1))
+             if "n_sims" in df.columns else pd.Series(EPS, index=df.index))
+    df["prob_floor"] = floor.clip(lower=EPS, upper=0.5)
     for prob, truth in OUTCOME_OF.items():
         df[f"brier_{prob}"] = (df[prob] - df[truth]) ** 2
-        p = df[prob].clip(EPS, 1 - EPS)
+        p = df[prob].clip(lower=df["prob_floor"]).clip(
+            upper=1 - df["prob_floor"])
         df[f"logloss_{prob}"] = -(df[truth] * np.log(p)
                                   + (1 - df[truth]) * np.log(1 - p))
     return df

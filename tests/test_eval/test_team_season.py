@@ -579,3 +579,37 @@ class TestDriverArms:
         assert 2020 not in parse_seasons("2015-2025")
         assert parse_seasons("2019,2020,2021") == [2019, 2021]
         assert parse_seasons("2020") == []
+
+
+class TestLogLossFloor:
+    """A probability of zero from 4,000 simulations is not a probability of zero."""
+
+    def _frame(self, p, n_sims=None):
+        base = {"season": [SEASON], "as_of": [CUTOFF], "arm": ["chain"],
+                "team_id": [101], "proj_final_wins": [90.0],
+                "wins_to_date": [20], "proj_rest_wins": [70.0],
+                "p_playoffs": [p], "p_division": [p], "p_pennant": [p],
+                "p_ws": [p], "games_played": [300], "games_remaining": [2100],
+                "club_games_remaining": [140]}
+        if n_sims is not None:
+            base["n_sims"] = [n_sims]
+        outcomes = pd.DataFrame({"season": [SEASON], "team_id": [101],
+                                 "final_wins": [95], "final_losses": [67],
+                                 "made_playoffs": [1], "won_division": [1],
+                                 "won_pennant": [1], "won_ws": [1]})
+        return tb.attach_outcomes(pd.DataFrame(base), outcomes)
+
+    def test_the_floor_is_the_simulation_resolution(self):
+        got = self._frame(0.0, n_sims=4000)
+        assert got["prob_floor"].iloc[0] == pytest.approx(1 / 8000)
+        assert got["logloss_p_playoffs"].iloc[0] == pytest.approx(
+            -np.log(1 / 8000))
+
+    def test_without_a_sim_count_it_falls_back_to_epsilon(self):
+        got = self._frame(0.0)
+        assert got["prob_floor"].iloc[0] == pytest.approx(tb.EPS)
+
+    def test_an_ordinary_probability_is_untouched(self):
+        got = self._frame(0.3, n_sims=4000)
+        assert got["logloss_p_playoffs"].iloc[0] == pytest.approx(-np.log(0.3))
+        assert got["brier_p_playoffs"].iloc[0] == pytest.approx(0.49)
