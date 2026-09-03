@@ -375,3 +375,76 @@ def test_starter_ip_zero_collapses_to_the_team_only_model():
                           LG_RA9, hfa=0.54, starter_ip=0.0)[0]
     plain = home_win_prob(pythagenpat(5.2, 4.0, 1.0), pythagenpat(4.5, 4.5, 1.0), 0.54)
     assert p == pytest.approx(float(plain))
+
+
+# ─── expected_starter_ip: how deep this man goes, regressed toward 5.5 ───
+
+def start_log(pitcher, date, outs, gs=1):
+    return {"pitcher": pitcher, "date": date, "outs": outs, "gs": gs}
+
+
+def test_only_starts_contribute_innings():
+    out = st.start_innings(frame([start_log(1, "2026-05-01", 18),
+                                  start_log(1, "2026-05-06", 6, gs=0)]))
+    assert out["date"].tolist() == ["2026-05-01"]
+    assert out["ip"].tolist() == [6.0]
+
+
+def test_an_empty_or_reliever_only_log_gives_no_starts():
+    assert st.start_innings(frame([])).empty
+    assert st.start_innings(frame([start_log(1, "2026-05-01", 3, gs=0)])).empty
+
+
+def test_no_starts_on_file_leaves_the_pitcher_absent():
+    starts = st.start_innings(frame([start_log(1, "2026-05-01", 21)]))
+    assert st.expected_starter_ip(starts, "2026-05-01") == {}
+    assert st.expected_starter_ip(st.start_innings(frame([])), "2026-05-01") == {}
+
+
+def test_a_deep_start_projects_deeper_than_the_prior():
+    starts = st.start_innings(frame([start_log(1, "2026-05-01", 27)]))   # 9 IP
+    assert st.expected_starter_ip(starts, "2026-05-02")[1] > st.STARTER_IP
+
+
+def test_a_ballast_pulls_one_start_back_toward_the_prior():
+    one = st.start_innings(frame([start_log(1, "2026-05-01", 27)]))
+    hard = st.expected_starter_ip(one, "2026-05-02", ballast=20.0)[1]
+    soft = st.expected_starter_ip(one, "2026-05-02", ballast=0.0)[1]
+    assert st.STARTER_IP < hard < soft
+
+
+def test_many_deep_starts_outweigh_a_ballast_that_one_does_not():
+    one = st.start_innings(frame([start_log(1, "2026-05-01", 27)]))
+    many = st.start_innings(frame([start_log(1, "2026-05-%02d" % d, 27)
+                                   for d in range(1, 21)]))
+    assert (st.expected_starter_ip(many, "2026-06-01", ballast=20.0)[1]
+            > st.expected_starter_ip(one, "2026-06-01", ballast=20.0)[1])
+
+
+def test_a_short_starter_projects_shorter_than_the_prior():
+    starts = st.start_innings(frame([start_log(1, "2026-05-%02d" % d, 9)
+                                     for d in range(1, 21)]))            # 3 IP
+    assert st.expected_starter_ip(starts, "2026-06-01")[1] < st.STARTER_IP
+
+
+def test_a_huge_ballast_reproduces_the_flat_split():
+    starts = st.start_innings(frame([start_log(1, "2026-05-01", 27)]))
+    ip = st.expected_starter_ip(starts, "2026-05-02", ballast=1e6)[1]
+    assert ip == pytest.approx(st.STARTER_IP, abs=1e-4)
+
+
+def test_the_projection_is_clipped_to_a_usable_range():
+    starts = st.start_innings(frame([start_log(1, "2026-05-%02d" % d, 0)
+                                     for d in range(1, 29)]))
+    assert (st.expected_starter_ip(starts, "2026-06-01", ballast=0.0)[1]
+            == st.MIN_STARTER_IP)
+
+
+def test_tonight_s_start_never_sets_its_own_workload_split():
+    """The leakage guard: how long this outing lasts is the outcome."""
+    before = st.start_innings(frame([start_log(1, "2026-05-01", 27)]))
+    after = st.start_innings(frame([start_log(1, "2026-05-01", 27),
+                                    start_log(1, "2026-05-02", 3),
+                                    start_log(1, "2026-05-09", 3)]))
+    assert (st.expected_starter_ip(after, "2026-05-02")
+            == st.expected_starter_ip(before, "2026-05-02"))

@@ -7,6 +7,8 @@ market is the bar*). Produced by:
 python scripts/backfill_market_closes.py --season 2026
 python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
     --market data/parquet/market_closes_2026.parquet
+python scripts/backtest_game_odds.py --season 2025 --min-games 20
+python scripts/sweep_reliever_usage.py --season 2025
 ```
 
 ## What "market close" means here
@@ -397,6 +399,204 @@ More to the point, park is already inside the top-down half of the blend,
 where it was measured; a park factor would only be needed if C were swapped in
 whole rather than blended.
 
+## Station E — the pen that is actually available, and how deep the starter goes
+
+Two terms, added one at a time on top of `pythag_C_sp`, both aimed at the same
+soft spot: the model divides every game 5.5 / 3.5 between a starter and an
+undifferentiated pen, and knows nothing about who in that pen threw 38 pitches
+last night.
+
+```
+ra9 = C's runs allowed
+      + (ip/9)     · (starter FIP RA9        − league RA9)     ← starters.py
+      + ((9-ip)/9) · (available pen FIP RA9  − league pen RA9) ← reliever_usage.py
+
+available pen RA9 = Σ_i (trailing BF_i · availability_i · RA9_i) / Σ_i (…)
+ip                = this starter's own innings per start, clipped to [3, 9]
+                    (5.5 for a man with no start on file)
+```
+
+`pythag_C_sp_bpa` is the pen line with `ip` held at the flat 5.5;
+`pythag_C_sp_bpa_ip` also moves the split. Produced by:
+
+```
+python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+    --market data/parquet/market_closes_2026.parquet
+python scripts/backtest_game_odds.py --season 2025 --min-games 20
+python scripts/sweep_reliever_usage.py --season 2025      # the constants
+```
+
+### Where the workload comes from
+
+The Stats API's pitching game log carries **`numberOfPitches`** on every split,
+which is the workload number a manager actually counts. It is present on
+**17,777 of 17,779** appearances in 2026 and **20,868 of 20,870** in 2025
+(99.99%); the four that lack one fall back to batters faced times the league's
+measured pitches per batter faced (3.886 in 2026, 3.882 in 2025). Starts count
+as work as well as relief outings — an opener's arm is as tired as a
+reliever's — while membership in the pen and the workload weights still come
+from relief appearances only, as they did before.
+
+For scale: the median relief outing is **17 pitches** and the 90th percentile
+**33** (2026; 16 and 31 in 2025).
+
+### Scoreboard — same 756 games, 2026-07-04 → 09-02
+
+| Model | Brier | Log loss | Mean P(home) |
+|---|---|---|---|
+| **Kalshi close** | **0.24156** | **0.6759** | 0.537 |
+| **Polymarket close** | **0.24165** | **0.6761** | 0.531 |
+| **pythag_C_sp_bpa_ip** (+ available pen + start length, new) | **0.24388** | **0.6807** | 0.532 |
+| **pythag_C_sp_bpa** (+ available pen, new) | **0.24400** | **0.6810** | 0.532 |
+| **pythag_C_sp** (station C + starter — the gate) | 0.24428 | 0.6816 | 0.532 |
+| pythag_60_sp_lu_bpa (E chain, availability weight) | 0.24452 | 0.6821 | 0.532 |
+| pythag_60_sp_lu_bp (E chain, binary rest rule) | 0.24454 | 0.6821 | 0.532 |
+| pythag_60_sp_lu (+ lineups) | 0.24479 | 0.6826 | 0.532 |
+| pythag_60_sp (starters) | 0.24483 | 0.6827 | 0.533 |
+| pythag_C (station C alone) | 0.24565 | 0.6844 | 0.532 |
+| pythag_60 (production) | 0.24619 | 0.6855 | 0.533 |
+
+**Both terms clear the gate**, and the ordering is the same on all three sets:
+
+| | 756 market games | all 1,778 of 2026 | all 2,105 of 2025 |
+|---|---|---|---|
+| `pythag_C_sp` (baseline) | 0.24428 | 0.24610 | 0.24401 |
+| `pythag_C_sp_bpa` | **0.24400** | **0.24597** | **0.24386** |
+| paired vs baseline | −0.00028 (se 0.00026, t −1.05) | −0.00013 (se 0.00017, t −0.77) | −0.00015 (se 0.00017, t −0.89) |
+| `pythag_C_sp_bpa_ip` | **0.24388** | **0.24592** | **0.24360** |
+| paired vs `_bpa` | −0.00012 (se 0.00014, t −0.90) | −0.00005 (se 0.00010, t −0.54) | **−0.00026 (se 0.00009, t −2.92)** |
+| paired vs baseline | −0.00040 (se 0.00031, t −1.28) | −0.00019 (se 0.00021, t −0.88) | **−0.00042 (se 0.00020, t −2.08)** |
+
+Swapped into the older E chain in place of the binary rest rule — the same
+model with the pen read one way or the other — the two are indistinguishable:
+`pythag_60_sp_lu_bpa` 0.24452 against `pythag_60_sp_lu_bp` 0.24454, a paired
+−0.00002 (se 0.00004, t = −0.42) on the 756, −0.00003 (t = −1.18) on all of
+2026 and −0.00001 (t = −0.25) on 2025.
+
+### Reading it
+
+- **The dial fires where the switch never did, and it still is not
+  availability that pays.** The binary "worked three calendar days running"
+  rule leaves a club a man short on **12 of 1,512** club-games and moves the
+  pen by 0.001 runs per nine. The pitch-count weight is below full
+  availability on **1,485 of 1,512** and moves it by **0.011** — an order of
+  magnitude more, on a hundred times as many games. And the gain is almost
+  exactly the gain the old term already had. That is the tell: what pays is
+  the pen being priced off component rates against the league at all, not the
+  news about who is unavailable tonight.
+- **The 2025 sweep says so outright.** Measured against the club's **own**
+  whole pen — availability news with every trace of quality removed — the term
+  is *worse than not having it* in all 32 cells of the grid, by +0.00001 to
+  +0.00007 Brier. Measured against the league it is better, by 0.00009 to
+  0.00015. The whole difference between those two columns is the double-count
+  of pen quality, which is the same trade `bullpen.py` recorded a station ago
+  and which C's runs-allowed half already contains half of.
+- **The availability surface has no interior optimum.** The declared grid
+  {30, 40, 50} pitches yesterday × {45, 65, 85} over two days × {50, 75, 100,
+  150} of taper spans **0.00006 Brier in total** on 2025 and is won at its
+  gentle corner (50 / 85 / 150, paired −0.00015), with the gain rising
+  monotonically along all three axes as the rule does less. Pushed past the
+  plausible range it keeps rising: disabling the rule outright — every
+  reliever fully available, the pen a plain workload-weighted average — scores
+  **−0.00017**, better than any cell that actually weights by availability. So
+  the constants that ship are the gentlest plausible ones (a 50-pitch relief
+  outing is past the 90th percentile of 31, and at a taper of 150 a routine
+  16-pitch inning costs 11% of an arm), and the honest summary is that the
+  availability weighting is worth nothing and the pen-quality estimate around
+  it is worth 0.0003.
+- **How deep the starter goes is a different story — it is the first term here
+  whose sign is significant.** The innings split is worth −0.00026 on 2025
+  at **t = −2.92**, and every ballast in {0, 5, 10, 20, 40, 80} agrees on the
+  sign at t between −2.2 and −2.9. On 2026 it lands at −0.00012 (t = −0.90) on
+  the 756 and −0.00005 (t = −0.54) on all 1,778, so the *size* is
+  season-dependent and the 2025 number is the optimistic one. But the direction
+  never flips, and the mechanism is not subtle: the mean expected start is
+  **5.21 innings** with a standard deviation of **0.50**, so a flat 5.5 charges
+  an opener with three innings he will not throw and hands them to the wrong
+  staff.
+- **For scale.** The pen term moves a game's probability by 0.0061 on average
+  (sd 0.0043, max 0.019) against `pythag_C_sp`; adding the innings split takes
+  that to 0.0071 (sd 0.0052, max 0.027). Station C moves 0.020 and the starter
+  term about 0.04, so these are the two smallest terms on the board — which is
+  what a 3.5-inning delta on a workload-weighted average of eight arms was
+  always going to be.
+- **Against the market.** Our deviation from `pythag_60` now correlates
+  **0.770** with the market's at a slope of **1.04** (`pythag_C_sp` was 0.738 at
+  1.06, the starter term alone 0.676 at 1.21), and 0.778 at 1.05 with the
+  innings split on top. Taken alone against the market's deviation from
+  `pythag_C_sp`, the pen term correlates 0.379 at a slope of **2.05** — the
+  market moves twice as far on bullpens as we do, exactly what the old bullpen
+  term measured (0.34 at 1.97) and a reason to think the term is still too
+  timid rather than wrong. The market's residual edge over us is now
+  **0.00232** (se 0.00132, t = 1.75), down from 0.00272 over `pythag_C_sp`.
+- **Calibration is unchanged where it was already wrong.**
+
+  | bucket | n | predicted | realized |
+  |---|---|---|---|
+  | ≤ 0.40 | 17 | 0.378 | 0.353 |
+  | 0.40–0.45 | 66 | 0.428 | 0.424 |
+  | 0.45–0.50 | 147 | 0.477 | 0.463 |
+  | 0.50–0.55 | 217 | 0.524 | 0.535 |
+  | 0.55–0.60 | 209 | 0.573 | 0.574 |
+  | 0.60–0.65 | 73 | 0.622 | 0.616 |
+  | > 0.65 | 27 | 0.676 | 0.778 |
+
+  The top bucket has flipped sign since `pythag_60_sp` (42 games at 0.683
+  predicted / 0.619 realized, over-confident) to 27 at 0.676 / 0.778,
+  under-confident — which is not a finding at 27 games, it is the same
+  standard error wearing the other hat. What is real is that station C pulled
+  the tails in and these two terms did not push them back out.
+
+### How these terms avoid fitting the test set
+
+Four free constants, all chosen walk-forward on **2025 only**, and every one
+of them has a setting that reproduces the model without the term exactly (a
+taper and thresholds large enough to disable the weighting; a ballast large
+enough to return the flat 5.5), so the sweeps are clean nestings.
+
+**The availability rule**, `scripts/sweep_reliever_usage.py --season 2025`,
+paired Brier against `pythag_C_sp` on 2,105 games, league baseline:
+
+| taper → | 50 | 75 | 100 | 150 |
+|---|---|---|---|---|
+| 30 / 45 | −0.00009 | −0.00011 | −0.00011 | −0.00012 |
+| 40 / 65 | −0.00011 | −0.00013 | −0.00014 | −0.00014 |
+| **50 / 85** | −0.00011 | −0.00014 | −0.00015 | **−0.00015** |
+
+with every cell's standard error 0.00017. The same grid on the **team**
+baseline runs +0.00001 to +0.00007 — worse than no term at all — which is why
+the pen is measured against the league, the same call `bullpen.py` made and
+the opposite of the one `lineups.py` made.
+
+**The innings ballast**, `--sp-ip-ballast` on 2025, paired against
+`pythag_C_sp_bpa` (n = 2,105):
+
+| starts of ballast | 0 | 5 | 10 | 20 | 40 | 80 |
+|---|---|---|---|---|---|---|
+| paired Brier | **−0.00026** | −0.00016 | −0.00012 | −0.00008 | −0.00005 | −0.00003 |
+| t | −2.92 | −2.78 | −2.63 | −2.47 | −2.34 | −2.24 |
+| mean expected start | 5.28 | 5.40 | 5.43 | 5.45 | 5.47 | 5.48 |
+
+Monotone to the natural boundary of the parameter, so no ballast ships and the
+only guard is the clip to 3–9 innings. That is deliberate and it is what the
+season says: innings per start is mostly a fact about a pitcher's **role**,
+not his luck — an opener is an opener — and regressing the opener's two
+innings toward five and a half only throws the role away. A pitcher with no
+start on file this season keeps the flat 5.5.
+
+**Leakage.** Both terms read the same kind of thing they predict, so both are
+guarded and both guards are unit-tested on synthetic logs
+(`tests/test_sim/test_reliever_usage.py`, `tests/test_sim/test_starters.py`).
+Availability is computed from pitches thrown on the calendar days *strictly
+before* the game — appending the game's own outing, or tomorrow's, leaves every
+weight identical — and the expected-innings table is built from starts strictly
+before the date, because how long tonight's start lasts is the outcome. The
+same cut catches the second game of a doubleheader reading the first.
+
+**Coverage is total.** No game on any of the three sets fell back for want of
+pitch counts or a pen, and the two appearances a season that carry no
+`numberOfPitches` are estimated from batters faced.
+
 ## What this does not yet show
 
 - Sportsbook closes (Pinnacle) — the archive started 2026-09-02, so a
@@ -411,11 +611,22 @@ whole rather than blended.
   fair. It is not a simulation of predicting at 9am, where late scratches would
   cost a little.
 - **Park, weather, rest and travel** — none of them are in the model, and the
-  0.0027 the market still holds is where what is left of it lives. Lineups and
+  0.0023 the market still holds is where what is left of it lives. Lineups and
   bullpen state *are* now in, and between them they were worth 0.0003 of the
   0.0033: most of the gap was never in either of them. Station C — the run
-  environment rebuilt from the roster — took another 0.0003, leaving 0.0027
-  (se 0.0014, t = 1.97).
+  environment rebuilt from the roster — took another 0.0003, the
+  pitch-count-weighted available pen 0.0003 and the starter's own expected
+  innings 0.0001, leaving 0.0023 (se 0.0013, t = 1.75). Rest is now *half* in:
+  the reliever's rest is priced and worth nothing, the starter's is not priced
+  at all.
+- **What a reliever's rest is worth if it is not availability.** Two readings
+  of "this arm is used up" — a binary three-days-running rule and a
+  pitch-count weight that fires on a hundred times as many club-games — score
+  the same to within 0.00002 Brier. Either the information is not in the
+  workload, or the 3.5-inning delta on a workload-weighted average of eight
+  arms is too blunt an instrument to carry it. Distinguishing those would need
+  the *specific* arms a manager would have used tonight, which is a bullpen
+  usage model rather than a workload rule.
 - **A starter who replaces his rotation slot instead of adding to it.**
   `pythag_C_sp` adds the announced starter as the same delta from league
   average every other model adds him as, on top of a runs-allowed rate that

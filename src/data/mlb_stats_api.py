@@ -43,6 +43,12 @@ PITCHING_FIELDS = {
     "homeRuns": "hr",
     "earnedRuns": "er",
     "gamesStarted": "gs",
+    # Pitches thrown. Present on every game-log split the API serves for 2025
+    # and 2026 and on the season totals; it is the workload number a manager
+    # actually counts, and `src.sim.reliever_usage` reads it to decide who is
+    # available tonight. Absent or zero on a stray split, that module falls
+    # back to batters faced times the league's pitches per batter faced.
+    "numberOfPitches": "pitches",
 }
 
 # Stats API field → our column
@@ -249,7 +255,7 @@ def fetch_season_pitching(season: int, page_size: int = 1000,
                           refresh: bool = False) -> pd.DataFrame:
     """Season pitching totals for every pitcher, one row per player-team split.
 
-    Columns: pitcher, season, bf, k, bb, hbp, hr, er, gs, outs.
+    Columns: pitcher, season, bf, k, bb, hbp, hr, er, gs, pitches, outs.
     """
     rows, offset = [], 0
     while True:
@@ -284,8 +290,9 @@ def fetch_pitcher_game_logs(pitcher_ids, season: int,
     """Per-appearance pitching lines for `pitcher_ids` in `season`.
 
     Columns: pitcher, season, date, game_pk, game_type, team, bf, k, bb, hbp,
-    hr, er, gs, outs. One row per appearance — the caller filters to `date <`
-    the game being predicted, which is what keeps the backtest walk-forward.
+    hr, er, gs, pitches, outs. One row per appearance — the caller filters to
+    `date <` the game being predicted, which is what keeps the backtest
+    walk-forward.
 
     `team` is the club he pitched for *that day*, which is what the bullpen
     model needs (a reliever traded in July belongs to one pen before the
