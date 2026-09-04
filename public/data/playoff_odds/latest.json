@@ -1,7 +1,7 @@
 {
  "season": 2026,
  "as_of": "2026-09-04",
- "generated_at": "2026-09-04T16:18:22.198869+00:00",
+ "generated_at": "2026-09-04T17:51:34.282328+00:00",
  "n_sims": 20000,
  "seed": 247,
  "hfa": 0.5329763932830373,
@@ -11,7 +11,7 @@
  "starter_window_days": 7,
  "n_teams_with_rotation": 30,
  "rotation_size": 4,
- "n_games_with_lineups": 1,
+ "n_games_with_lineups": 2,
  "run_env_blend_weight": 0.5,
  "method": "Bottom-up team run environment (the hitters taking the plate appearances and the rotation and pen actually pitching, blended half and half with the regressed season-to-date rates) into Pythagenpat, log5 + HFA, MLB tiebreakers; every remaining game with both probables posted repriced through the full per-game chain \u2014 the starter's regressed FIP over his own expected innings, the availability-weighted bullpen over the rest, and the posted lineup where a card exists; every postseason series game priced off the club's regressed-FIP rotation",
  "teams": [
@@ -45,7 +45,7 @@
    "strength": 0.5634475427,
    "wins": 87,
    "losses": 54,
-   "mean_wins": 98.57725,
+   "mean_wins": 98.5767,
    "wins_p5": 95.0,
    "wins_p25": 97.0,
    "wins_p50": 99.0,
@@ -53,10 +53,10 @@
    "wins_p95": 102.0,
    "p_playoffs": 1.0,
    "p_division": 0.99285,
-   "p_bye": 0.93255,
+   "p_bye": 0.9325,
    "p_wild_card": 0.00715,
-   "p_pennant": 0.2953,
-   "p_ws": 0.185,
+   "p_pennant": 0.29525,
+   "p_ws": 0.18495,
    "division": "NL Central"
   },
   {
@@ -77,8 +77,8 @@
    "p_division": 0.2894,
    "p_bye": 0.2894,
    "p_wild_card": 0.7106,
-   "p_pennant": 0.26725,
-   "p_ws": 0.1241,
+   "p_pennant": 0.2673,
+   "p_ws": 0.12415,
    "division": "AL East"
   },
   {
@@ -119,9 +119,9 @@
    "wins_p95": 98.0,
    "p_playoffs": 0.99995,
    "p_division": 0.84805,
-   "p_bye": 0.3297,
+   "p_bye": 0.32975,
    "p_wild_card": 0.1519,
-   "p_pennant": 0.143,
+   "p_pennant": 0.14305,
    "p_ws": 0.0779,
    "division": "NL East"
   },
@@ -143,8 +143,8 @@
    "p_division": 0.15195,
    "p_bye": 0.02205,
    "p_wild_card": 0.84345,
-   "p_pennant": 0.1248,
-   "p_ws": 0.0722,
+   "p_pennant": 0.12475,
+   "p_ws": 0.0721,
    "division": "NL East"
   },
   {
@@ -165,8 +165,8 @@
    "p_division": 0.0075,
    "p_bye": 0.0075,
    "p_wild_card": 0.98125,
-   "p_pennant": 0.12825,
-   "p_ws": 0.05335,
+   "p_pennant": 0.1283,
+   "p_ws": 0.0534,
    "division": "AL East"
   },
   {
@@ -187,7 +187,7 @@
    "p_division": 0.82845,
    "p_bye": 0.6093,
    "p_wild_card": 0.08615,
-   "p_pennant": 0.13315,
+   "p_pennant": 0.1331,
    "p_ws": 0.0435,
    "division": "AL Central"
   },
@@ -209,8 +209,8 @@
    "p_division": 0.00715,
    "p_bye": 0.00475,
    "p_wild_card": 0.9865,
-   "p_pennant": 0.07205,
-   "p_ws": 0.03535,
+   "p_pennant": 0.0721,
+   "p_ws": 0.0354,
    "division": "NL Central"
   },
   {
@@ -297,7 +297,7 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.33235,
-   "p_pennant": 0.0311,
+   "p_pennant": 0.03105,
    "p_ws": 0.00975,
    "division": "AL East"
   },
@@ -485,7 +485,7 @@
    "strength": 0.4735090947,
    "wins": 67,
    "losses": 73,
-   "mean_wins": 75.95315,
+   "mean_wins": 75.9537,
    "wins_p5": 72.0,
    "wins_p25": 74.0,
    "wins_p50": 76.0,
