@@ -2,7 +2,7 @@
 
 Tracked as [BAS-69](https://linear.app/sigils/issue/BAS-69).
 
-**Status: pre-registered, not yet run.** Predictions below were written into the
+**Status: pre-registered; the vacuity check has been run, the sweep has not.** Predictions below were written into the
 commit that added the model options, before any variant was fitted. Results get
 appended to this file — including the ones that go against the predictions,
 which is the only reason writing them down first is worth anything.
@@ -126,3 +126,72 @@ real work or is a convenience.
 - **`ability_walk` makes it worse.** Then the walk is fitting season-to-season
   noise as talent change, and the fix is a tighter `sigma_step` prior or a
   shrunk AR(1) rather than a free walk.
+
+## Result 1: the vacuity check, and it passes
+
+*Run before any comparison against a baseline, exactly as the pre-registration
+says. This section was written from the numbers it produced.*
+
+The question was whether `sigma_step` collapses toward zero, which would mean
+the walk had degenerated into the flat model and prediction 1 was untestable
+rather than false. It does not collapse. It is not close.
+
+| | posterior |
+| --- | --- |
+| `sigma_step` mean | **0.1216** |
+| 90% interval | [0.1095, 0.1345] |
+| sd | 0.0074 |
+| ESS / R-hat | 477 / 0.999 |
+| threshold for "collapsed" | 0.02 |
+
+Six times the threshold, with an interval nowhere near it and a well-mixed
+posterior for that parameter specifically. On the rate scale, 0.1216 on the
+logit at league K% (p ≈ .22, so dp/d(logit) = p(1-p) ≈ .172) is about **2.1
+percentage points of K% of true-talent drift per season** — the size of thing
+a projection system has to have an opinion about.
+
+So the model says a hitter's K% talent is not a fixed number that seasons
+merely measure with error. That is the mechanism by which Marcel's fixed 5/4/3
+earns its keep, stated by a model that estimated the weighting rather than
+being handed it. And it makes prediction 1 a real test.
+
+**Scale and caveats.** 200 batters, five seasons (2021-2025), cutoff
+2025-07-01, 2 chains x 400 draws, no opposing-pitcher term — the same
+`include_pitcher=False` the dense sweep itself uses, so this is the sweep's
+arm at reduced batter count, not a different model. Zero divergences in both
+arms. Neither fit is "healthy" by the diagnostic's own standard at 400 draws:
+the flat arm's worst is `beta_age` (R-hat 1.062, ESS 42) and the walk's is
+`z_step` (R-hat 1.030, ESS 239). That is a reason to distrust *those*
+parameters at this draw count, not `sigma_step`, which is the only number
+this section rests on.
+
+Two alternative readings the number cannot rule out, and neither is a reason
+to discount it for projection purposes:
+
+- The walk may be absorbing **individual aging** that one global quadratic
+  cannot express. That is drift a projection should track either way.
+- It may be absorbing **role and context change** — a hitter moving parks,
+  moving in the order, facing a different mix of arms. Also real, also
+  something a projection wants, but it would mean "true talent drifts" is the
+  wrong words for it.
+
+## What this cost, which changes the sweep's design
+
+| arm | wall time | cells |
+| --- | --- | --- |
+| flat | 38.0s | 1,185 |
+| `ability_walk` | 66.8s | 1,185 |
+
+The walk costs **1.76x** the flat model, not the 3-4x its parameter count
+would suggest — `pt.cumsum` over a non-centered walk is cheap, and the cell
+count is unchanged because the walk adds parameters, not data.
+
+The genuinely expensive knob turned out to be one this comparison does not
+use. With `include_pitcher=True` the cell key gains ~1,000 pitcher levels and
+almost every plate appearance becomes its own cell: 93,201 cells instead of
+1,185, a 79x increase, and a fit that does not finish in an hour on this
+hardware. `scripts/run_intraseason_backtest_dense.py` already defaults to
+`include_pitcher=False`, so the published sweep and these timings are the same
+arm — but it is worth writing down, because an unlucky default here is the
+difference between a five-hour sweep and one that never lands.
+
