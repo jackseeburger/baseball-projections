@@ -1,5 +1,7 @@
 # Teaching the Bayesian arm what tuning bought Marcel
 
+Tracked as [BAS-69](https://linear.app/sigils/issue/BAS-69).
+
 **Status: pre-registered, not yet run.** Predictions below were written into the
 commit that added the model options, before any variant was fitted. Results get
 appended to this file — including the ones that go against the predictions,
