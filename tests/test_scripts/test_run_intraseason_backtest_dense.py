@@ -398,3 +398,48 @@ class TestVariantParamNamesMatchTheModel:
     def test_the_walk_and_the_age_curve_each_declare_their_own_parameters(self):
         assert "sigma_step" in dense.VARIANT_OWN_PARAMS["ability_walk"]
         assert "peak_age" in dense.VARIANT_OWN_PARAMS["constrained_age"]
+
+
+class TestDegenerateClusteredT:
+    """A clustered t backed by one cluster is missing, not enormous.
+
+    The first rendering of this table, run against a sweep that had scored a
+    single (season, cutoff) pair, printed `t(cell) = 2.3e15` beside an honest
+    `t(player) = 1.68`. With one cluster the between-cluster variance has no
+    degrees of freedom and the ratio is whatever the last rounding error was.
+    A number that reads as a statistic and is not one has to be suppressed
+    where it is computed, not hidden in the formatting.
+    """
+
+    def test_one_cluster_nans_the_t_and_se(self):
+        out = dense._suppress_degenerate_t(
+            {"diff": 0.001, "n": 300, "se": 1e-18, "t": 2.3e15, "n_clusters": 1})
+        assert out["t"] != out["t"]        # NaN
+        assert out["se"] != out["se"]
+        assert out["diff"] == 0.001        # everything else survives
+        assert out["n"] == 300
+
+    def test_two_or_more_clusters_pass_through_untouched(self):
+        original = {"diff": 0.001, "n": 300, "se": 0.0004, "t": 2.5, "n_clusters": 2}
+        assert dense._suppress_degenerate_t(original) == original
+
+    def test_a_missing_cluster_count_is_treated_as_degenerate(self):
+        out = dense._suppress_degenerate_t({"t": 5.0, "se": 0.1})
+        assert out["t"] != out["t"]
+
+    def test_the_renderer_prints_a_dash_for_a_suppressed_t(self):
+        import pandas as pd
+
+        row = {
+            "arm": "bayes_walk", "base": "marcel_tuned", "n": 338,
+            "n_cells_scored": 1, "diff": 0.00033,
+            "clustered_by_player_t": 0.39,
+            "clustered_by_cell_t": None,          # JSON round-trip turns NaN into null
+            "unclustered_t_WRONG": 0.39,
+            "unclustered_over_player_clustered_t_ratio": 1.0,
+            "arm_wins_cells": 0, "arm_loses_cells": 1,
+        }
+        text = dense.render_variant_table(pd.DataFrame([row]))
+        assert "nan" not in text.lower()
+        assert "-" in text
+        assert "bayes_walk  " in text or "bayes_walk " in text   # column not run together

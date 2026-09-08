@@ -648,6 +648,25 @@ def overall_clustered(cells: pd.DataFrame, arm: str, base: str = PAIRED_BASE,
     return {"clustered": clustered, "unclustered": unclustered}
 
 
+MIN_CLUSTERS_FOR_T = 2
+
+
+def _suppress_degenerate_t(result: dict) -> dict:
+    """NaN out a t-statistic backed by fewer than two clusters.
+
+    `paired_abs_error_diff` reports `n_clusters` alongside the SE. With one
+    cluster the clustered SE is a sum of one residual and the ratio is
+    meaningless — but finite, and often enormous, which is worse than
+    missing. Returns a copy so the caller's other numbers (diff, n) survive.
+    """
+    if result.get("n_clusters", 0) >= MIN_CLUSTERS_FOR_T:
+        return result
+    out = dict(result)
+    out["t"] = float("nan")
+    out["se"] = float("nan")
+    return out
+
+
 def variant_comparison(cells: pd.DataFrame, arm: str, base: str,
                        component: str = "k_rate") -> dict:
     """One pooled arm-vs-base comparison, reported the honest way and the
@@ -701,6 +720,17 @@ def variant_comparison(cells: pd.DataFrame, arm: str, base: str,
     wins = int((per_cell["diff"] < 0).sum())
     losses = int((per_cell["diff"] > 0).sum())
 
+    # A clustered t computed from a single cluster is not a large number, it
+    # is not a number: the between-cluster variance it divides by has no
+    # degrees of freedom left, and floating point returns whatever the last
+    # rounding error happened to be. Scoring one (season, cutoff) pair does
+    # exactly this to the by-cell clustering, and the first run of this table
+    # duly printed t = 2.3e15 next to an honest 1.68. Anything that reads as a
+    # real statistic at a glance and is not one has to be suppressed at the
+    # source, not formatted away.
+    by_cell = _suppress_degenerate_t(by_cell)
+    by_player = _suppress_degenerate_t(by_player)
+
     t_player = by_player["t"]
     ratio = (unclustered["t"] / t_player
             if np.isfinite(t_player) and t_player != 0 else float("nan"))
@@ -744,16 +774,39 @@ def render_variant_table(df: pd.DataFrame) -> str:
     one is printed only so it's visible how wrong it would be to quote."""
     if df.empty:
         return "(no variant comparisons — bayes checkpoint has no scored variants)"
-    header = (f"{'arm':<14}{'base':<14}{'n':>6}  {'diff':>9}  "
-             f"{'t(player)':>10}  {'t(cell)':>9}  {'t(none) WRONG':>14}  "
-             f"{'ratio':>6}  {'cells W-L':>10}")
+    # Widths come from the data, not from a guess: "bayes_walk_age" against
+    # "marcel_tuned" ran the two columns together in the first rendering.
+    arm_w = max([len(str(v)) for v in df["arm"]] + [len("arm")]) + 2
+    base_w = max([len(str(v)) for v in df["base"]] + [len("base")]) + 2
+
+    def num(v, width, places=2):
+        """`nan` prints as a dash. A suppressed t is missing, not zero, and a
+        table that renders it as a number invites someone to quote it.
+
+        Handles `None` as well as `nan` because this table is rendered from
+        the analysis payload after a JSON round-trip, and JSON has no NaN —
+        `to_json` writes `null` and it comes back as `None`.
+        """
+        if v is None:
+            return f"{'-':>{width}}"
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return f"{'-':>{width}}"
+        return f"{'-':>{width}}" if not np.isfinite(v) else f"{v:>{width}.{places}f}"
+
+    header = (f"{'arm':<{arm_w}}{'base':<{base_w}}{'n':>6}  {'cells':>5}  "
+             f"{'diff':>9}  {'t(player)':>10}  {'t(cell)':>9}  "
+             f"{'t(none) WRONG':>14}  {'ratio':>6}  {'W-L':>9}")
     lines = [header, "-" * len(header)]
     for _, r in df.iterrows():
         lines.append(
-            f"{r['arm']:<14}{r['base']:<14}{r['n']:>6}  {r['diff']:>+9.5f}  "
-            f"{r['clustered_by_player_t']:>10.2f}  {r['clustered_by_cell_t']:>9.2f}  "
-            f"{r['unclustered_t_WRONG']:>14.2f}  "
-            f"{r['unclustered_over_player_clustered_t_ratio']:>6.2f}  "
+            f"{r['arm']:<{arm_w}}{r['base']:<{base_w}}{r['n']:>6}  "
+            f"{r['n_cells_scored']:>5}  {r['diff']:>+9.5f}  "
+            f"{num(r['clustered_by_player_t'], 10)}  "
+            f"{num(r['clustered_by_cell_t'], 9)}  "
+            f"{num(r['unclustered_t_WRONG'], 14)}  "
+            f"{num(r['unclustered_over_player_clustered_t_ratio'], 6)}  "
             f"{r['arm_wins_cells']:>4d}-{r['arm_loses_cells']:<4d}"
         )
     return "\n".join(lines)
