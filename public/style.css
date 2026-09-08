@@ -456,6 +456,11 @@ select:focus { border-color: var(--accent); }
 }
 .badge-fresh { color: var(--green); background: rgba(52, 211, 153, 0.12); }
 .badge-stale { color: var(--orange); background: rgba(251, 191, 36, 0.14); }
+/* Distinct from fresh/stale on purpose: this is not about the *file's* age,
+   it's about whether the *engine* underneath it has cleared the gate rule
+   (docs/architecture.md §3). A gated-but-stale number and an ungated-but-
+   fresh one are different problems and need different colors. */
+.badge-ungated { color: var(--purple); background: rgba(167, 139, 250, 0.16); }
 
 .acc-tag { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em;
   padding: 1px 6px; border-radius: 8px; margin-left: 6px; font-weight: 700;
@@ -486,7 +491,7 @@ select:focus { border-color: var(--accent); }
 .ros-card h3 { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .ros-asof { font-size: 11px; color: var(--text-muted); font-weight: 500; }
 .ros-framing { color: var(--text); font-size: 13px; line-height: 1.7; margin-bottom: 12px; }
-.ros-framing .badge-fresh, .ros-framing .badge-stale { margin-right: 4px; }
+.ros-framing .badge-fresh, .ros-framing .badge-stale, .ros-framing .badge-ungated { margin-right: 4px; }
 .ros-link { color: var(--accent); text-decoration: none; white-space: nowrap; }
 .ros-link:hover { text-decoration: underline; }
 

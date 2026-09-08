@@ -22,7 +22,9 @@ Output: public/data/career_war.json with structure:
 }
 """
 import json
+import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -53,6 +55,51 @@ REPLACEMENT_PER_600 = 20.0
 # Approximate league-average rates for fallback
 HBP_RATE = 0.012
 SF_RATE = 0.008
+
+
+# ─── Provenance ───────────────────────────────────────────────────────────
+# This file is the site's only consumer of a posterior (issue #75): it
+# propagates draws from the five Bayesian component models all the way
+# through to a WAR band, rather than reading off a point estimate. Those
+# components are also the ones docs/architecture.md §3 keeps out of the odds
+# chain and out of the rest-of-season page, because they lose to tuned
+# Marcel in the harness. career_war.json has to carry that fact in the data
+# itself, not just in a doc, because the page renders this next to a gated
+# projection and a reader has no other way to tell them apart.
+ENGINE = "bayes_preseason"
+GATED = False
+FRAMING = (
+    "Career WAR bands come from the site's ungated Bayesian research "
+    "components, not from the gated rest-of-season projection shown "
+    "elsewhere on the site. They have not beaten tuned Marcel in the "
+    "harness — see Model Accuracy for the numbers."
+)
+METHOD = (
+    "2,000 Monte Carlo draws per player-year, propagated from the five "
+    "preseason Bayesian component posteriors (K%, BB%, HR/PA, ISO, BABIP — "
+    "data/projections/*_projections_2026.parquet) through the assembly "
+    "chain: rates -> counting stats -> slash line -> wOBA -> wRC+ -> oWAR. "
+    "These are the same components docs/architecture.md §3 (the gate "
+    "rule) keeps out of the odds chain: tuned Marcel fed the 2026 season "
+    "to date beat them on 11 of the 12 component-cutoff cells in the "
+    "intra-season walk-forward, by 6.3%/8.9%/11.0% of K% MAE at the "
+    "May 1/Jul 1/Aug 1 cutoffs (docs/ros-projections.md), and a densified "
+    "36-fit walk-forward refit of K% specifically loses at 35 of the 36 "
+    "(season, cutoff) cells tested across three seasons, pooled and "
+    "clustered by player t=3.11 (docs/densified-intraseason-backtest.md). "
+    "The uncertainty bands here are real; the rates underneath them are "
+    "not the site's live rest-of-season number, which is tuned Marcel — "
+    "see public/data/projections/latest.json."
+)
+
+
+def current_sha() -> str | None:
+    try:
+        p = subprocess.run(["git", "rev-parse", "HEAD"], cwd=BASE,
+                            capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):             # pragma: no cover
+        return None
+    return (p.stdout.strip() or None) if p.returncode == 0 else None
 
 
 LOGIT_STATS = {"k_rate", "bb_rate", "hr_rate", "babip"}  # logit-link components
@@ -266,6 +313,10 @@ def build_career_war():
     """Main pipeline: build career WAR with uncertainty for all players."""
     print("Loading component projections...")
     components = load_component_projections()
+    # The most recent completed season these posteriors were fit on — reported
+    # in the output's provenance so a reader can see how stale the inputs
+    # themselves are, independent of when this script last ran.
+    data_through = int(components["k_rate"]["last_season"].max())
 
     print("Loading aging curves...")
     aging = load_aging_curves()
@@ -277,11 +328,23 @@ def build_career_war():
     print("Loading FG comparison systems...")
     comparison_systems = load_fg_comparison_systems()
 
-    # Load historical hitter seasons for actual WAR
+    # Load historical hitter seasons for actual WAR. This file has no
+    # automated source in this repo: src/data/historical_pipeline.py scrapes
+    # it from FanGraphs via pybaseball, FanGraphs actively blocks that
+    # scraper from data-center IPs (confirmed 403 on leaders-legacy.aspx from
+    # this checkout), and nothing commits the result — it is gitignored on
+    # purpose because it's large, so a fresh checkout never has it. Rather
+    # than crash the whole job over an input this repo cannot reliably
+    # refetch, skip the rebuild and leave the last committed
+    # career_war.json in place, same as build_ros_projections.py and
+    # build_accuracy_json.py do when *their* inputs are unavailable — a run
+    # that produces nothing is what check_freshness.py is for.
     hs_path = DATA_DIR / "hitter_seasons.parquet"
     if not hs_path.exists():
-        print(f"❌ Missing historical data: {hs_path}")
-        sys.exit(1)
+        print(f"⚠️  Missing historical data: {hs_path}")
+        print("    Leaving the last committed public/data/career_war.json "
+              "untouched. See docs/architecture.md station A and issue #75.")
+        return None
     hs = pd.read_parquet(str(hs_path))
     print(f"Historical seasons: {len(hs)} rows")
 
@@ -489,9 +552,26 @@ def build_career_war():
     print(f"  With comparisons: {sum(1 for v in career_data.values() if v.get('comparisons'))}")
 
     # ── Save ──────────────────────────────────────────────────────────────
+    # Wrapped with provenance (issue #75): this is the only file on the site
+    # built from a posterior, and it sits next to a gated projection on the
+    # player page, so the label has to travel with the data, not just live in
+    # a doc nobody reading the JSON would see.
+    doc = {
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_by": "scripts/build_career_war.py",
+        "git_sha": current_sha(),
+        "season": 2026,
+        "data_through": data_through,
+        "engine": ENGINE,
+        "gated": GATED,
+        "n_players": n_processed,
+        "framing": FRAMING,
+        "method": METHOD,
+        "players": career_data,
+    }
     out_path = OUT_DIR / "career_war.json"
     with open(str(out_path), "w") as f:
-        json.dump(career_data, f)
+        json.dump(doc, f)
     size = out_path.stat().st_size
     print(f"Saved: {out_path} ({size/1024:.0f}KB)")
 
@@ -526,7 +606,7 @@ def build_career_war():
             print(f"  {s['year']} (age {s['age']}): "
                   f"p50={s['war_p50']} [{s['war_p10']}–{s['war_p90']}] WAR")
 
-    return career_data
+    return doc
 
 
 if __name__ == "__main__":
