@@ -1287,7 +1287,10 @@ separable from noise at any cutoff, and a dead heat at Aug 1.
 is the current season worth to this model", because it is the legacy April 10
 projection file — a different code path, no opposing-pitcher term, fit under the
 old `cutoff_year` semantics — so refit-minus-`bayes_preseason` mixes the
-withheld season together with every change since April. The clean control is
+withheld season together with every change since April. (That "different code
+path" is now identified: `modal_functions/app.py`'s inlined HSGP K% model,
+since deleted — see [modal-src-divergence.md](modal-src-divergence.md), issue
+#86.) The clean control is
 *this* estimator and *this* code fitted on 2024 + 2025 only, scored at the same
 three cutoffs (`--bayes-seasons 2024 2025`; the fit does not depend on the
 cutoff, so it is one 1,471-cell fit over 662 batters scored three times, r-hat

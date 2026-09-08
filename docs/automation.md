@@ -198,7 +198,11 @@ observed.
 work happened, not that it was correct; that is the backtest harness's job. Nor
 does anything yet age the R2 and Modal outputs of `statcast-ingest.yml` and
 `modal-refit.yml`: those two are now watched for *did it run*, but a refit that
-runs and writes a garbage posterior is still invisible. And the watchdogs are not
+runs and writes a garbage posterior is still invisible. `modal-refit.yml` had a
+sharper version of that problem until issue #86: "did it run" said nothing about
+*which model* it ran, and the production refit had quietly drifted from the one
+the harness gates — see [modal-src-divergence.md](modal-src-divergence.md). And
+the watchdogs are not
 symmetric: `schedule-watchdog.yml` watches `freshness-check.yml` like any other
 scheduled workflow, so if the age check goes quiet we hear about it — but nothing
 watches the schedule watchdog itself, since the run doing the asking is itself a
