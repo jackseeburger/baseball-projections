@@ -44,6 +44,7 @@ Usage:
 
 from __future__ import annotations
 
+import dataclasses
 import gc
 import logging
 import os
@@ -83,6 +84,56 @@ PROJECTION_YEAR = 2026
 # league-average arm and an elite one at league K% (.22 → .31), so the prior
 # puts 95% of its mass on pitcher spreads no wider than the ones we can see.
 PITCHER_SIGMA_PRIOR = 0.23
+# ═══════════════════════════════════════════════════════════════════════════════
+# Model options
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+@dataclasses.dataclass(frozen=True)
+class ModelOptions:
+    """What the model *is*, separate from how it is sampled or what it is fed.
+
+    Every field defaults to the model as it stood when this class was added, so
+    `build_model(data)` with no options is bit-for-bit the arm that has been
+    scored on the board. Each flag is one structural change, gated on its own,
+    because a variant that moves two things at once cannot say which one paid.
+
+    `ability_walk`
+        Give each batter a Gaussian random walk in season instead of one
+        time-invariant ability. The flat model reads a 2019 plate appearance
+        and a 2026 one with equal weight; Marcel does not, and the fitted
+        recency weights are most of what `marcel_tuned` bought over stock.
+        This is the model-side analogue: recency the model *learns* (through
+        the walk's step size) rather than one we fix by hand.
+
+    `constrained_age`
+        Replace the free quadratic in centered age with a peak-plus-signed-
+        slopes curve whose peak is constrained to a plausible window, the same
+        shape `src.eval.baselines.tuned_age_adjustment` fits. The free
+        quadratic can put its vertex anywhere, including outside the observed
+        age range, where "quadratic" stops meaning "aging curve".
+    """
+
+    ability_walk: bool = False
+    constrained_age: bool = False
+
+    def label(self) -> str:
+        on = [n for n in ("ability_walk", "constrained_age") if getattr(self, n)]
+        return "+".join(on) if on else "flat"
+
+    def to_dict(self) -> dict:
+        return dataclasses.asdict(self)
+
+
+DEFAULT_OPTIONS = ModelOptions()
+
+# Age-curve window for `constrained_age`, in years. The peak is a Beta drawn
+# onto this interval, so the posterior cannot place it at 19 or 40 where the
+# data thin out and the quadratic is extrapolating rather than measuring.
+# Matches the window `scripts/tune_marcel.py` searches (`age_peak_window`).
+AGE_PEAK_WINDOW = (25.0, 31.0)
+
+
 SAMPLER_KWARGS = dict(
     draws=2000,
     tune=1500,
@@ -435,7 +486,7 @@ def prepare_model_data(
 # PyMC Model
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def build_model(data: dict) -> pm.Model:
+def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     """Build the hierarchical Bayesian K-rate model.
 
     Structure (all on logit scale):
@@ -467,6 +518,13 @@ def build_model(data: dict) -> pm.Model:
     Returns:
         PyMC Model object (not yet sampled).
     """
+    options = options or DEFAULT_OPTIONS
+    unimplemented = [n for n in ("ability_walk", "constrained_age")
+                     if getattr(options, n)]
+    if unimplemented:
+        raise NotImplementedError(
+            "model option(s) not implemented yet: " + ", ".join(unimplemented))
+
     include_pitcher = bool(data.get("include_pitcher")) and data.get("n_pitchers")
     coords = {
         "batter": data["batters"],

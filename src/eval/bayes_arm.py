@@ -48,6 +48,11 @@ class BayesArmConfig:
     min_pa: int = 50
     include_pitcher: bool = True
     max_batters: int | None = None           # reduced-scale subsampling
+    # Structural variants (see src.models.pa_k_rate.ModelOptions). Defaults
+    # reproduce the arm that is on the board, so an unchanged config is the
+    # control every variant is measured against.
+    ability_walk: bool = False
+    constrained_age: bool = False
     # Sampler
     draws: int = 500
     tune: int = 500
@@ -67,10 +72,22 @@ class BayesArmConfig:
             idata_kwargs={"log_likelihood": False},
         )
 
+    def model_options(self):
+        """The structural variant this config asks for."""
+        from src.models.pa_k_rate import ModelOptions
+
+        return ModelOptions(ability_walk=self.ability_walk,
+                            constrained_age=self.constrained_age)
+
+    def variant(self) -> str:
+        """Short name for the structure — "flat" for the arm on the board."""
+        on = [n for n in ("ability_walk", "constrained_age") if getattr(self, n)]
+        return "+".join(on) if on else "flat"
+
     def label(self) -> str:
         pitch = "pitcher" if self.include_pitcher else "no-pitcher"
         return (f"{self.chains}x{self.draws} draws (tune {self.tune}), "
-                f"{self.nuts_sampler}, {pitch}"
+                f"{self.nuts_sampler}, {pitch}, {self.variant()}"
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
 
 
@@ -149,7 +166,7 @@ def fit_bayes_k_rate(
         pa, load_park_factors(), min_pa=config.min_pa,
         cutoff_date=cutoff_date, include_pitcher=config.include_pitcher,
     )
-    model = build_model(data)
+    model = build_model(data, config.model_options())
     trace = sample_model(model, **config.sampler_kwargs())
     diagnostics = model_diagnostics(trace)
 
