@@ -66,7 +66,22 @@ SF_RATE = 0.008
 # Marcel in the harness. career_war.json has to carry that fact in the data
 # itself, not just in a doc, because the page renders this next to a gated
 # projection and a reader has no other way to tell them apart.
+#
+# `ENGINE` is named for what the file is called everywhere else in the repo.
+# What actually produced it is narrower, and worse, than that name suggests.
 ENGINE = "bayes_preseason"
+ENGINE_PROVENANCE = (
+    "The five component projection files this reads were generated on "
+    "2026-04-10 by the Modal copies of the models, not by src/models/. The "
+    "two had diverged — HSGP age curve instead of a quadratic, no "
+    "opposing-pitcher term, a coarser batter-season aggregation — and "
+    "nothing detected it until the audit in docs/modal-src-divergence.md. "
+    "Worse: no code for the bb_rate or hr_rate component exists anywhere in "
+    "this repository's history, so two of the five inputs cannot be "
+    "regenerated or audited at all. Modal now imports src/ (#86), which "
+    "fixes what a future refit would run; it does not make this file "
+    "reproducible."
+)
 GATED = False
 FRAMING = (
     "Career WAR bands come from the site's ungated Bayesian research "
@@ -563,6 +578,7 @@ def build_career_war():
         "season": 2026,
         "data_through": data_through,
         "engine": ENGINE,
+        "engine_provenance": ENGINE_PROVENANCE,
         "gated": GATED,
         "n_players": n_processed,
         "framing": FRAMING,
