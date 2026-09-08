@@ -35,6 +35,13 @@ its own cell in the season random walk carrying its actual partial exposure.
 See `prepare_model_data` for exactly where the semantics match
 `src.eval.baselines.marcel` and where they cannot.
 
+**Structural variants (`ModelOptions`, docs/bayes-variants.md).** Two flags,
+pre-registered before being scored: `ability_walk` turns the fixed player
+ability into a per-batter random walk over seasons, and `constrained_age`
+replaces the quadratic age curve with a peak plus two signed slopes. Both
+default off; `build_model(data)` with no options is the model above,
+unchanged. See `build_model`'s docstring for each.
+
 Designed for Modal deployment (8GB RAM, 4 CPU, NumpyRo backend).
 
 Usage:
@@ -44,11 +51,11 @@ Usage:
 
 from __future__ import annotations
 
-import dataclasses
 import gc
 import logging
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
@@ -84,56 +91,23 @@ PROJECTION_YEAR = 2026
 # league-average arm and an elite one at league K% (.22 → .31), so the prior
 # puts 95% of its mass on pitcher spreads no wider than the ones we can see.
 PITCHER_SIGMA_PRIOR = 0.23
-# ═══════════════════════════════════════════════════════════════════════════════
-# Model options
-# ═══════════════════════════════════════════════════════════════════════════════
-
-
-@dataclasses.dataclass(frozen=True)
-class ModelOptions:
-    """What the model *is*, separate from how it is sampled or what it is fed.
-
-    Every field defaults to the model as it stood when this class was added, so
-    `build_model(data)` with no options is bit-for-bit the arm that has been
-    scored on the board. Each flag is one structural change, gated on its own,
-    because a variant that moves two things at once cannot say which one paid.
-
-    `ability_walk`
-        Give each batter a Gaussian random walk in season instead of one
-        time-invariant ability. The flat model reads a 2019 plate appearance
-        and a 2026 one with equal weight; Marcel does not, and the fitted
-        recency weights are most of what `marcel_tuned` bought over stock.
-        This is the model-side analogue: recency the model *learns* (through
-        the walk's step size) rather than one we fix by hand.
-
-    `constrained_age`
-        Replace the free quadratic in centered age with a peak-plus-signed-
-        slopes curve whose peak is constrained to a plausible window, the same
-        shape `src.eval.baselines.tuned_age_adjustment` fits. The free
-        quadratic can put its vertex anywhere, including outside the observed
-        age range, where "quadratic" stops meaning "aging curve".
-    """
-
-    ability_walk: bool = False
-    constrained_age: bool = False
-
-    def label(self) -> str:
-        on = [n for n in ("ability_walk", "constrained_age") if getattr(self, n)]
-        return "+".join(on) if on else "flat"
-
-    def to_dict(self) -> dict:
-        return dataclasses.asdict(self)
-
-
-DEFAULT_OPTIONS = ModelOptions()
-
-# Age-curve window for `constrained_age`, in years. The peak is a Beta drawn
-# onto this interval, so the posterior cannot place it at 19 or 40 where the
-# data thin out and the quadratic is extrapolating rather than measuring.
-# Matches the window `scripts/tune_marcel.py` searches (`age_peak_window`).
+# Prior scale on the season-to-season random-walk step of a batter's ability,
+# on the logit scale (`ability_walk`, see docs/bayes-variants.md). 0.15 is
+# roughly a 3-point year-over-year swing in K% at league level (d(logit)/dp
+# at p=.22 is 1/(p(1-p)) ≈ 5.8, so a 0.15 logit step ≈ 0.026 of rate) — a
+# large but observed one-season change for a real hitter, not a hypothetical
+# one. The HalfNormal puts most of its mass well below that: at sigma=0.15,
+# P(|step| > 0.15) ≈ 0.32, so a full-league-sized swing is already in the
+# tail, and a Marcel-sized one (a point or two of K%) is unremarkable.
+ABILITY_STEP_SIGMA_PRIOR = 0.15
+# Age window a constrained peak is allowed to fall in, and the reference age
+# quadratic model centers on. Matches `src.eval.tuning.AGE_PEAK_WINDOW`,
+# which is where the same constraint (peak inside 25-31, opposite-signed
+# slopes so the curve turns over instead of running as a level) was first
+# imposed on tuned Marcel's age curve; duplicated here as a constant rather
+# than imported so this module's only dependency on `src.eval` stays what it
+# already was (none) — the numbers are copied on purpose, not accidentally.
 AGE_PEAK_WINDOW = (25.0, 31.0)
-
-
 SAMPLER_KWARGS = dict(
     draws=2000,
     tune=1500,
@@ -144,6 +118,39 @@ SAMPLER_KWARGS = dict(
     random_seed=42,
     idata_kwargs={"log_likelihood": False},  # save memory
 )
+
+
+@dataclass(frozen=True)
+class ModelOptions:
+    """Structural variants of the K% model, pre-registered before being scored
+    (docs/bayes-variants.md) so a positive or negative result is not chosen
+    after seeing which one looks better.
+
+    ability_walk:    per-batter ability is a Gaussian random walk over seasons
+        instead of one fixed level (`build_model`'s "Player ability" block).
+        Answers whether a hitter's true skill drifts within a career faster
+        than the fixed-effect model can express, at the cost of one more
+        hyperparameter (`sigma_step`) to estimate from the same data.
+    constrained_age: the quadratic age curve is replaced by a peak-plus-two-
+        signed-slopes curve, the same shape `src.eval.tuning`'s constrained
+        Marcel age term uses, so a fitted peak has to actually be a peak
+        (turn over) rather than a parabola that can silently act as a level
+        correction on the whole age range.
+
+    Both default to False, which is the model exactly as it existed before
+    either variant — `build_model(data)` with no options is byte-for-byte the
+    old behaviour.
+    """
+    ability_walk: bool = False
+    constrained_age: bool = False
+
+    def label(self) -> str:
+        return (f"ability={'walk' if self.ability_walk else 'flat'}, "
+                f"age={'constrained' if self.constrained_age else 'quadratic'}")
+
+    def to_dict(self) -> dict:
+        return {"ability_walk": self.ability_walk,
+                "constrained_age": self.constrained_age}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -491,12 +498,11 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
 
     Structure (all on logit scale):
         eta = league_trend[season]
-            + player_ability[batter]
+            + player_ability[batter]                       (or [batter, season], ability_walk)
             + pitcher_ability[pitcher]        (when data carries pitchers)
             + handedness * stand_idx
             + park_effect[team]
-            + beta_age * age_centered
-            + beta_age2 * age_centered^2
+            + age_term(age)                                (quadratic, or peak+slopes, constrained_age)
             + log_pf_k  (park factor offset)
 
         k ~ Binomial(n, logistic(eta))   per cell
@@ -512,20 +518,38 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     chosen). Everything about a batter is now read net of the arms he faced,
     and projections are made at `pitcher_ability = 0`.
 
+    **`options.ability_walk`.** Replaces the single per-batter level with a
+    non-centered Gaussian random walk over the model's seasons:
+    `ability[b, 0] = mu_ability + sigma_ability * z_ability[b]`,
+    `ability[b, s] = ability[b, s-1] + sigma_step * z_step[b, s]` for `s >= 1`.
+    `sigma_step -> 0` reduces this exactly to the flat model (see
+    `ABILITY_STEP_SIGMA_PRIOR` and `tests/test_models/test_pa_k_rate_options.py`
+    for the graph-level check) — the walk is a strict generalization, not a
+    different model, so a fit that finds no season-to-season drift collapses
+    back to the flat answer rather than to something else.
+
+    **`options.constrained_age`.** Replaces the quadratic
+    `beta_age * age_c + beta_age2 * age_c^2` — which can fit a peak *or* a
+    level shift and a backtest cannot always tell the two apart — with a peak
+    age plus two signed slopes, the same family `src.eval.tuning` constrains
+    tuned Marcel's age curve to: `slope_young`/`slope_old` are HalfNormal (a
+    sign is asserted, not fit), so the curve can only turn over at
+    `peak_age`, never run monotonically across the age range as a level
+    correction. `peak_age` is a `pm.Deterministic` on `peak_frac ~ Beta(2,2)`
+    scaled into `AGE_PEAK_WINDOW`, which keeps its prior on a window instead
+    of an unconstrained real line while still letting the data place it
+    anywhere in that window with a distribution that discourages the edges.
+
     Args:
         data: Dictionary from prepare_model_data().
+        options: Structural variants (default: neither — the original model).
 
     Returns:
         PyMC Model object (not yet sampled).
     """
-    options = options or DEFAULT_OPTIONS
-    unimplemented = [n for n in ("ability_walk", "constrained_age")
-                     if getattr(options, n)]
-    if unimplemented:
-        raise NotImplementedError(
-            "model option(s) not implemented yet: " + ", ".join(unimplemented))
-
+    options = options or ModelOptions()
     include_pitcher = bool(data.get("include_pitcher")) and data.get("n_pitchers")
+    n_seasons = data["n_seasons"]
     coords = {
         "batter": data["batters"],
         "season": data["seasons"],
@@ -534,6 +558,11 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     }
     if include_pitcher:
         coords["pitcher"] = data["pitchers"]
+    if options.ability_walk:
+        # n_seasons - 1 step innovations: one per transition between
+        # consecutive seasons, not one per season. Coordinate is the season
+        # each step *arrives at*, so it lines up with `data["seasons"][1:]`.
+        coords["season_step"] = data["seasons"][1:]
 
     with pm.Model(coords=coords) as model:
         # ─── Mutable data containers (for posterior predictive) ───────────
@@ -568,11 +597,33 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
 
         # Non-centered parameterization: z ~ N(0,1), ability = mu + sigma * z
         z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
-        player_ability = pm.Deterministic(
-            "player_ability",
-            mu_ability + sigma_ability * z_ability,
-            dims="batter",
-        )
+
+        if options.ability_walk:
+            # Season-0 level is exactly the flat model's ability. Every later
+            # season adds a non-centered innovation; `pt.cumsum` builds the
+            # whole walk in one vectorized op instead of a scan, which is
+            # what makes this affordable at ~800 batters x 1500+2000 draws.
+            ability0 = mu_ability + sigma_ability * z_ability            # (batter,)
+            sigma_step = pm.HalfNormal("sigma_step", sigma=ABILITY_STEP_SIGMA_PRIOR)
+            z_step = pm.Normal("z_step", mu=0, sigma=1,
+                               dims=("batter", "season_step"))
+            steps = pt.cumsum(sigma_step * z_step, axis=1)               # (batter, n_seasons-1)
+            walk = pt.concatenate(
+                [ability0[:, None], ability0[:, None] + steps], axis=1
+            )                                                            # (batter, n_seasons)
+            # At sigma_step == 0, `steps` is identically zero and `walk` is
+            # `ability0` broadcast across every season column — the flat
+            # model, exactly, not approximately (tests/test_models/
+            # test_pa_k_rate_options.py checks this at the graph level).
+            player_ability = pm.Deterministic(
+                "player_ability", walk, dims=("batter", "season")
+            )
+        else:
+            player_ability = pm.Deterministic(
+                "player_ability",
+                mu_ability + sigma_ability * z_ability,
+                dims="batter",
+            )
 
         # ─── Opposing pitcher: partial pooling, non-centered, zero mean ───
         if include_pitcher:
@@ -596,20 +647,43 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
             dims="team",
         )
 
-        # ─── Age curve: quadratic on centered age ─────────────────────────
-        # Linear and quadratic coefficients
-        beta_age = pm.Normal("beta_age", mu=0.0, sigma=0.02)
-        beta_age2 = pm.Normal("beta_age2", mu=0.005, sigma=0.01)
-        # Positive beta_age2 → K rate increases away from peak age (U-shape)
+        # ─── Age curve ──────────────────────────────────────────────────
+        if options.constrained_age:
+            # Peak-plus-signed-slopes: the multiplier (here, additive term on
+            # the logit scale) can only turn over at `peak_age`, never run
+            # monotonically across the age range, because the slopes are
+            # HalfNormal (sign asserted, magnitude fit). Matches the sign
+            # convention `src.eval.tuning.AGE_DIRECTION["k_rate"] = -1.0`
+            # encodes for tuned Marcel's constrained curve there: K% is the
+            # component where a *bigger* number is worse, so unlike BB%/ISO/
+            # HR/BABIP its curve is a valley, not a hill — it falls as a
+            # young hitter approaches his peak and rises again after it.
+            peak_frac = pm.Beta("peak_frac", alpha=2.0, beta=2.0)
+            lo, hi = AGE_PEAK_WINDOW
+            peak_age = pm.Deterministic("peak_age", lo + (hi - lo) * peak_frac)
+            slope_young = pm.HalfNormal("slope_young", sigma=0.02)
+            slope_old = pm.HalfNormal("slope_old", sigma=0.02)
+            age = age_c + REFERENCE_AGE
+            d = age - peak_age
+            age_term = pt.where(d > 0, slope_old * d, -slope_young * d)
+        else:
+            # Quadratic on centered age.
+            beta_age = pm.Normal("beta_age", mu=0.0, sigma=0.02)
+            beta_age2 = pm.Normal("beta_age2", mu=0.005, sigma=0.01)
+            # Positive beta_age2 → K rate increases away from peak age (U-shape)
+            age_term = beta_age * age_c + beta_age2 * (age_c ** 2)
 
         # ─── Linear predictor ────────────────────────────────────────────
+        ability_term = (
+            player_ability[batter_idx, season_idx] if options.ability_walk
+            else player_ability[batter_idx]
+        )
         eta = (
             league_trend[season_idx]
-            + player_ability[batter_idx]
+            + ability_term
             + beta_hand * stand_idx
             + park_effect[team_idx]
-            + beta_age * age_c
-            + beta_age2 * (age_c ** 2)
+            + age_term
             + log_pf
         )
         if include_pitcher:
@@ -626,19 +700,32 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
             dims="cell",
         )
 
+    if options.ability_walk:
+        ability_params = (
+            data["n_batters"]                    # z_ability (season 0)
+            + data["n_batters"] * max(n_seasons - 1, 0)  # z_step
+            + 1                                   # sigma_step
+        )
+    else:
+        ability_params = data["n_batters"]        # z_ability
+
+    age_params = 3 if options.constrained_age else 2  # peak_frac/slopes, or beta_age/beta_age2
+
     n_params = (
         1                        # league_init
         + data["n_seasons"]      # league_innovations
         + 1 + 1                  # mu_ability, sigma_ability
-        + data["n_batters"]      # z_ability
+        + ability_params
         + 1                      # beta_hand
         + data["n_teams"] - 1    # park_effect (zero-sum = n-1 free)
-        + 2                      # beta_age, beta_age2
+        + age_params
         + (data["n_pitchers"] + 1 if include_pitcher else 0)  # z_pitcher, sigma
     )
     logger.info(f"Model built: ~{n_params:,} free parameters, "
                 f"{data['n_obs']:,} cells ({data.get('n_pa', 0):,} PAs)"
-                f"{', + pitcher effect' if include_pitcher else ''}")
+                f"{', + pitcher effect' if include_pitcher else ''}"
+                f"{', ability_walk' if options.ability_walk else ''}"
+                f"{', constrained_age' if options.constrained_age else ''}")
     return model
 
 
@@ -741,14 +828,44 @@ def model_diagnostics(trace: az.InferenceData) -> dict:
 # Projections
 # ═══════════════════════════════════════════════════════════════════════════════
 
+def _age_term_function(post, n_samples: int):
+    """The posterior age curve as (raw age -> array of shape (n_samples,)).
+
+    Detected from the trace's own variable names rather than a parameter a
+    caller has to thread through: `generate_projections` and
+    `bayes_arm.BayesFit.project` are handed a trace and nothing else, so the
+    curve the fit actually used has to be self-describing. `"peak_age"` only
+    exists in the trace when `build_model` was called with
+    `options.constrained_age=True`.
+    """
+    if "peak_age" in post:
+        peak_age = post["peak_age"].values.reshape(n_samples)
+        slope_young = post["slope_young"].values.reshape(n_samples)
+        slope_old = post["slope_old"].values.reshape(n_samples)
+
+        def age_term(age: float) -> np.ndarray:
+            d = age - peak_age
+            return np.where(d > 0, slope_old * d, -slope_young * d)
+
+        return age_term
+
+    beta_age = post["beta_age"].values.reshape(n_samples)
+    beta_age2 = post["beta_age2"].values.reshape(n_samples)
+
+    def age_term(age: float) -> np.ndarray:
+        age_c = age - REFERENCE_AGE
+        return beta_age * age_c + beta_age2 * (age_c ** 2)
+
+    return age_term
+
+
 def _project_unseen(
     unseen: pd.DataFrame | None,
     data: dict,
     post,
     projected_trend: np.ndarray,
     beta_hand_flat: np.ndarray,
-    beta_age_flat: np.ndarray,
-    beta_age2_flat: np.ndarray,
+    age_term_fn,
     projection_year: int,
     n_samples: int,
     already: set[int],
@@ -760,7 +877,12 @@ def _project_unseen(
     `N(mu_ability, sigma_ability)`. That is the same construction as drawing a
     fresh random effect for an unseen group, done here in numpy on the
     posterior rather than by extending the model, because nothing else about
-    the prediction needs the graph.
+    the prediction needs the graph. It is also, unchanged, the right answer
+    under `ability_walk`: `N(mu_ability, sigma_ability)` is that walk's own
+    season-0 marginal (`ability[b, 0] = mu_ability + sigma_ability * z[b]`),
+    so an unseen batter gets a draw from the same distribution a seen batter's
+    season-0 level came from — there is no later season to walk forward from,
+    since there was never a first draw for this batter at all.
 
     `unseen` is [batter, age] with an optional `stand`. Without a stand the
     handedness term is marginalized at the training set's right-handed PA
@@ -786,7 +908,9 @@ def _project_unseen(
 
         age = row.get("age", np.nan)
         age = float(age) if age is not None and np.isfinite(float(age)) else np.nan
-        age_c = 0.0 if np.isnan(age) else age - REFERENCE_AGE
+        # Unknown age: no adjustment away from the population baseline,
+        # regardless of which age curve the fit used.
+        age_term = np.zeros(n_samples) if np.isnan(age) else age_term_fn(age)
 
         stand = row.get("stand") if "stand" in unseen.columns else None
         s_term = share_r if stand not in ("L", "R") else (1.0 if stand == "R" else 0.0)
@@ -796,8 +920,7 @@ def _project_unseen(
             projected_trend
             + ability
             + beta_hand_flat * s_term
-            + beta_age_flat * age_c
-            + beta_age2_flat * (age_c ** 2)
+            + age_term
         )
         p_k = 1.0 / (1.0 + np.exp(-eta))
         rows.append({
@@ -860,21 +983,17 @@ def generate_projections(
 
     # Extract posterior arrays (chains × draws × ...)
     league_trend = post["league_trend"].values         # (chains, draws, n_seasons)
-    player_ability = post["player_ability"].values     # (chains, draws, n_batters)
-    beta_hand = post["beta_hand"].values               # (chains, draws)
-    beta_age = post["beta_age"].values                 # (chains, draws)
-    beta_age2 = post["beta_age2"].values               # (chains, draws)
+    player_ability = post["player_ability"].values     # (chains, draws, n_batters[, n_seasons])
+    beta_hand = post["beta_hand"].values                # (chains, draws)
     league_innovations = post["league_innovations"].values  # (chains, draws, n_seasons)
 
     # Flatten chains × draws → samples
     n_chains, n_draws = league_trend.shape[:2]
     n_samples = n_chains * n_draws
     league_trend_flat = league_trend.reshape(n_samples, -1)
-    player_ability_flat = player_ability.reshape(n_samples, -1)
     beta_hand_flat = beta_hand.reshape(n_samples)
-    beta_age_flat = beta_age.reshape(n_samples)
-    beta_age2_flat = beta_age2.reshape(n_samples)
     innovations_flat = league_innovations.reshape(n_samples, -1)
+    age_term_fn = _age_term_function(post, n_samples)
 
     # Extrapolate league trend: last season value + draw from innovation dist
     # Use the empirical std of innovations for the extrapolation step
@@ -886,6 +1005,28 @@ def generate_projections(
     projected_trend = last_trend.copy()
     for _ in range(years_ahead):
         projected_trend += rng.normal(0, innov_std)
+
+    # `player_ability` is (batter,) under the flat model and (batter, season)
+    # under `ability_walk`. Reduce both to one (n_samples, n_batters) array
+    # up front so every batter-indexed line below reads identically either
+    # way: the flat case is just a reshape, and the walk case reads its last
+    # fitted season and extrapolates forward exactly like the league trend
+    # above — a fresh `sigma_step` innovation per posterior sample, per year
+    # ahead. At an intra-season cutoff `years_ahead` is 0 and this is a
+    # no-op, so the loop below never runs and the level is the last node's,
+    # matching the league trend's own horizon-zero convention.
+    if "season" in post["player_ability"].dims:
+        ability_walk = player_ability.reshape(n_samples, data["n_batters"], -1)
+        player_ability_flat = ability_walk[:, :, -1].copy()   # last fitted season
+        sigma_step_flat = post["sigma_step"].values.reshape(n_samples)
+        step_rng = np.random.default_rng(43)
+        for _ in range(years_ahead):
+            player_ability_flat += step_rng.normal(
+                0.0, sigma_step_flat[:, None],
+                size=(n_samples, data["n_batters"]),
+            )
+    else:
+        player_ability_flat = player_ability.reshape(n_samples, -1)
 
     # Filter to recently active batters
     meta = data["batter_meta"]
@@ -900,7 +1041,6 @@ def generate_projections(
 
         # Projected age
         proj_age = projection_year - float(row["birth_year"])
-        age_c = proj_age - REFERENCE_AGE
 
         # Stand index
         s_idx = 1 if row["stand"] == "R" else 0
@@ -910,8 +1050,7 @@ def generate_projections(
             projected_trend
             + player_ability_flat[:, b_idx]
             + beta_hand_flat * s_idx
-            + beta_age_flat * age_c
-            + beta_age2_flat * (age_c ** 2)
+            + age_term_fn(proj_age)
             # No park effect (neutral venue) and no log_pf, and a neutral
             # opposing pitcher: pitcher_ability is zero-mean by construction,
             # so leaving it out *is* the average-arm projection.
@@ -937,7 +1076,7 @@ def generate_projections(
 
     results.extend(_project_unseen(
         unseen, data, post, projected_trend,
-        beta_hand_flat, beta_age_flat, beta_age2_flat,
+        beta_hand_flat, age_term_fn,
         projection_year, n_samples,
         already={int(r["batter"]) for r in results},
     ))
