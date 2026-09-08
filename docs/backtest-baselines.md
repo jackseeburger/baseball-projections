@@ -9,6 +9,14 @@ this bar up, and the **constrained refit of the age curve**
 ([jump](#the-age-curve-was-not-aging--a-constrained-refit-and-a-projected-league-rate)),
 which is the fit currently frozen in `src/eval/marcel_params.json`.
 
+**The intra-season section below and [the fair fight](#the-fair-fight--the-bayesian-arm-refit-at-the-cutoff-bas-59)
+each ran three cutoffs in one season (2026).** [docs/densified-intraseason-backtest.md](densified-intraseason-backtest.md)
+(BAS-63) extends both to weekly/biweekly cutoffs across three to seven
+seasons and finds the `bayes`-vs-`marcel_tuned` reversal reported there
+gets *more* consistent, not less, on more data — 35 of 36 densified cells
+favour `marcel_tuned`, clustered t = 3.11 pooled. Read that doc for the
+verdict; nothing below it was rerun.
+
 **Run:** Sept 1, 2026 · **Data:** MLB Stats API season hitting totals 2015–2026
 (`data/parquet/hitter_seasons_api.parquet`, MLBAM-keyed, rebuildable via
 `src/data/mlb_stats_api.py`) · **Method:** `scripts/run_backtest.py --sweep`,
