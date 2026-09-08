@@ -132,7 +132,15 @@ DEFAULT_VARIANTS = list(VARIANT_ARM_NAMES)
 # variants are actually implemented without touching either file.
 VARIANT_OWN_PARAMS = {
     "ability_walk": ["sigma_step"],
-    "constrained_age": ["peak", "slope_young", "slope_old"],
+    # `peak_age`, not `peak`: the model names the Deterministic that scales
+    # `peak_frac` onto AGE_PEAK_WINDOW `peak_age` (src/models/pa_k_rate.py).
+    # The mismatch cost the first sweep the single most interesting number
+    # this variant produces — where the model actually puts the K% peak,
+    # which is directly comparable to the peak `scripts/tune_marcel.py` fits
+    # for tuned Marcel — and cost it silently, because a name missing from
+    # the trace is skipped rather than raised on. The test below pins the
+    # names against the model module so the next mismatch is loud.
+    "constrained_age": ["peak_age", "slope_young", "slope_old"],
 }
 
 

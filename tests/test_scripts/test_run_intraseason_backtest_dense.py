@@ -364,3 +364,37 @@ class TestBuildAnalysisSynthetic:
         rendered = dense.render_variant_table(
             pd.DataFrame(payload["bayes_variant_comparison"]))
         assert "bayes_flat" in rendered and "bayes_walk" in rendered
+
+
+class TestVariantParamNamesMatchTheModel:
+    """`variant_param_summary` skips a name the trace does not carry, which is
+    the right behaviour at runtime and a silent failure at authoring time: the
+    first sweep recorded no peak age at all because this table said `peak` and
+    the model says `peak_age`. Pin the names against the model's own source so
+    a rename is caught here rather than discovered in an empty results column.
+
+    Reads `src/models/pa_k_rate.py` as text — the module imports pymc, which
+    CI does not install.
+    """
+
+    def _model_source(self):
+        from pathlib import Path
+        root = Path(__file__).resolve().parents[2]
+        return (root / "src" / "models" / "pa_k_rate.py").read_text()
+
+    def test_every_declared_param_is_named_in_the_model(self):
+        import re
+
+        source = self._model_source()
+        declared = {p for names in dense.VARIANT_OWN_PARAMS.values() for p in names}
+        for name in sorted(declared):
+            pattern = rf'pm\.(?:Deterministic|HalfNormal|Normal|Beta)\(\s*"{name}"'
+            assert re.search(pattern, source), (
+                f"{name!r} is in VARIANT_OWN_PARAMS but no PyMC variable of that "
+                f"name exists in src/models/pa_k_rate.py — variant_param_summary "
+                f"would silently record nothing for it"
+            )
+
+    def test_the_walk_and_the_age_curve_each_declare_their_own_parameters(self):
+        assert "sigma_step" in dense.VARIANT_OWN_PARAMS["ability_walk"]
+        assert "peak_age" in dense.VARIANT_OWN_PARAMS["constrained_age"]
