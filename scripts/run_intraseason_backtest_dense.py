@@ -58,6 +58,23 @@ Usage:
     python scripts/run_intraseason_backtest_dense.py --stage cheap
     python scripts/run_intraseason_backtest_dense.py --stage bayes
     python scripts/run_intraseason_backtest_dense.py --stage analyze
+
+**Run the bayes stage one season per process.** With four variants it does
+four MCMC fits per cutoff, and NumPyro compiles fresh XLA kernels for each
+one; the JIT's memory is never reclaimed within a process. At around 70
+compilations the run dies with `LLVM ERROR: Unable to allocate section
+memory!` — not an out-of-memory in the usual sense (15 GB was free), and not
+catchable, because LLVM aborts rather than raising. It happened at the 19th
+cell of a ~40-cell grid on 2026-09-08.
+
+    for yr in 2022 2024 2025 2026; do
+        python scripts/run_intraseason_backtest_dense.py --stage bayes \
+            --bayes-seasons $yr
+    done
+
+Each season is a fresh process and therefore a fresh JIT cache. The
+checkpoint is keyed on (season, cutoff), so this is exactly equivalent to
+one long run and a run that dies mid-grid loses only its current cell.
 """
 from __future__ import annotations
 
