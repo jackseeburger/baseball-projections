@@ -236,11 +236,44 @@ def test_career_war_just_inside_its_weekly_budget_is_ok(tmp_path):
 
 def test_career_war_missed_week_is_stale(tmp_path):
     # One dropped Monday: the gap to the next good run is 14 days (336h),
-    # well past the 216h budget.
+    # well past the 216h budget. It is still reported STALE — but while its
+    # rebuild is blocked (#87) it does not fail the job, so the exit code
+    # stays 0 and the other five artifacts keep a check that means something.
     write_tree(tmp_path, {**ALL_FRESH, "career WAR (ungated Bayesian)": 336})
     result = next(r for r in fresh.check_all(tmp_path, NOW)
                   if r.artifact.name == "career WAR (ungated Bayesian)")
     assert result.status == "STALE"
+    assert result.failed is False
+    assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 0
+
+
+def test_blocked_by_only_excuses_staleness_not_absence(tmp_path):
+    """`blocked_by` says "we cannot rebuild it", not "it may vanish".
+
+    The distinction is the whole reason it is a separate field from
+    `required`: an artifact we cannot refresh is a known, tracked limitation,
+    while an artifact whose file has disappeared is a regression that still
+    has to fail even when the rebuild is blocked.
+    """
+    art = next(a for a in fresh.ARTIFACTS if a.blocked_by)
+    assert art.required is True
+    assert fresh.Result(art, "STALE").failed is False
+    assert fresh.Result(art, "MISSING").failed is True
+    assert fresh.Result(art, "ERROR").failed is True
+    assert fresh.Result(art, "ABSENT").failed is True
+
+
+def test_a_blocked_artifact_names_the_issue_that_blocks_it():
+    """A `blocked_by` with no issue reference is an excuse, not a record."""
+    for art in fresh.ARTIFACTS:
+        if art.blocked_by:
+            assert "#" in art.blocked_by, art.name
+            assert len(art.blocked_by) > 10, art.name
+
+
+def test_staleness_that_is_not_blocked_still_fails(tmp_path):
+    """The budget logic itself is unchanged — only the blocked entry is exempt."""
+    write_tree(tmp_path, {**ALL_FRESH, "playoff odds board": 100})
     assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 1
 
 
