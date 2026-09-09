@@ -63,6 +63,13 @@ class BayesArmConfig:
     # `src.models.pa_k_rate.ModelOptions`.
     ability_walk: bool = False
     constrained_age: bool = False
+    # Layer-1 covariates (BAS-83, docs/bayes-covariates.md). `None` is off and
+    # is the arm exactly as every earlier sweep ran it; "contact" adds the six
+    # contact-quality aggregates as a per-(batter, season) block on the
+    # batter's logit rate. The monthly artifact is loaded once per fit from
+    # `src.data.contact_quality.load_monthly` unless one is handed in.
+    covariates: str | None = None
+    monthly_path: Path | None = None
     # Sampler
     draws: int = 500
     tune: int = 500
@@ -87,7 +94,8 @@ class BayesArmConfig:
         from src.models.pa_rate import ModelOptions
 
         return ModelOptions(ability_walk=self.ability_walk,
-                            constrained_age=self.constrained_age)
+                            constrained_age=self.constrained_age,
+                            covariates=self.covariates)
 
     def rate_component(self):
         """The `RateComponent` this arm fits, validated. Raises for a
@@ -109,15 +117,21 @@ class BayesArmConfig:
         the empty set is "flat" rather than "" so no row is ever unlabelled.
         """
         on = [n for n in ("ability_walk", "constrained_age") if getattr(self, n)]
-        return "+".join(on) if on else "flat"
+        slug = "+".join(on) if on else "flat"
+        # The covariate block is a *suffix*, not another flag in the join, so
+        # "flat" stays "flat" and "ability_walk" stays "ability_walk" —
+        # every variant name already on the board keeps meaning what it did,
+        # and the covariate arms read as the same structure plus a covariate.
+        return f"{slug}+{self.covariates}" if self.covariates else slug
 
     def label(self) -> str:
         pitch = "pitcher" if self.include_pitcher else "no-pitcher"
         ability = "ability=walk" if self.ability_walk else "ability=flat"
         age = "age=constrained" if self.constrained_age else "age=quadratic"
+        cov = f", covariates={self.covariates}" if self.covariates else ""
         return (f"{self.component}, "
                 f"{self.chains}x{self.draws} draws (tune {self.tune}), "
-                f"{self.nuts_sampler}, {pitch}, {ability}, {age}"
+                f"{self.nuts_sampler}, {pitch}, {ability}, {age}{cov}"
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
 
 
@@ -208,6 +222,13 @@ def fit_bayes_k_rate(
         cutoff_date=cutoff_date, include_pitcher=config.include_pitcher,
         component=comp,
     )
+    if config.covariates:
+        from src.data.contact_quality import load_monthly
+        from src.models.pa_covariates import attach_covariates
+
+        monthly = load_monthly(config.monthly_path) if config.monthly_path \
+            else load_monthly()
+        attach_covariates(data, config.covariates, monthly, cutoff_date)
     model = build_model(data, config.model_options())
     trace = sample_model(model, **config.sampler_kwargs())
     diagnostics = model_diagnostics(trace)
@@ -226,6 +247,7 @@ def fit_bayes_k_rate(
         data_summary={
             **exposure,
             "component": comp.name,
+            "covariates": list(data.get("cov_names", ())) or None,
             "league_init_mu": float(data["league_init_mu"]),
             "n_cells": int(data["n_obs"]),
             "n_pa": int(data["n_pa"]),

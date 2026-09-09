@@ -40,6 +40,8 @@ dense = _load()
 from src.eval.backtest import COMPONENTS  # noqa: E402
 from src.eval.bayes_arm import BayesArmConfig, BayesFit  # noqa: E402
 
+CONTACT_ARM_NAME = dense.CONTACT_ARM
+
 
 # --- variant <-> config round trip -------------------------------------------
 
@@ -308,8 +310,11 @@ class TestVariantComparisonTable:
         assert not table.empty
         assert set(table["arm"]) == {"bayes_flat", "bayes_walk"}
         # bayes_flat/bayes_walk vs {marcel_tuned, marcel}, plus bayes_walk vs
-        # bayes_flat — bayes_flat vs bayes_flat is correctly excluded.
-        assert len(table) == 2 * 2 + 1
+        # bayes_flat and bayes_flat vs bayes_walk — an arm against itself is
+        # correctly excluded, and `contact_additive` (a base since BAS-83) is
+        # absent from this synthetic frame, so it contributes no rows.
+        assert len(table) == 2 * 2 + 2
+        assert CONTACT_ARM_NAME not in set(table["base"])
 
         row = table[(table["arm"] == "bayes_flat") & (table["base"] == "marcel_tuned")].iloc[0]
         assert row["diff"] > 0  # bayes_flat really is worse, by construction
@@ -391,6 +396,21 @@ class TestVariantParamNamesMatchTheModel:
         source = self._model_source()
         declared = {p for names in dense.VARIANT_OWN_PARAMS.values() for p in names}
         for name in sorted(declared):
+            # The covariate coefficients are declared in a loop over the
+            # aggregate names, so their literal is an f-string prefix rather
+            # than a whole name; matching the prefix plus checking the
+            # aggregate is one this model knows is the same guarantee.
+            if name.startswith("beta_cov_"):
+                from src.models.pa_covariates import CONTACT_COVARIATES
+
+                assert re.search(r'pm\.Normal\(f"beta_cov_\{name\}"', source), (
+                    "src/models/pa_rate.py no longer declares beta_cov_<aggregate>"
+                )
+                assert name[len("beta_cov_"):] in CONTACT_COVARIATES, (
+                    f"{name!r} is in VARIANT_OWN_PARAMS but names no aggregate "
+                    f"in src.models.pa_covariates.CONTACT_COVARIATES"
+                )
+                continue
             pattern = rf'pm\.(?:Deterministic|HalfNormal|Normal|Beta)\(\s*"{name}"'
             assert re.search(pattern, source), (
                 f"{name!r} is in VARIANT_OWN_PARAMS but no PyMC variable of that "
@@ -401,6 +421,7 @@ class TestVariantParamNamesMatchTheModel:
     def test_the_walk_and_the_age_curve_each_declare_their_own_parameters(self):
         assert "sigma_step" in dense.VARIANT_OWN_PARAMS["ability_walk"]
         assert "peak_age" in dense.VARIANT_OWN_PARAMS["constrained_age"]
+        assert "beta_cov_barrel" in dense.VARIANT_OWN_PARAMS["contact"]
 
 
 class TestDegenerateClusteredT:

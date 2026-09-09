@@ -180,21 +180,41 @@ class ModelOptions:
         Marcel age term uses, so a fitted peak has to actually be a peak
         (turn over) rather than a parabola that can silently act as a level
         correction on the whole age range.
+    covariates:      per-(batter, season) layer-1 covariates entering the
+        batter's logit rate on top of the ability term, as
+        `sum_j beta_cov_j * x[batter, season, j]` with each
+        `beta_cov_<aggregate> ~ Normal(0, BETA_COV_SIGMA)`. `None` is off and
+        is bit-for-bit the model above; `"contact"` selects the six
+        contact-quality aggregates (`src.models.pa_covariates`), and an
+        explicit tuple of aggregate names selects a subset. The design matrix
+        is *not* built here — `pa_covariates.attach_covariates` puts it on the
+        data dict — so with covariates off nothing about the data pipeline
+        changes either. See docs/bayes-covariates.md.
 
-    Both default to False, which is the model exactly as it existed before
-    either variant — `build_model(data)` with no options is byte-for-byte the
-    old behaviour.
+    Both flags default to False and `covariates` to None, which is the model
+    exactly as it existed before any variant — `build_model(data)` with no
+    options is byte-for-byte the old behaviour.
     """
     ability_walk: bool = False
     constrained_age: bool = False
+    covariates: tuple[str, ...] | str | None = None
+
+    def covariate_names(self) -> tuple[str, ...]:
+        """The aggregates `covariates` selects, resolved and validated."""
+        from src.models.pa_covariates import covariate_names
+
+        return covariate_names(self.covariates)
 
     def label(self) -> str:
+        cov = self.covariate_names()
         return (f"ability={'walk' if self.ability_walk else 'flat'}, "
-                f"age={'constrained' if self.constrained_age else 'quadratic'}")
+                f"age={'constrained' if self.constrained_age else 'quadratic'}"
+                + (f", covariates={'+'.join(cov)}" if cov else ""))
 
     def to_dict(self) -> dict:
         return {"ability_walk": self.ability_walk,
-                "constrained_age": self.constrained_age}
+                "constrained_age": self.constrained_age,
+                "covariates": list(self.covariate_names()) or None}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -629,6 +649,17 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     of an unconstrained real line while still letting the data place it
     anywhere in that window with a distribution that discourages the edges.
 
+    **`options.covariates` (BAS-83, docs/bayes-covariates.md).** Adds
+    `sum_j beta_cov_j * x[batter, season, j]` to the batter's own term, where
+    `x` is `data["cov_x"]` — standardized layer-1 aggregates per (batter,
+    season), built by `src.models.pa_covariates.attach_covariates` and summed
+    strictly before the cutoff with the same month lag the served engine uses.
+    Each coefficient is its own scalar RV named `beta_cov_<aggregate>` with a
+    `Normal(0, 0.5)` prior. With `covariates=None` — the default — not one
+    line of this block runs, no `cov_x` container is created, and the graph is
+    the model above unchanged; `tests/test_models/test_pa_rate.py` pins that
+    bit-for-bit.
+
     Args:
         data: Dictionary from prepare_model_data().
         options: Structural variants (default: neither — the original model).
@@ -637,6 +668,26 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
         PyMC Model object (not yet sampled).
     """
     options = options or ModelOptions()
+    from src.models.pa_covariates import BETA_COV_SIGMA
+
+    cov_names = options.covariate_names()
+    if cov_names:
+        if data.get("cov_x") is None:
+            raise KeyError(
+                "options.covariates asks for "
+                f"{list(cov_names)} but this model data carries no 'cov_x' — "
+                "call src.models.pa_covariates.attach_covariates(data, ...) "
+                "after prepare_model_data")
+        if tuple(data.get("cov_names", ())) != tuple(cov_names):
+            raise ValueError(
+                f"model data carries covariates {list(data.get('cov_names', ()))} "
+                f"but the options ask for {list(cov_names)} — the design "
+                "matrix and the coefficients would name different things")
+        expected = (data["n_batters"], data["n_seasons"], len(cov_names))
+        if np.shape(data["cov_x"]) != expected:
+            raise ValueError(
+                f"cov_x has shape {np.shape(data['cov_x'])}, expected {expected} "
+                "(batter, season, covariate)")
     comp = get_component(data.get("component"))
     league_init_mu = float(data.get("league_init_mu", comp.league_init_mu
                                     if comp.league_init_mu is not None else -1.27))
@@ -650,6 +701,8 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     }
     if include_pitcher:
         coords["pitcher"] = data["pitchers"]
+    if cov_names:
+        coords["covariate"] = list(cov_names)
     if options.ability_walk:
         # n_seasons - 1 step innovations: one per transition between
         # consecutive seasons, not one per season. Coordinate is the season
@@ -785,11 +838,38 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
                                   mu=-0.005 * comp.age_direction, sigma=0.01)
             age_term = beta_age * age_c + beta_age2 * (age_c ** 2)
 
+        # ─── Layer-1 covariates (BAS-83) ──────────────────────────────────
+        # One scalar coefficient per aggregate, named `beta_cov_<aggregate>`
+        # rather than a single vector RV: the vacuity check in
+        # docs/bayes-covariates.md is about *one* aggregate's posterior at a
+        # time (barrel rate on HR/PA, average EV on K%), and a named scalar
+        # is what `variant_param_summary` in the dense sweep can pick up
+        # without knowing the vector's coordinate order.
+        cov_term = None
+        if cov_names:
+            cov_x = pm.Data("cov_x", np.asarray(data["cov_x"], dtype="float64"),
+                            dims=("batter", "season", "covariate"))
+            betas = [
+                pm.Normal(f"beta_cov_{name}", mu=0.0, sigma=BETA_COV_SIGMA)
+                for name in cov_names
+            ]
+            beta_vec = pt.stack(betas)                       # (covariate,)
+            # (batter, season): the covariate contribution to every batter's
+            # logit rate in every season, indexed by the cell's own
+            # (batter, season) exactly as the ability walk is.
+            cov_effect = pm.Deterministic(
+                "cov_effect", (cov_x * beta_vec).sum(axis=-1),
+                dims=("batter", "season"),
+            )
+            cov_term = cov_effect[batter_idx, season_idx]
+
         # ─── Linear predictor ────────────────────────────────────────────
         ability_term = (
             player_ability[batter_idx, season_idx] if options.ability_walk
             else player_ability[batter_idx]
         )
+        if cov_term is not None:
+            ability_term = ability_term + cov_term
         eta = (
             league_trend[season_idx]
             + ability_term
@@ -831,13 +911,15 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
         + 1                      # beta_hand
         + data["n_teams"] - 1    # park_effect (zero-sum = n-1 free)
         + age_params
+        + len(cov_names)         # beta_cov_<aggregate>, one scalar each
         + (data["n_pitchers"] + 1 if include_pitcher else 0)  # z_pitcher, sigma
     )
     logger.info(f"Model built [{comp.name}]: ~{n_params:,} free parameters, "
                 f"{data['n_obs']:,} cells ({data.get('n_pa', 0):,} PAs)"
                 f"{', + pitcher effect' if include_pitcher else ''}"
                 f"{', ability_walk' if options.ability_walk else ''}"
-                f"{', constrained_age' if options.constrained_age else ''}")
+                f"{', constrained_age' if options.constrained_age else ''}"
+                f"{', covariates=' + '+'.join(cov_names) if cov_names else ''}")
     return model
 
 
@@ -1007,6 +1089,12 @@ def _project_unseen(
     season-0 level came from — there is no later season to walk forward from,
     since there was never a first draw for this batter at all.
 
+    Under `options.covariates` an unseen batter carries no covariate term at
+    all, which is the same thing a seen batter with no pre-cutoff batted ball
+    carries: `x = 0`, the league mean after standardization
+    (`src.models.pa_covariates`, and the module docstring there for why no
+    `has_cov` indicator joins it).
+
     `unseen` is [batter, age] with an optional `stand`. Without a stand the
     handedness term is marginalized at the training set's right-handed PA
     share — the honest answer when we have not seen the player bat, and the
@@ -1164,6 +1252,19 @@ def generate_projections(
     else:
         player_ability_flat = player_ability.reshape(n_samples, -1)
 
+    # ─── Layer-1 covariates (BAS-83) ─────────────────────────────────────
+    # `cov_effect` is (batter, season) per draw; a projection reads the LAST
+    # fitted season, which at an intra-season cutoff is the partial season
+    # the covariates were summed up to — the same horizon-zero convention the
+    # league trend and the ability walk use above. There is no forward model
+    # for a batter's future contact quality, so a projection more than zero
+    # years ahead carries his last observed season's covariates unchanged;
+    # every cell this ticket scores is horizon zero, where that is exact.
+    cov_effect_flat = None
+    if "cov_effect" in post:
+        cov_effect = post["cov_effect"].values
+        cov_effect_flat = cov_effect.reshape(n_samples, data["n_batters"], -1)[:, :, -1]
+
     # Filter to recently active batters
     meta = data["batter_meta"]
     cutoff_year = int(data["seasons"][-1]) - recent_seasons + 1
@@ -1191,6 +1292,8 @@ def generate_projections(
             # opposing pitcher: pitcher_ability is zero-mean by construction,
             # so leaving it out *is* the average-arm projection.
         )
+        if cov_effect_flat is not None:
+            eta = eta + cov_effect_flat[:, b_idx]
 
         # Convert to probability
         p = 1.0 / (1.0 + np.exp(-eta))
