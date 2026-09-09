@@ -252,7 +252,7 @@ stamped `structural` for its first day of life, which was an honest label for
 
 | Half | What it is | Gated? |
 |---|---|---|
-| the **rates** | `marcel_pitcher_tuned` fed the harness's own training frame at the cutoff — K%, BB%, HR/BF, BABIP against. `pitcher_engine` names it. | **yes** — each beat league average, the previous season *and* season to date out of sample on five cells ([backtest-baselines.md](backtest-baselines.md#the-pitcher-side-of-station-a--sept-3-2026)) |
+| the **rates** | `marcel_pitcher_tuned` fed the harness's own training frame at the cutoff — K%, BB%, HR/BF, BABIP against. Since 2026-09-09 (BAS-79) `pitcher_engine` is a per-component map: `stuff_additive` on BB/BF and HR/BF, `marcel_pitcher_tuned` on K/BF and BABIP; `stuff_features_through` is the last day the monthly stuff buckets cover, up to a month behind the as-of date by construction. | **yes** — each beat league average, the previous season *and* season to date out of sample on five cells ([backtest-baselines.md](backtest-baselines.md#the-pitcher-side-of-station-a--sept-3-2026)) |
 | the **batters faced** | a projected workload. `batters_faced_method` reads `"recent_usage"`. | **yes, since Sept 3, 2026** — MAE 45.6 batters faced against 51.1 for a season-to-date rate extrapolation, 50.4 for a trailing-30-day one, 67.6 for last season prorated and 93.3 for no model at all, on 22,807 pitcher-projections at 26 walk-forward as-of dates over 2024-2026; paired −5.6 (t −16.7), −4.9 (−12.1), −22.1 (−19.8), −47.7 (−19.9) ([pitcher-workload.md](pitcher-workload.md)) |
 
 The rates are the same estimator the hitter side runs, with pitcher constants;
@@ -340,7 +340,7 @@ Document level: `as_of`, `through`, `n_hitters`, `engine`,
 `playing_time_method`, `method`, `framing`, `stale`, `stale_reason`, the arm
 labels the page renders, and the wOBA weights, so the file says which wOBA it
 means rather than the page assuming. The pitcher block adds `n_pitchers`,
-`pitcher_engine`, `batters_faced_method`, `pitcher_method`, `pitcher_arms`
+`pitcher_engine` (per component), `stuff_features_through`, `batters_faced_method`, `pitcher_method`, `pitcher_arms`
 and `pitcher_components` — all additive, all prefixed, so a reader that has
 never heard of pitchers still finds everything it looks for.
 

@@ -231,3 +231,62 @@ clustering:
 
 Vacuity: if the additive K/BF gain is under 1% the serving arm is not worth
 the moving parts; report it and leave the pitcher side on Marcel.
+
+### Served (2026-09-09) — scoring the serving pre-registration
+
+The additive arm was scored on the same cells before anything was wired:
+4,954 pitcher-cells over 2022–2026 × May/Jul/Aug, 955 pitchers, SE
+clustered by pitcher (BAS-71's committed cells in parentheses; the
+difference is a PA rebuild picking up games since that run). Evidence:
+`data/eval/pitching_stuff_serving.json`.
+
+| Component | Δ MAE vs `marcel_pitcher_tuned` | % | t | covariate-only share (vs `stuff_additive_recal`) |
+| --- | --- | --- | --- | --- |
+| K/BF | −.000715 | −2.26% (−2.18%) | **−2.50** (−2.38) | −3.06% (t −3.73) |
+| BB/BF | −.000547 | −3.05% (−3.24%) | −5.86 | −0.87% (t −2.41) |
+| (BB+HBP)/BF | −.000516 | −2.67% (−2.78%) | −5.25 | −0.64% (t −1.86) |
+| HR/BF | −.000280 | −2.77% (−2.93%) | −3.70 | −2.21% (t −3.50) |
+
+By the rule written down above, **`p_bb_rate` and `p_hr_rate` are served
+as `stuff_additive` and `p_k_rate` is withheld** — it misses the |t| > 2.5
+bar, at 2.50 (2.4989) here and 2.38 on the cells the Results table is
+stated for. `p_babip` was never scored. `(BB+HBP)/BF` clears but is
+station E's rate, not a served pitcher column.
+
+**Prediction 1 fails, on significance only.** K/BF lands inside the
+1.5–3.0% band and keeps 69% of the free fit's −3.27%, inside the predicted
+60–90% share; pinning the baseline does not shrink the standard error
+along with the coefficient.
+
+**Prediction 2 holds and overshoots its own ceiling.** HR/BF is −2.77%
+against a predicted 1.5–2.5%, and the additive arm is *better* than the
+free fit (−2.37%): pinning the baseline cost nothing there.
+
+**Prediction 3 fails.** Both walk rates were predicted not to clear; both
+clear at |t| > 5, so under the rule they are served. A new control,
+`stuff_additive_recal` — the same shape with no covariate, baseline plus a
+fitted intercept — says what to make of that: of BB/BF's −3.05%, −2.20% is
+the intercept and only −0.87% (t −2.41) is stuff; for (BB+HBP)/BF it is
+−2.04% against −0.64% (t −1.86, not significant). What the walk rates ship
+is mostly a level correction to the pitcher Marcel wearing the stuff
+engine's name — contact-quality §4's trap one step further in. K/BF is the
+exact opposite: its recalibration control is *worse* than the baseline
+(+0.83%) and all of its −3.06% is covariate. That is the uncomfortable
+shape of this result: the component where the measurement does the work is
+the one held back, and the components served are the ones where it mostly
+does not. The rule is applied as written; changing it after seeing this
+table is exactly what the gate forbids. Two follow-ups are filed instead
+(BAS-80): a pitcher-Marcel calibration ticket for the intercept the walk
+rates want, and a pre-registered *covariate-share* condition for future
+serving decisions.
+
+**Prediction 4 holds as written.** Features are read at the last month
+boundary on or before the as-of date (`pitcher_ros.stuff_cutoff`; the
+served document stamps `stuff_features_through`, 2026-08-31 on the
+2026-09-09 build), the fit uses seasons strictly before the predict year,
+and a component whose fit cannot be built falls back to
+`marcel_pitcher_tuned` for that build alone — the document records the
+engine that ran, not the one intended.
+
+Vacuity: the additive K/BF gain is 2.26%, above the 1% floor; it is the
+significance, not the size, that withholds it.

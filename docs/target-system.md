@@ -178,14 +178,15 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
-| K/BF | NOT STARTED — BAS-74 | stuff — **GATED** (−3.2%, t −3.4; BAS-71), serving: BAS-79 |
-| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — gated but mostly recalibration (BAS-71); command / location — NOT STARTED, BAS-76 |
-| HR/BF | NOT STARTED — BAS-74 | stuff — **GATED** (−2.5%, all covariate; BAS-71); contact-quality-allowed — gated, *information* |
+| K/BF | NOT STARTED — BAS-74 | stuff — gated (−3.2%, t −3.4; BAS-71); additive arm **withheld** at t 2.50 vs the 2.5 bar (BAS-79) |
+| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — **SERVED** on BB/BF (`stuff_additive`, BAS-79), mostly a level correction (BAS-80); command / location — NOT STARTED, BAS-76 |
+| HR/BF | NOT STARTED — BAS-74 | stuff — **SERVED** (`stuff_additive`, −2.8%, all covariate; BAS-79); contact-quality-allowed — gated, *information* |
 | BABIP against | NOT STARTED — BAS-74 | contact-quality-allowed — gated |
 
 `marcel_tuned` + `contact_additive` serves the five hitter components;
-`marcel_pitcher_tuned` serves every pitcher component. Both Marcels stay the
-baseline every model above must beat.
+`marcel_pitcher_tuned` serves K/BF and BABIP against, and
+`marcel_pitcher_tuned` + `stuff_additive` serves BB/BF and HR/BF. Both
+Marcels stay the baseline every model above must beat.
 
 **Defence** — framing cancelled; public pitch data carries no fielder
 tracking. This track stays thin until a public source exists.
