@@ -308,8 +308,11 @@ class TestVariantComparisonTable:
         assert not table.empty
         assert set(table["arm"]) == {"bayes_flat", "bayes_walk"}
         # bayes_flat/bayes_walk vs {marcel_tuned, marcel}, plus bayes_walk vs
-        # bayes_flat — bayes_flat vs bayes_flat is correctly excluded.
-        assert len(table) == 2 * 2 + 1
+        # bayes_flat and bayes_flat vs bayes_walk — an arm against itself is
+        # correctly excluded, and `contact_additive` (a base since BAS-83) is
+        # absent from this synthetic frame, so it contributes no rows.
+        assert len(table) == 2 * 2 + 2
+        assert dense.CONTACT_ARM not in set(table["base"])
 
         row = table[(table["arm"] == "bayes_flat") & (table["base"] == "marcel_tuned")].iloc[0]
         assert row["diff"] > 0  # bayes_flat really is worse, by construction
