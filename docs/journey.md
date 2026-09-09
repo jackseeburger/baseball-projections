@@ -1,0 +1,73 @@
+# Where we are on the way to the north star
+
+**2026-09-09.** A dated snapshot, layer by layer, against
+[architecture.md](architecture.md). Updated when a layer's status moves;
+the model-by-model inventory is [target-system.md §2c](target-system.md).
+
+## The north star
+
+Build, from public data, what a team's R&D group builds: measure the
+pitch → estimate true talent with hierarchical pooling → project playing
+time → aggregate to games and seasons → price against the market. Truth
+first, the market is the bar, money is the exam.
+
+## Where each layer stands
+
+**Layer 1 — measurement (pitch grain).** Substantially built.
+- Hitting: contact quality (Statcast EV/LA) is **served** on all five
+  components (BAS-72). Swing decisions were built and measured and turned
+  out to be the same signal as contact quality on K%; not served (BAS-81).
+- Pitching: stuff (velocity, movement, spin → whiff) is **served** on
+  BB/BF and HR/BF; K/BF withheld by 0.001 of a t (BAS-79). Command /
+  location is in flight (BAS-76) — the third of the pitch-level signal
+  stuff cannot use, and the walk measurement pitchers lack.
+- Defence has no public tracking; that track stays thin.
+
+**Layer 2 — true talent (hierarchical Bayes).** The contested layer.
+Tuned Marcel serves today. The Bayes K% model draws with it on outcomes
+alone (BAS-69) and has not yet been fought *with* the measurements inside
+it — that fight is BAS-83, in flight. The BB%/HR% grid (BAS-73) scores
+whether HR/PA's Bayes arm beats Marcel outright. The pitcher-side
+hierarchical model (BAS-74) is next, with stuff as a covariate from day
+one.
+
+**Layer 3 — playing time.** Served: rest-of-season PA with the horizon
+blend, IL and option return probabilities, the lineup-slot cap.
+
+**Layers 4–6 — game and season arithmetic.** Served: starter, lineup,
+bullpen-fatigue, park and defence terms in the nightly playoff odds; the
+season sim with the postseason bracket. The per-game win model does not
+beat the market (Brier .246 vs the market's .242) — the market is a real
+bar here.
+
+**Layer 7 — decision / market.** Built and forward-testing. Props priced
+from layer 2 through the lineup/starter sim; the Kalshi/Polymarket archive
+nightly; the money exam says taker fees eat the props edge and moneylines
+lose; the Stage 0 paper ledger is live under Amendment 1
+([bankroll.md](bankroll.md)) and needs 21 game-days and 1,000 settled
+tickets before Stage 1 can be evaluated. Nothing suggests real money yet.
+
+## Discipline in place
+
+Pre-register → run → score against the doc → publish negatives → serve
+only what beats the served engine, and (from BAS-82) only when the
+covariate earns ≥ 1.0% of MAE on its own. Every model decision from
+2026-09-09 is on the record.
+
+## The plan from here, in order
+
+1. **BAS-73 grid and BAS-83** — decide whether the hierarchical model,
+   fed the measurements, is the layer-2 engine. HR/PA is the likeliest
+   first win.
+2. **BAS-76 command**, then **BAS-74**, the pitcher hierarchical model with
+   stuff and command inside it.
+3. **ISO and BABIP** hierarchical models (their own denominators), after 1.
+4. **Per-game win probability** — the largest unclosed gap to the market;
+   the Bayes talent posteriors feeding the sim is the untested lever.
+5. **Money** — let the ledger accumulate. Hits props were the one
+   after-fee positive and stay the primary test. The Stage 1 gate decides.
+
+The honest summary: the measurement layer is real and serving; the talent
+layer is the open question and this week's work puts the hierarchical
+models in the fight they were designed for; the market layer is
+instrumented and says we are not there yet.
