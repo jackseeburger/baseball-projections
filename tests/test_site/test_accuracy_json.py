@@ -215,13 +215,14 @@ def test_ros_section_ranks_the_live_arm_ahead_of_our_preseason_model(doc):
 def test_ros_section_scores_the_arm_the_site_serves(doc):
     """This table only scores Marcel-family arms, so it marks the Marcel arm
     the site's contact engine is itself built on (BAS-72: every hitter
-    component's `LIVE_ENGINE` is `contact`, and `contact_provider`'s base is
-    `marcel_tuned`) — whether `contact` reaches the board per component is the
+    component's `LIVE_ENGINE` is `contact_additive`, and its base is
+    `marcel_tuned`, untouched — docs/contact-quality.md §8) — whether
+    `contact_additive` reaches the board per component is the
     `contact_quality` section's `is_production`, not this table's."""
     from src.projections import ros
 
     section = doc["sections"]["ros_backtest"]
-    assert set(ros.LIVE_ENGINE.values()) == {"contact"}
+    assert set(ros.LIVE_ENGINE.values()) == {"contact_additive"}
     assert section["live_arm"] == "marcel_tuned"
     models = {r["model"] for r in section["rows"]}
     assert {"marcel_tuned", "marcel"} <= models
@@ -456,26 +457,27 @@ def test_contact_quality_shows_contact_vs_marcel_tuned(doc):
 
 
 def test_contact_quality_marks_the_wired_hitter_components_as_live(doc):
-    """BAS-72: `contact` cleared the gate on all five hitter components and
-    LIVE_ENGINE is wired to it, so the row now claims exactly the hitter
-    columns it actually serves — and nothing on the pitcher side, where the
-    gain was pure recalibration or (K%) no gain at all."""
+    """BAS-72: `contact_additive` (docs/contact-quality.md §8 -- the baseline
+    pinned at 1) is what LIVE_ENGINE is wired to on all five hitter
+    components, so that row -- not the free-fit `contact` row -- claims
+    exactly the hitter columns it actually serves, and nothing on the pitcher
+    side, where the gain was pure recalibration or (K%) no gain at all."""
     from src.projections import ros
 
     section = doc["sections"]["contact_quality"]
     by_model = {r["model"]: r for r in section["rows"]}
-    contact = by_model["contact"]
-    assert contact["is_production"] is True
+    additive = by_model["contact_additive"]
+    assert additive["is_production"] is True
     hitter_components = set(ros.LIVE_ENGINE)
-    served = {c.split(":", 1)[1] for c in contact["production_components"]
+    served = {c.split(":", 1)[1] for c in additive["production_components"]
              if c.startswith("hitter:")}
     assert served == hitter_components
     assert not any(c.startswith("pitcher:")
-                  for c in contact["production_components"])
-    # Every other row -- the baseline, the recalibration control, the losing
-    # HSGP surface -- must not claim to be live.
+                  for c in additive["production_components"])
+    # Every other row -- the baseline, the free fit, the recalibration
+    # control, the losing HSGP surface -- must not claim to be live.
     for model, row in by_model.items():
-        if model != "contact":
+        if model != "contact_additive":
             assert row["is_production"] is False, model
 
 
@@ -504,6 +506,8 @@ def test_contact_quality_states_it_is_wired_and_the_lag_it_carries(doc):
     assert "wired to the served board" in section["framing"]
     assert "lag the as-of date by up to a month" in section["framing"]
     assert "contact_features_through" in section["framing"]
+    assert "contact_additive" in section["framing"]
+    assert "is the shape actually served" in section["framing"]
 
 
 def test_contact_quality_states_the_hsgp_surface_lost(doc):

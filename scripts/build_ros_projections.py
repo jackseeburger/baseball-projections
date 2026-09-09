@@ -498,8 +498,8 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
         names = load_names()
         playing_time, teams = build_playing_time(as_of, refresh=refresh)
         # The contact engine (BAS-72) is optional at this call site: a
-        # component whose LIVE_ENGINE is "contact" but sees `None` here falls
-        # back to marcel_tuned for that build alone (`ros.engine_providers`),
+        # component whose LIVE_ENGINE is "contact_additive" but sees `None`
+        # here falls back to marcel_tuned for that build alone (`ros.engine_providers`),
         # rather than the whole hitter block going stale over a missing file
         # that is committed to the repo and only ever absent in a stripped
         # checkout.

@@ -94,17 +94,27 @@ MARCEL_ARMS = {"marcel": "marcel", "marcel_preseason": "marcel_preseason"}
 # BAS-72 re-ran the contact-quality gate (docs/contact-quality.md §4) on the
 # committed harness and it clears on all five hitter components (−1.6% to
 # −4.8% of MAE, clustered |t| 2.55-4.68), so every component here reads
-# "contact" rather than "marcel_tuned". A component that stopped clearing
-# would fall back to "marcel_tuned" on its own — the gate rule
+# "contact_additive" rather than "marcel_tuned". A component that stopped
+# clearing would fall back to "marcel_tuned" on its own — the gate rule
 # (architecture.md §3) is enforced per component, because the harness scores
 # it per component.
+#
+# The shape shipped is `contact_additive`, not the free-fit `contact` arm the
+# gate table above is stated for: docs/contact-quality.md §8 made that call on
+# the record before this was wired — the baseline's coefficient is pinned at
+# exactly 1 and contact quality is a pure correction on top of `marcel_tuned`,
+# rather than a fit that also rescales the baseline. `contact_additive` clears
+# the same gate (see `contact.fit_live_contact`'s docstring for its own
+# numbers) and gives up roughly a third of the free fit's gain in exchange for
+# not smuggling in a claim about Marcel's own ballasts under a Statcast
+# change.
 #
 # `scripts/build_ros_projections.py` stamps this dict into the document as
 # `engine`, and `scripts/build_accuracy_json.py` uses it, per component, to
 # pick the arm the accuracy page marks as live — so the scoreboard cannot end
 # up scoring a model the site does not serve.
 MARCEL_ENGINE = "marcel_tuned"
-CONTACT_ENGINE = "contact"
+CONTACT_ENGINE = "contact_additive"
 LIVE_ENGINE = {
     "k_rate": CONTACT_ENGINE,
     "bb_rate": CONTACT_ENGINE,
@@ -177,14 +187,17 @@ def contact_engine_provider(
     as_of,
     predict_year: int = SEASON,
 ):
-    """A `LIVE_PROVIDERS`-shaped provider for the `contact` engine.
+    """A `LIVE_PROVIDERS`-shaped provider for the `contact_additive` engine
+    (docs/contact-quality.md §8: the baseline's coefficient pinned at 1,
+    contact quality added as a pure correction).
 
-    Fits `(a, b, g)` walk-forward on cell seasons strictly before
-    `predict_year` (`contact_eval.fit_live_contact` — never on the season
-    being served, exactly as the harness that cleared the gate did) and builds
-    the covariates as of the last month boundary on or before `as_of`
-    (`contact_cutoff`), never a partial month. The baseline underneath it is
-    the same `marcel_tuned` the gate compared it against.
+    Fits `(a, g)` walk-forward on cell seasons strictly before `predict_year`
+    (`contact_eval.fit_live_contact`, `fixed_base=True` by default — never on
+    the season being served, exactly as the harness that cleared the gate
+    did) and builds the covariates as of the last month boundary on or before
+    `as_of` (`contact_cutoff`), never a partial month. The baseline underneath
+    it is the same `marcel_tuned` the gate compared it against, left
+    untouched — `contact_additive` only adds to it.
     """
     fit = contact_eval.fit_live_contact(
         component, seasons_table, monthly, pa_dir, predict_year)
@@ -210,8 +223,8 @@ def engine_providers(
     """(component -> provider, component -> engine actually used) for the
     `marcel` (live) arm, per `LIVE_ENGINE`.
 
-    A component whose engine is `contact` but is missing what the contact
-    engine needs (the monthly artifact, the PA outcomes directory, the as-of
+    A component whose engine is `contact_additive` but is missing what the
+    contact engine needs (the monthly artifact, the PA outcomes directory, the as-of
     date, or a walk-forward fit that raises — e.g. no training cells before an
     early season) falls back to `marcel_tuned` for that component alone,
     rather than failing the whole build: the honest fallback
@@ -480,7 +493,7 @@ def build_ros_projections(
         teams: team_id → abbrev frame (columns `team_id`, `abbrev`).
         contact_monthly: `data/features/contact_quality_monthly.parquet`,
             loaded (`src.data.contact_quality.load_monthly`). Required for any
-            component whose `LIVE_ENGINE` is `contact`; a component missing it
+            component whose `LIVE_ENGINE` is `contact_additive`; a component missing it
             falls back to `marcel_tuned` for that build (`engine_providers`).
         contact_pa_dir: the PA-outcomes directory the contact engine's
             walk-forward fit trains on (`data/parquet/pa_outcomes` by

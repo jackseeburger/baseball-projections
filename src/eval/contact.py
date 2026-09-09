@@ -503,10 +503,22 @@ def fit_live_contact(
     predict_year: int,
     weights: tuple[float, float, float] = DEFAULT_WINDOW_WEIGHTS,
     ballast: float = DEFAULT_BALLAST,
+    fixed_base: bool = True,
 ) -> ContactFit:
-    """The `contact` arm's coefficients for `predict_year`, fitted exactly as
-    the harness fits them walk-forward: on cell seasons strictly before the
-    one being served, never on `predict_year` itself.
+    """The served arm's coefficients for `predict_year`, fitted exactly as the
+    harness fits them walk-forward: on cell seasons strictly before the one
+    being served, never on `predict_year` itself.
+
+    `fixed_base=True` (the default) is `contact_additive`
+    (docs/contact-quality.md §8) — the shape actually shipped: the baseline's
+    coefficient is pinned at 1 and contact quality is a pure correction added
+    to `marcel_tuned`, rather than the free fit also rescaling the baseline.
+    §8 made that call on the record before this was wired: the free fit's
+    extra gain is really a claim about Marcel's own ballasts being too wide on
+    ISO and HR/PA (fitted baseline coefficients 0.55 and 0.49), and that
+    belongs in a ticket about Marcel, not smuggled in under a Statcast change.
+    Both arms clear the gate; `contact_additive` gives up roughly a third of
+    the free fit's gain and keeps every sign.
 
     This is what `contact_provider` needs and what
     `scripts/run_contact_backtest.py`'s `walk_forward` does inside the loop —
@@ -523,7 +535,7 @@ def fit_live_contact(
         raise ValueError(f"no contact-quality training cells for {component!r} "
                          f"before {predict_year}")
     cells = attach_live_features(cells, monthly, weights, ballast)
-    return fit_contact(cells, component, features=FEATURES)
+    return fit_contact(cells, component, features=FEATURES, fixed_base=fixed_base)
 
 
 __all__ = [

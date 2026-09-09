@@ -102,16 +102,18 @@ ROS_ARM_LABELS = {
 }
 # This table only ever scores Marcel-family arms (`run_intraseason_backtest.py`
 # does not run the contact arm), so it marks the Marcel arm the site's contact
-# engine is itself built on — every LIVE_ENGINE value is "contact" as of
-# BAS-72, and `contact_provider`'s base is `marcel_tuned` bit for bit
-# (`src/projections/ros.py`'s `contact_engine_provider`). Whether `contact`
-# itself is what actually reaches the served board, per component, is what
-# `section_contact_quality`'s `is_production` / `production_components`
-# answer — this table is "which Marcel is under it", not "what is live".
+# engine is itself built on — every LIVE_ENGINE value is "contact_additive" as
+# of BAS-72 (docs/contact-quality.md §8: the baseline pinned at 1, contact
+# quality added as a pure correction), and its base is `marcel_tuned` bit for
+# bit (`src/projections/ros.py`'s `contact_engine_provider`). Whether
+# `contact_additive` itself is what actually reaches the served board, per
+# component, is what `section_contact_quality`'s `is_production` /
+# `production_components` answer — this table is "which Marcel is under it",
+# not "what is live".
 ROS_LIVE_ARM = "marcel_tuned"
-assert set(LIVE_ENGINE.values()) == {"contact"}, (
-    "ROS_LIVE_ARM assumes every hitter component's engine is `contact` on top "
-    "of `marcel_tuned`; a component that fell back needs this table's "
+assert set(LIVE_ENGINE.values()) == {"contact_additive"}, (
+    "ROS_LIVE_ARM assumes every hitter component's engine is `contact_additive` "
+    "on top of `marcel_tuned`; a component that fell back needs this table's "
     "assumption revisited")
 # The control the "is in-season data worth anything?" line is measured against.
 ROS_CONTROL_ARM = "marcel_tuned_preseason"
@@ -196,11 +198,14 @@ CONTACT_COMPONENT_LABELS = {
     "p_hr_rate": "HR/BF MAE (pitcher)", "p_babip": "BABIP MAE (pitcher)",
     "p_k_rate": "K% MAE (pitcher)",
 }
-CONTACT_MODEL_ORDER = ("marcel_tuned", "contact_recal", "contact", "contact_hsgp")
+CONTACT_MODEL_ORDER = ("marcel_tuned", "contact_recal", "contact",
+                       "contact_additive", "contact_hsgp")
 CONTACT_MODEL_LABELS = {
     "marcel_tuned": "Marcel (tuned) — the served baseline",
     "contact_recal": "Marcel refit only, contact covariates removed (control)",
-    "contact": "Marcel + six Statcast contact aggregates (gated, not wired)",
+    "contact": "Marcel + six Statcast contact aggregates (free fit, gated)",
+    "contact_additive": "Marcel + six Statcast contact aggregates, baseline "
+                        "pinned at 1 (BAS-72 §8 — this is what is served)",
     "contact_hsgp": "Marcel + one learned contact-value surface (stage 2, rejected)",
 }
 
@@ -417,7 +422,7 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "model": model,
             "label": CONTACT_MODEL_LABELS.get(model, model),
             "is_baseline": model == "marcel_tuned",
-            "is_ours": model in ("contact", "contact_hsgp"),
+            "is_ours": model in ("contact", "contact_additive", "contact_hsgp"),
             # `contact_recal` is the ablation control that isolates a fitted
             # recalibration of Marcel from the covariate itself — a real
             # statistical control, unlike `contact_hsgp`, which is a losing
@@ -463,6 +468,25 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "It misses on " + ", ".join(
                 f"{l} ({pct:+.1f}% of MAE, t {t:+.2f})" for l, d, t, pct in missed
                 if t is not None and pct is not None) + ".")
+    # The served shape is `contact_additive`, not the free fit `contact` the
+    # gate table above is about (docs/contact-quality.md §8) — pinning the
+    # baseline's coefficient at 1 rather than also rescaling it. It clears the
+    # same gate on its own numbers, which is worth stating next to the free
+    # fit's rather than only in the row label.
+    additive_cleared = [
+        c for _, c in components
+        if (p := paired.get(("contact_additive", "marcel_tuned", c)))
+        and p.get("diff") is not None and p["diff"] < 0]
+    additive_n = sum(
+        1 for _, c in components
+        if paired.get(("contact_additive", "marcel_tuned", c),
+                      {}).get("diff") is not None)
+    if additive_n:
+        parts.append(
+            f"`contact_additive` — the baseline pinned at 1, contact quality "
+            f"added as a correction — clears the same gate on "
+            f"{len(additive_cleared)} of {additive_n} components tracked "
+            f"here, and is the shape actually served.")
     hsgp_diffs = [paired.get(("contact_hsgp", "contact", c)) for _, c in components]
     hsgp_diffs = [p for p in hsgp_diffs if p and p.get("diff") is not None]
     if hsgp_diffs and all(p["diff"] > 0 for p in hsgp_diffs):
@@ -471,9 +495,9 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "one learned surface standing in for the six hand-chosen "
             "aggregates — loses to them on every one of these components and "
             "is not the shape shown as `contact` above.")
-    wired = [f"{side} {CONTACT_COMPONENT_LABELS[c].replace(' MAE', '')}"
+    wired = [CONTACT_COMPONENT_LABELS[c].replace(" MAE", "")
             for side, c in components
-            if LIVE_ENGINE_BY_SIDE_COMPONENT.get((side, c)) == "contact"]
+            if LIVE_ENGINE_BY_SIDE_COMPONENT.get((side, c)) == "contact_additive"]
     if wired:
         parts.append(
             "BAS-72: wired to the served board on " + ", ".join(wired) + ". "
