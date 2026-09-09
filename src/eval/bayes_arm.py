@@ -1,4 +1,4 @@
-"""The Bayesian K% arm as a backtest provider — refit at the cutoff (BAS-59).
+"""The Bayesian rate arm as a backtest provider — refit at the cutoff (BAS-59).
 
 Until this module existed the only Bayesian arm anywhere in the eval was
 `bayes_preseason`: a fixed file fit through 2025 and scored unchanged at every
@@ -13,6 +13,13 @@ predicted]`. The training frame is *not* the model's input — the model reads
 PA rows, which is the whole reason it needs a cutoff of its own — but it is
 read for two things: the batter set to cover, and the ages of batters the fit
 never saw.
+
+**Components (BAS-73).** The arm served `k_rate` only until BB/PA and HR/PA
+turned out to be the same hierarchical binomial with a different numerator
+(`src.models.pa_rate`). `BayesArmConfig.component` picks which, and it is
+part of the memoization key: one fit per (component, cutoff, predict year),
+never a K% fit handed back under a BB% label. BABIP and ISO still raise —
+they are not per-PA binomials and need their own denominators.
 
 pymc is imported inside the functions, not at module scope, so importing this
 module is free in CI (which installs `requirements-ci.txt`, no pymc, no
@@ -39,11 +46,15 @@ class BayesArmConfig:
     The sampler fields exist because the honest local answer is a *reduced*
     fit: this sandbox has no JAX, so `nuts_sampler="pymc"` and a few hundred
     draws is what is reachable. The full Modal refit overrides them (see
-    `src.models.pa_k_rate.SAMPLER_KWARGS`). Whatever a run used is echoed back
+    `src.models.pa_rate.SAMPLER_KWARGS`). Whatever a run used is echoed back
     on every fit so a table can be labelled with its own scale instead of
     being mistaken for the full thing.
     """
     pa_dir: Path = DEFAULT_PA_DIR
+    # Which per-PA rate this arm fits (`src.models.pa_rate.RATE_COMPONENTS`).
+    # Defaults to k_rate so every pre-BAS-73 construction of this config
+    # means exactly what it did.
+    component: str = "k_rate"
     seasons: tuple[int, ...] | None = None   # None = every parquet in pa_dir
     min_pa: int = 50
     include_pitcher: bool = True
@@ -73,10 +84,22 @@ class BayesArmConfig:
 
     def model_options(self):
         """The structural variant this config asks for."""
-        from src.models.pa_k_rate import ModelOptions
+        from src.models.pa_rate import ModelOptions
 
         return ModelOptions(ability_walk=self.ability_walk,
                             constrained_age=self.constrained_age)
+
+    def rate_component(self):
+        """The `RateComponent` this arm fits, validated. Raises for a
+        component this model cannot serve (BABIP, ISO) rather than at the
+        first missing column three function calls later."""
+        from src.models.pa_rate import get_component
+
+        return get_component(self.component)
+
+    def projected_col(self) -> str:
+        """Column `generate_projections` writes the point estimate to."""
+        return self.rate_component().projected_col
 
     def variant(self) -> str:
         """Short, stable name for the structure — "flat" for the arm on the board.
@@ -92,7 +115,8 @@ class BayesArmConfig:
         pitch = "pitcher" if self.include_pitcher else "no-pitcher"
         ability = "ability=walk" if self.ability_walk else "ability=flat"
         age = "age=constrained" if self.constrained_age else "age=quadratic"
-        return (f"{self.chains}x{self.draws} draws (tune {self.tune}), "
+        return (f"{self.component}, "
+                f"{self.chains}x{self.draws} draws (tune {self.tune}), "
                 f"{self.nuts_sampler}, {pitch}, {ability}, {age}"
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
 
@@ -109,13 +133,19 @@ class BayesFit:
     trace: object = None
     model_data: dict | None = None
 
+    @property
+    def component(self) -> str:
+        """Which rate this fit is of, read off its own config so a fit and
+        its label cannot disagree."""
+        return self.config.component
+
     def project(self, unseen: pd.DataFrame | None = None) -> pd.DataFrame:
         """Re-project from the same posterior, optionally covering unseen batters.
 
         Kept separate from the fit so adding population-level projections for
         batters the model never saw costs a numpy pass, not a second MCMC run.
         """
-        from src.models.pa_k_rate import generate_projections
+        from src.models.pa_rate import generate_projections
 
         if self.trace is None or self.model_data is None:
             raise RuntimeError("this fit did not keep its posterior")
@@ -127,10 +157,11 @@ class BayesFit:
 
 
 def _load_cut_pa(config: BayesArmConfig, cutoff_date: str) -> pd.DataFrame:
-    from src.models.pa_k_rate import load_pa_data
+    from src.models.pa_rate import load_pa_data
 
     pa = load_pa_data(config.pa_dir, cutoff_date=cutoff_date,
-                      include_pitcher=config.include_pitcher)
+                      include_pitcher=config.include_pitcher,
+                      component=config.rate_component())
     if config.seasons is not None:
         pa = pa[pa["game_year"].isin(config.seasons)].copy()
     if config.max_batters:
@@ -149,28 +180,33 @@ def fit_bayes_k_rate(
     config: BayesArmConfig | None = None,
     unseen: pd.DataFrame | None = None,
 ) -> BayesFit:
-    """Fit the PA-level K% model on everything strictly before `cutoff_date`.
+    """Fit the PA-level rate model on everything strictly before `cutoff_date`.
+
+    Which rate comes from `config.component` (default `k_rate`); the model is
+    one object across components (`src.models.pa_rate`).
 
     The leakage guard runs twice on the way in (`load_pa_data` and
     `prepare_model_data` both call `assert_no_post_cutoff`), so a post-cutoff
     PA cannot reach the likelihood.
     """
-    from src.models.pa_k_rate import (
+    from src.models.pa_rate import (
         build_model, generate_projections, load_park_factors,
         model_diagnostics, prepare_model_data, sample_model,
     )
     from src.models.cutoff import cutoff_exposure
 
     config = config or BayesArmConfig()
+    comp = config.rate_component()
     predict_year = predict_year or pd.Timestamp(cutoff_date).year
 
     pa = _load_cut_pa(config, cutoff_date)
     exposure = cutoff_exposure(pa, cutoff_date)
-    logger.info("bayes arm @ %s: %s", cutoff_date, exposure)
+    logger.info("bayes arm [%s] @ %s: %s", comp.name, cutoff_date, exposure)
 
     data = prepare_model_data(
         pa, load_park_factors(), min_pa=config.min_pa,
         cutoff_date=cutoff_date, include_pitcher=config.include_pitcher,
+        component=comp,
     )
     model = build_model(data, config.model_options())
     trace = sample_model(model, **config.sampler_kwargs())
@@ -189,6 +225,8 @@ def fit_bayes_k_rate(
         model_data=data,
         data_summary={
             **exposure,
+            "component": comp.name,
+            "league_init_mu": float(data["league_init_mu"]),
             "n_cells": int(data["n_obs"]),
             "n_pa": int(data["n_pa"]),
             "n_batters": int(data["n_batters"]),
@@ -235,27 +273,53 @@ def bayes_k_rate_provider(
 ):
     """A `(train, spec, predict_year)` provider that refits at the cutoff.
 
-    The fit is memoized across calls, so scoring several components at one
-    cutoff costs one fit — though only `k_rate` is served: this module wraps
-    `src.models.pa_k_rate`, and the other four components' models live in
-    `modal_functions/app.py` as separate functions with their own
-    denominators. Asking for another component raises rather than silently
-    returning the K% number under a different name.
+    The fit is memoized across calls, so scoring one component at one cutoff
+    several times costs one fit. The key is `(component, cutoff_date,
+    predict_year)` — the component is in it because the same provider object
+    can legitimately be asked for more than one, and a cache that keyed only
+    on the date would hand back a K% frame for a BB% request with the right
+    column name and the wrong numbers. That is the failure mode
+    `make_variant_providers` in `scripts/run_intraseason_backtest_dense.py`
+    guards against one level up for *variants*; this is the same guard for
+    components, at the level where the cache lives.
+
+    A `spec` naming a component this arm cannot serve raises rather than
+    silently returning some other component's number under its name. Since
+    BAS-73 that is BABIP and ISO only: both need a denominator that is not
+    the plate appearance (balls in play, at bats) and neither is a count of
+    independent binomial trials in the ISO case, so they are separate models
+    rather than another entry in `RATE_COMPONENTS`.
+
+    A `spec` that disagrees with `config.component` also raises: the harness
+    decides which component it is scoring, the config decides which one gets
+    fit, and if those two ever disagree the scoring is wrong in a way no
+    number downstream would reveal.
 
     `on_fit(fit)` is called once with the `BayesFit`, so a caller can record
     the diagnostics and the scale the run actually used.
     """
     config = config or BayesArmConfig()
+    comp = config.rate_component()
     cache: dict = {}
 
     def provider(train: pd.DataFrame, spec, year: int) -> pd.DataFrame:
-        if spec.name != "k_rate":
+        from src.models.pa_rate import RATE_COMPONENTS
+
+        if spec.name not in RATE_COMPONENTS:
             raise ValueError(
-                f"the bayes arm serves k_rate only, not {spec.name!r} — the "
-                f"other components are separate models (modal_functions/app.py)"
+                f"the bayes arm serves {sorted(RATE_COMPONENTS)} — per-PA "
+                f"binomials — not {spec.name!r}; BABIP is per ball in play "
+                f"and ISO is not a count of trials at all, so both need "
+                f"their own model"
+            )
+        if spec.name != comp.name:
+            raise ValueError(
+                f"this provider was built to fit {comp.name!r} but the "
+                f"harness asked it to score {spec.name!r} — one provider per "
+                f"component, or the fit and the label come apart"
             )
         target_year = predict_year or year
-        key = (str(cutoff_date), int(target_year))
+        key = (comp.name, str(cutoff_date), int(target_year))
         if key not in cache:
             # One fit, two projection passes: the first says which batters the
             # model covers, the second adds the rest from the fitted
@@ -264,15 +328,33 @@ def bayes_k_rate_provider(
             unseen = unseen_from_train(
                 train, fit.projections["batter"], target_year)
             if len(unseen):
-                logger.info("bayes arm: %d batters projected from the "
-                            "fitted population", len(unseen))
+                logger.info("bayes arm [%s]: %d batters projected from the "
+                            "fitted population", comp.name, len(unseen))
                 fit.project(unseen)
             cache[key] = fit
             if on_fit is not None:
                 on_fit(fit)
         fit = cache[key]
-        out = fit.projections[["batter", "projected_k_rate"]].rename(
-            columns={"projected_k_rate": "predicted"})
+        out = fit.projections[["batter", comp.projected_col]].rename(
+            columns={comp.projected_col: "predicted"})
         return out[np.isfinite(out["predicted"])]
 
     return provider
+
+
+# ─── component-neutral names ───────────────────────────────────────────────
+# The `_k_rate` names are what every existing call site uses, and what the
+# dense sweep's tests monkeypatch, so they stay the real definitions rather
+# than becoming aliases of a renamed pair — a `monkeypatch.setattr` doing
+# exactly the right thing should not stop working because of a rename. These
+# two forward through the module globals rather than binding the function
+# objects, so a patched `fit_bayes_k_rate` is what they call too.
+
+def fit_bayes_rate(*args, **kwargs) -> BayesFit:
+    """`fit_bayes_k_rate` under a name that does not claim a component."""
+    return fit_bayes_k_rate(*args, **kwargs)
+
+
+def bayes_rate_provider(*args, **kwargs):
+    """`bayes_k_rate_provider` under a name that does not claim a component."""
+    return bayes_k_rate_provider(*args, **kwargs)

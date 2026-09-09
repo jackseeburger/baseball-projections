@@ -202,12 +202,12 @@ CHECKPOINT_COLS = ["component", "model", "batter", "predicted",
 
 
 def _checkpoint_rows(models: list[str], season: int, cutoff: str,
-                     batters=(1, 2)) -> pd.DataFrame:
+                     batters=(1, 2), component: str = "k_rate") -> pd.DataFrame:
     rows = []
     for model in models:
         for b in batters:
             rows.append({
-                "component": "k_rate", "model": model, "batter": b,
+                "component": component, "model": model, "batter": b,
                 "predicted": 0.22, "realized_successes": 20,
                 "realized_rate": 0.20, "trials": 100,
                 "season": season, "cutoff": cutoff,
@@ -446,3 +446,157 @@ class TestDegenerateClusteredT:
         assert "nan" not in text.lower()
         assert "-" in text
         assert "bayes_walk  " in text or "bayes_walk " in text   # column not run together
+
+
+# --- BAS-73: components --------------------------------------------------------
+
+class TestComponentIsolation:
+    """One fit per (component, cutoff, variant). The failure mode is the same
+    one `TestCacheIsolation` guards for variants — a fit served under the
+    wrong label — one axis over, and it is worse here because the numbers
+    would look plausible: a K% fit returned for a BB% request comes back as a
+    well-formed frame of rates near .22 that the harness will happily score
+    against BB% realizations.
+    """
+
+    def _fake_fit(self, calls):
+        def fake_fit(cutoff_date, predict_year, config, unseen=None):
+            calls.append((config.component, config.variant()))
+            return BayesFit(
+                cutoff_date=str(cutoff_date), predict_year=int(predict_year),
+                projections=pd.DataFrame({
+                    "batter": [1, 2],
+                    config.projected_col(): [0.22, 0.22],
+                }),
+                diagnostics={"max_rhat": 1.0, "min_ess_bulk": 500,
+                             "divergences": 0},
+                config=config, trace=None, model_data=None, data_summary={},
+            )
+        return fake_fit
+
+    def test_each_component_gets_its_own_fit(self, monkeypatch):
+        calls: list[tuple] = []
+        monkeypatch.setattr("src.eval.bayes_arm.fit_bayes_k_rate",
+                            self._fake_fit(calls))
+
+        train = pd.DataFrame({"batter": [1, 2], "season": [2026, 2026]})
+        fits: list[dict] = []
+        for component in ("k_rate", "bb_rate", "hr_rate"):
+            providers = dense.make_variant_providers(
+                "2026-07-01", 2026, ["flat"], {}, fits, component=component)
+            providers["bayes_flat"](train, COMPONENTS[component], 2026)
+
+        assert calls == [("k_rate", "flat"), ("bb_rate", "flat"),
+                         ("hr_rate", "flat")]
+        assert [f["component"] for f in fits] == ["k_rate", "bb_rate", "hr_rate"]
+
+    def test_the_provider_cache_keys_on_the_component(self, monkeypatch):
+        """Directly against `bayes_k_rate_provider`, not through the sweep:
+        the cache is where a component-blind key would actually bite."""
+        from src.eval.bayes_arm import BayesArmConfig, bayes_k_rate_provider
+
+        calls: list[tuple] = []
+        monkeypatch.setattr("src.eval.bayes_arm.fit_bayes_k_rate",
+                            self._fake_fit(calls))
+        train = pd.DataFrame({"batter": [1, 2], "season": [2026, 2026]})
+
+        bb = bayes_k_rate_provider("2026-07-01", 2026,
+                                   BayesArmConfig(component="bb_rate"))
+        out = bb(train, COMPONENTS["bb_rate"], 2026)
+        assert list(out.columns) == ["batter", "predicted"]
+        bb(train, COMPONENTS["bb_rate"], 2026)          # cache hit
+        assert calls == [("bb_rate", "flat")], "a repeat must not refit"
+
+        # And the same provider refuses the component it was not built for
+        # rather than serving the cached BB% fit under a K% label.
+        with pytest.raises(ValueError, match="built to fit 'bb_rate'"):
+            bb(train, COMPONENTS["k_rate"], 2026)
+
+    def test_a_fit_reporting_the_wrong_component_raises(self, monkeypatch):
+        """Defense in depth, mirroring the variant check: if a fit ever comes
+        back for a different component than its provider was built for, the
+        sweep must raise rather than record it under the asked-for name."""
+        def fake_fit_always_k(cutoff_date, predict_year, config, unseen=None):
+            wrong = BayesArmConfig(component="k_rate")
+            return BayesFit(
+                cutoff_date=str(cutoff_date), predict_year=int(predict_year),
+                projections=pd.DataFrame({"batter": [1],
+                                          "projected_bb_rate": [0.08]}),
+                diagnostics={}, config=wrong, trace=None, model_data=None,
+                data_summary={},
+            )
+
+        monkeypatch.setattr("src.eval.bayes_arm.fit_bayes_k_rate",
+                            fake_fit_always_k)
+        providers = dense.make_variant_providers(
+            "2026-07-01", 2026, ["flat"], {}, [], component="bb_rate")
+        train = pd.DataFrame({"batter": [1], "season": [2026]})
+        with pytest.raises(RuntimeError, match="component isolation broken"):
+            providers["bayes_flat"](train, COMPONENTS["bb_rate"], 2026)
+
+
+class TestComponentKeyedCheckpoints:
+    """A 2026-07-01 BB% cell and a 2026-07-01 K% cell are different
+    measurements. Before the component joined the key, the two-key groupby
+    that rebuilds `cells` would collapse them into one entry and the second
+    write would silently replace the first — losing a whole component's
+    sweep with no error anywhere."""
+
+    def test_two_components_at_one_cutoff_are_two_cells(self, tmp_path):
+        path = tmp_path / "cells_bayes.parquet"
+        df = pd.concat([
+            _checkpoint_rows(["marcel_tuned", "bayes_flat"], 2026,
+                             "2026-07-01", component="k_rate"),
+            _checkpoint_rows(["marcel_tuned", "bayes_walk"], 2026,
+                             "2026-07-01", component="bb_rate"),
+        ], ignore_index=True)
+        df.to_parquet(path, index=False)
+
+        loaded = dense._load_bayes_checkpoint(path)
+        cells = {k: g for k, g in
+                 loaded.groupby(["component", "season", "cutoff"])}
+        assert set(cells) == {("k_rate", 2026, "2026-07-01"),
+                              ("bb_rate", 2026, "2026-07-01")}
+        assert dense._done_variants_for_cell(
+            cells[("k_rate", 2026, "2026-07-01")]) == {"flat"}
+        assert dense._done_variants_for_cell(
+            cells[("bb_rate", 2026, "2026-07-01")]) == {"ability_walk"}
+
+    def test_a_done_k_rate_cell_does_not_mark_bb_rate_done(self, tmp_path):
+        """The resume check reads `cells.get((component, season, cutoff))`;
+        this is the assertion that says a finished K% sweep does not make the
+        BB% sweep look finished too."""
+        path = tmp_path / "cells_bayes.parquet"
+        _checkpoint_rows(["bayes_flat"], 2026, "2026-07-01",
+                         component="k_rate").to_parquet(path, index=False)
+        loaded = dense._load_bayes_checkpoint(path)
+        cells = {k: g for k, g in
+                 loaded.groupby(["component", "season", "cutoff"])}
+        assert dense._done_variants_for_cell(
+            cells.get(("bb_rate", 2026, "2026-07-01"))) == set()
+
+
+class TestBayesComponentsCli:
+    def test_the_default_is_k_rate_alone(self):
+        """Nothing existing changes: a sweep that names no component runs the
+        one it always ran."""
+        assert dense.DEFAULT_BAYES_COMPONENTS == ["k_rate"]
+
+    def test_only_the_three_per_pa_binomials_are_offered(self):
+        assert set(dense.BAYES_COMPONENTS) == {"k_rate", "bb_rate", "hr_rate"}
+
+    @pytest.mark.skipif(
+        importlib.util.find_spec("pymc") is None,
+        reason="src.models.pa_rate imports pymc, which CI does not install")
+    def test_the_offered_set_is_exactly_what_the_model_registers(self):
+        """The sweep's list and the model's registry must not drift: a
+        component offered here but unknown there fails at the first fit, and
+        one registered there but missing here is simply never swept."""
+        from src.models.pa_rate import RATE_COMPONENTS
+
+        assert set(dense.BAYES_COMPONENTS) == set(RATE_COMPONENTS)
+
+    def test_run_bayes_rejects_a_component_the_arm_cannot_fit(self):
+        with pytest.raises(ValueError, match="unknown bayes component"):
+            dense.run_bayes(pd.DataFrame(), {}, (2026,), [],
+                            components=["babip"])
