@@ -61,6 +61,14 @@ LABELS = {"model": "marcel_partial", "matchup": "marcel_partial + matchup",
 # How far the matchup term is allowed to pull, 1.0 being log5 exactly. Chosen
 # on the first half of the window; never on the half it is scored on.
 WEIGHT_GRID = (0.0, 0.25, 0.5, 0.75, 1.0)
+# The posterior-probability-of-edge threshold for decide_posterior. Chosen on
+# the first half by fee-waived flat-stake ROI, scored on the second — same
+# walk-forward discipline as WEIGHT_GRID. All values are >= 0.5, which is what
+# keeps decide_posterior from ever trading inside the spread (pnl.py).
+TAU_GRID = (0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90)
+# The column BAS-70's other half (src/market/props.py) is expected to add:
+# the posterior standard deviation of P(over) that decide_posterior needs.
+SD_COL = "p_over_sd"
 # How long before first pitch a club's own recent cards are pooled over when a
 # start's opposing card is not in the lineup archive.
 CARD_LOOKBACK_DAYS = 21
@@ -165,6 +173,153 @@ def halves_of(dates: list) -> tuple:
     """The first and second half of a window, split on the median date."""
     cut = dates[len(dates) // 2]
     return [d for d in dates if d < cut], [d for d in dates if d >= cut]
+
+
+# ─────────────────────── selecting on P(edge > 0) ───────────────────────
+
+def choose_tau(frame: pd.DataFrame, model: str, sd_col: str, cut: str,
+               venue: pnl.Venue, grid=TAU_GRID, date_col: str = "date") -> tuple:
+    """The tau that scores best on the **first half**, fee-waived flat-stake ROI.
+
+    Same discipline as `choose_weight`: a free parameter chosen on the data it
+    is scored on is not a result. `venue` should already be the fee-waived one
+    (`venue_for(0.0, frictionless=False)`) — fee-waived isolates the selection
+    rule's own quality from the fee, which is a separate, known loser (BAS-70
+    prediction 3). Ties, and a tau with zero bets, are broken toward the
+    smallest tau that has *any* bets, so a boundary solution (the grid's
+    least-selective end winning) is visible in the printed table rather than
+    silently landing on an empty cell.
+    """
+    train = frame[frame[date_col].astype(str) < cut]
+    rows = []
+    for tau in grid:
+        row = pnl.evaluate(train, model, venue, staking="flat",
+                           group_col="game_pk", rule="posterior", tau=tau,
+                           sd_col=sd_col)
+        rows.append({"tau": tau, "n_bets": row["n_bets"], "roi": row["roi"]})
+    table = pd.DataFrame(rows)
+    tradeable = table[table["n_bets"] > 0]
+    if tradeable.empty:
+        return float("nan"), table
+    best_roi = tradeable["roi"].max()
+    # Among ties on ROI (the coarse grid makes exact ties plausible at small
+    # n), the least-selective tau — most bets, closest to the threshold
+    # rule's own bet count — is the more conservative pick.
+    best = tradeable[tradeable["roi"] == best_roi].sort_values("n_bets",
+                                                                ascending=False)
+    return float(best.iloc[0]["tau"]), table
+
+
+def matched_threshold(frame: pd.DataFrame, model: str, venue: pnl.Venue,
+                      n_target: int, lo: float = 0.0, hi: float = 0.30,
+                      iters: int = 40) -> float:
+    """The `decide` threshold whose bet count on `frame` is closest to
+    `n_target`, found by bisection.
+
+    This is **not a chosen parameter** — it is a comparison device, found
+    after the fact on the same half the posterior rule is scored on, purely
+    so prediction 2 ("beats the threshold rule at a matched number of bets")
+    can actually be checked rather than confounded with "the posterior rule
+    just bets less." `decide`'s bet count is non-increasing in `threshold`
+    (a stricter margin never adds a bet), so bisection on that count is well
+    posed; ties on the count are resolved by keeping the candidate visited
+    first, which biases toward the tighter threshold — the harder standard
+    for the threshold rule to still be a fair comparator at.
+    """
+    def n_bets_at(t: float) -> int:
+        return len(pnl.bet_frame(frame, model, venue, threshold=t))
+
+    a, b = lo, hi
+    best_t, best_diff = lo, abs(n_bets_at(lo) - n_target)
+    for _ in range(iters):
+        mid = (a + b) / 2.0
+        n = n_bets_at(mid)
+        diff = abs(n - n_target)
+        if diff < best_diff:
+            best_t, best_diff = mid, diff
+        if n > n_target:
+            a = mid          # need a stricter margin to shed bets
+        elif n < n_target:
+            b = mid           # need a looser margin to gain bets
+        else:
+            best_t, best_diff = mid, 0
+            break
+    return best_t
+
+
+def posterior_comparison(frame: pd.DataFrame, model: str, sd_col: str, tau: float,
+                         threshold: float, venue_fee_waived: pnl.Venue,
+                         venue_as_quoted: pnl.Venue, draws: int, seed: int,
+                         group_col: str = "game_pk") -> pd.DataFrame:
+    """Threshold-at-2pt vs. posterior-at-tau vs. threshold-at-matched-count.
+
+    All three rows are evaluated on the same frame (the second, held-out half
+    of the window, whole or one prop stat), so the bet counts and ROIs are
+    directly comparable. `matched` is threshold-only — it exists to answer
+    "is the posterior rule just betting less?", not as a strategy of its own.
+    """
+    posterior_n = pnl.evaluate(frame, model, venue_as_quoted, staking="flat",
+                               group_col=group_col, rule="posterior", tau=tau,
+                               sd_col=sd_col)["n_bets"]
+    matched = matched_threshold(frame, model, venue_as_quoted, posterior_n)
+
+    specs = [
+        ("threshold @ 2pt", dict(rule="threshold", threshold=threshold)),
+        (f"posterior @ tau={tau:.2f}",
+         dict(rule="posterior", tau=tau, sd_col=sd_col)),
+        (f"threshold @ matched (t={matched:.4f})",
+         dict(rule="threshold", threshold=matched)),
+    ]
+    rows = []
+    for label, kwargs in specs:
+        fw = pnl.evaluate(frame, model, venue_fee_waived, staking="flat",
+                          group_col=group_col, draws=draws, seed=seed, **kwargs)
+        aq = pnl.evaluate(frame, model, venue_as_quoted, staking="flat",
+                          group_col=group_col, draws=draws, seed=seed, **kwargs)
+        rows.append({
+            "rule": label, "n_bets": fw["n_bets"],
+            "roi_fee_waived": fw["roi"], "roi_fee_waived_lo": fw["roi_lo"],
+            "roi_fee_waived_hi": fw["roi_hi"],
+            "roi_as_quoted": aq["roi"], "roi_as_quoted_lo": aq["roi_lo"],
+            "roi_as_quoted_hi": aq["roi_hi"],
+        })
+    return pd.DataFrame(rows)
+
+
+def posterior_comparison_by_stat(frame: pd.DataFrame, model: str, sd_col: str,
+                                 tau: float, threshold: float,
+                                 venue_fee_waived: pnl.Venue,
+                                 venue_as_quoted: pnl.Venue, draws: int,
+                                 seed: int, stat_col: str = "prop_stat") -> pd.DataFrame:
+    """`posterior_comparison`, pooled and broken out per prop stat.
+
+    The matched threshold is re-found **within each stat's own rows** — a
+    single pooled threshold would not give a matched *count* on a stat whose
+    posterior rule bet count differs from the pool's.
+    """
+    out = []
+    pooled = posterior_comparison(frame, model, sd_col, tau, threshold,
+                                  venue_fee_waived, venue_as_quoted, draws, seed)
+    pooled.insert(0, "stat", "all")
+    out.append(pooled)
+    for stat, grp in frame.groupby(stat_col):
+        t = posterior_comparison(grp.reset_index(drop=True), model, sd_col, tau,
+                                 threshold, venue_fee_waived, venue_as_quoted,
+                                 draws, seed)
+        t.insert(0, "stat", stat)
+        out.append(t)
+    return pd.concat(out, ignore_index=True)
+
+
+def posterior_comparison_markdown(table: pd.DataFrame) -> str:
+    out = ["| stat | rule | n bets | ROI fee-waived | 95% CI | ROI as-quoted | 95% CI |",
+           "|---|---|---|---|---|---|---|"]
+    for r in table.itertuples(index=False):
+        out.append(f"| {r.stat} | {r.rule} | {r.n_bets} | {pct(r.roi_fee_waived)} | "
+                   f"({pct(r.roi_fee_waived_lo)}, {pct(r.roi_fee_waived_hi)}) | "
+                   f"{pct(r.roi_as_quoted)} | "
+                   f"({pct(r.roi_as_quoted_lo)}, {pct(r.roi_as_quoted_hi)}) |")
+    return "\n".join(out)
 
 
 # ───────────────────────────── scoring ─────────────────────────────
@@ -414,6 +569,13 @@ def main() -> None:
                     help="write the priced frame to parquet for reuse")
     ap.add_argument("--priced-in", type=Path, default=None,
                     help="reuse a priced frame instead of rebuilding it")
+    ap.add_argument("--posterior", action="store_true",
+                    help="also run the P(edge>0) selection rule and the "
+                         "matched-bet-count comparison table (BAS-70); needs "
+                         f"a {SD_COL!r} column on the priced frame")
+    ap.add_argument("--tau", type=float, default=None,
+                    help="skip the walk-forward search and use this tau")
+    ap.add_argument("--tau-grid", nargs="+", type=float, default=list(TAU_GRID))
     args = ap.parse_args()
 
     closes_path = args.closes or default_closes()
@@ -482,6 +644,41 @@ def main() -> None:
         print(paired_halves(priced, "p_matchup", "p_market", cut).to_string(index=False))
     print("\n== money (taker) ==")
     print(grid.to_string(index=False))
+
+    posterior_table = None
+    if args.posterior:
+        primary = "matchup" if with_matchup else "model"
+        if SD_COL not in frame.columns:
+            logger.warning("--posterior requested but %r is not on the priced "
+                           "frame; skipping the P(edge>0) selection rule "
+                           "(this is the other half of BAS-70, built in "
+                           "src/market/props.py)", SD_COL)
+        else:
+            fee_waived = venue_for(0.0, args.frictionless)
+            as_quoted = venue
+            train = frame[frame["date"].astype(str) < cut]
+            second = frame[frame["date"].astype(str) >= cut]
+            if args.tau is not None:
+                tau, tau_table = args.tau, None
+            else:
+                tau, tau_table = choose_tau(train, primary, SD_COL, cut,
+                                            fee_waived, tuple(args.tau_grid))
+                logger.info("tau chosen on the first half: %.2f", tau)
+            print("\n== BAS-70: selecting on P(edge>0) ==")
+            if tau_table is not None:
+                print("\n-- tau grid, first half, fee-waived flat-stake ROI --")
+                print(tau_table.to_string(index=False))
+            print(f"chosen tau: {tau}")
+            posterior_table = posterior_comparison_by_stat(
+                second, primary, SD_COL, tau, args.headline, fee_waived,
+                as_quoted, args.draws, args.seed)
+            print("\n-- second half: threshold @ 2pt vs. posterior @ tau vs. "
+                  "threshold @ matched bet count (matched is a comparison "
+                  "device, not a chosen parameter) --")
+            print(posterior_table.to_string(index=False))
+            if args.markdown:
+                print("\n### BAS-70 selection comparison, second half\n")
+                print(posterior_comparison_markdown(posterior_table))
 
     maker = None
     if args.maker:
