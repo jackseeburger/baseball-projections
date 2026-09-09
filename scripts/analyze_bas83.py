@@ -178,6 +178,17 @@ def main() -> None:
     for component in payload["scope"]["components"]:
         rows = comparisons(cells, component)
         payload["comparisons"][component] = rows
+        # Per-cutoff, for the one comparison the pre-registration's first
+        # prediction is about. The covariate's current-season window is a
+        # month long in April and five months long in August, so if what the
+        # block does is import measurement noise rather than information,
+        # that shows up here as a gradient and nowhere else.
+        g = cells[cells["component"] == component]
+        if {"bayes_walk+contact", "bayes_walk"} <= set(g["model"].unique()):
+            payload.setdefault("covariate_effect_by_cutoff", {})[component] = (
+                json.loads(dense.paired_by_cell(
+                    g, "bayes_walk+contact", "bayes_walk"
+                ).sort_values("cutoff").to_json(orient="records")))
         payload["variant_params"][component] = variant_params(fits, component)
         print(f"\n=== {component} ===")
         print(render(rows))
