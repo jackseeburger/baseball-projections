@@ -43,12 +43,15 @@ The three hindsight guards, in one place because they are the whole point:
 from __future__ import annotations
 
 import hashlib
+import logging
 from datetime import timedelta
 
 import numpy as np
 import pandas as pd
 
 from src.market import pnl, props
+
+logger = logging.getLogger(__name__)
 
 # docs/bankroll.md Stage 0: 1,000 units, quarter Kelly, 5% of bankroll a
 # ticket, the served rule at a 2-point threshold. None of these are tunable
@@ -60,6 +63,25 @@ KELLY_CAP = 0.05
 THRESHOLD = 0.02
 TAU = 0.65
 SERVED_MODEL = "marcel_partial + matchup"
+
+# docs/bankroll.md Stage 0, Amendment 1 (2026-09-09): the total stake across
+# every ticket one snapshot emits is capped at 20% of the running bankroll.
+# The per-ticket cap above says nothing about how many tickets an evening may
+# carry, and a Kalshi prop slate offers hundreds at once — the first real
+# ledger staked 19.7x the bankroll and went through zero on its second day.
+# A constant and not a flag, for the same reason as the four above: a rule
+# that can be edited between runs is not a pre-registration.
+SLATE_CAP = 0.20
+
+# Which version of the pre-registered sizing rule a ticket was written under.
+# Everything emitted before the amendment is `stage0` and stays in the ledger
+# as history; the Stage 1 window is scored on `stage0.1` only.
+RULE_STAGE0 = "stage0"
+RULE_VERSION = "stage0.1"
+AMENDMENT_DATE = "2026-09-09"
+AMENDMENT_NOTE = ("Amendment 1: total stake per slate capped at 20% of "
+                  "bankroll; the Stage 1 window restarts here and the paper "
+                  "bankroll is reset to 1,000 units.")
 
 # How close to first pitch a snapshot has to be before tonight's posted card
 # is treated as information we had. Clubs post cards roughly three hours out;
@@ -80,6 +102,7 @@ LEDGER_COLUMNS = [
     "context_source", "posterior_side", "maker_side", "maker_limit",
     "settled", "result", "won", "profit", "fee", "settle_ts", "settle_source",
     "close_reason", "maker_filled", "maker_fill_ts", "maker_profit",
+    "rule_version",
 ]
 
 
@@ -172,8 +195,27 @@ def club_card_slots(lineup_slots: dict, sides: dict, teams: dict, dates: dict,
     return out
 
 
+def scale_to_slate_cap(stake, bankroll: float, cap: float = SLATE_CAP):
+    """Every stake in one slate, scaled pro-rata to fit the slate cap.
+
+    docs/bankroll.md Stage 0 Amendment 1. The per-ticket cap is a statement
+    about one bet and says nothing about how many bets one evening carries; a
+    Kalshi prop slate offers hundreds simultaneously, so the pre-amendment
+    rule staked several times the bankroll in an evening and the paper
+    bankroll went through zero. The cap is on the sum, and the sum is brought
+    under it by scaling every ticket by the same factor — which changes the
+    *size* of the slate and not one thing about which tickets are in it.
+    """
+    stake = np.asarray(stake, dtype=float)
+    total = float(stake.sum())
+    allowed = float(cap) * float(bankroll)
+    if total <= allowed or total <= 0:
+        return stake
+    return stake * (allowed / total)
+
+
 def emit(priced: pd.DataFrame, bankroll: float, threshold: float = THRESHOLD,
-         tau: float = TAU) -> pd.DataFrame:
+         tau: float = TAU, slate_cap: float = SLATE_CAP) -> pd.DataFrame:
     """One ticket per (market, side) the served rule takes, sized on `bankroll`.
 
     The served rule is `pnl.decide` at the 2-point threshold on the matchup
@@ -182,6 +224,12 @@ def emit(priced: pd.DataFrame, bankroll: float, threshold: float = THRESHOLD,
     Kelly capped at 5% **of the bankroll passed in**, which is the running
     paper bankroll, not a fixed notional: a ledger that sizes every ticket
     off 1,000 units is not the ledger the Stage 1 drawdown condition is about.
+
+    On top of the per-ticket cap, Amendment 1 caps the **slate**: the total
+    stake across everything this snapshot emits is at most `slate_cap` of the
+    same bankroll, and if it is not, every stake is scaled by one common
+    factor (`scale_to_slate_cap`). The selection is untouched — the same
+    tickets are written, smaller.
 
     `posterior_side` carries what `pnl.decide_posterior` at tau would have
     done with the same row. It is a flag, not a second stake, so recording
@@ -231,6 +279,11 @@ def emit(priced: pd.DataFrame, bankroll: float, threshold: float = THRESHOLD,
     # A capped Kelly stake of zero is not a ticket; `decide` can take a side
     # whose Kelly fraction rounds to nothing when the edge is all spread.
     out = out[out["stake"] > 0].reset_index(drop=True)
+    # Amendment 1, applied after the per-ticket sizing and after the tickets
+    # that are not bets have been dropped: the cap is on what is actually
+    # staked this evening.
+    out["stake"] = scale_to_slate_cap(out["stake"].to_numpy(), bankroll, slate_cap)
+    out["rule_version"] = RULE_VERSION
     out.insert(0, "ticket_id", [ticket_id(r.snapshot_ts, r.venue, r.market_id, r.side)
                                 for r in out.itertuples(index=False)])
     # The settlement columns are born empty but typed: `object` for the four
@@ -258,11 +311,19 @@ def result_index(snapshots: dict, closes: pd.DataFrame | None = None) -> pd.Data
     * `data/market/prop_closes_2026.parquet`, the settlement archive the
       props exam was scored on, whose `over_hit` is the box score.
 
-    The second exists because the first does not cover Kalshi. The snapshot
-    job asks Kalshi for **open** markets only (`kalshi.fetch_all(status=
-    "open")`), so a Kalshi prop leaves the archive the moment it settles and
-    no later snapshot ever carries its result. Polymarket keeps settled
-    markets listed and does carry them. Reported in docs, not worked around.
+    The snapshot is preferred wherever both have an opinion: it is the
+    exchange's own settlement, which is the thing the ticket would actually
+    have been paid on, while the closes archive is a box score read back into
+    a market. Where the two disagree the disagreement is logged and the
+    snapshot wins — a settlement the venue and the box score do not agree on
+    is worth knowing about, not worth silently averaging.
+
+    The archive did not always cover Kalshi. Until BAS-78 the snapshot job
+    asked Kalshi for **open** markets only, so a Kalshi prop left the listing
+    the moment it settled and no later snapshot ever carried its result; every
+    Kalshi ticket was settled from the closes archive instead. The job now
+    also pulls the last 48 hours of settled props
+    (`kalshi.fetch_settled_props`), so the fallback is a fallback again.
     """
     rows = []
     for ts, snap in snapshots.items():
@@ -285,7 +346,33 @@ def result_index(snapshots: dict, closes: pd.DataFrame | None = None) -> pd.Data
         return pd.DataFrame(columns=["market_id", "over_hit", "settle_ts",
                                      "settle_source"])
     df = pd.DataFrame(rows).sort_values(["market_id", "settle_ts"], kind="stable")
+    warn_on_settlement_disagreement(df)
+    # The snapshot before the closes archive on the same market, and the
+    # earliest evidence within each source: `sort_values` is stable, so
+    # ordering by source rank and then keeping the first row does both.
+    rank = (df["settle_source"] == "closes_archive").astype(int)
+    df = df.assign(_rank=rank).sort_values(["market_id", "_rank"], kind="stable")
+    df = df.drop(columns="_rank")
     return df.drop_duplicates("market_id", keep="first").reset_index(drop=True)
+
+
+def warn_on_settlement_disagreement(rows: pd.DataFrame) -> list[str]:
+    """Log every market the two sources settle differently. Returns the ids."""
+    bad = []
+    for mid, g in rows.groupby("market_id", sort=True):
+        sources = set(g["settle_source"])
+        if len(sources) < 2:
+            continue
+        vals = {s: set(g.loc[g["settle_source"] == s, "over_hit"]) for s in sources}
+        snap, close = vals.get("snapshot", set()), vals.get("closes_archive", set())
+        if snap and close and snap != close:
+            bad.append(str(mid))
+            logger.warning(
+                "%s: the snapshot archive settles it %s and "
+                "data/market/prop_closes_2026.parquet settles it %s; taking the "
+                "snapshot, which is the exchange's own settlement",
+                mid, sorted(map(str, snap)), sorted(map(str, close)))
+    return bad
 
 
 def settle_from(ledger: pd.DataFrame, results: pd.DataFrame) -> pd.DataFrame:
@@ -415,17 +502,34 @@ def bankroll_curve(ledger: pd.DataFrame, column: str = "profit",
     Ordered by settlement date, which is the order the money actually moved
     in; ordering by emission would let a ticket written on Monday and settled
     on Friday move the curve before Tuesday's did.
+
+    One segment per `rule_version`, in version order, each starting from
+    `start`. docs/bankroll.md Amendment 1 resets the paper bankroll to 1,000
+    units at the amendment — a bankroll that has been through zero cannot be
+    sized from — so a single cumulative line across the amendment would draw a
+    path no ledger ever walked. The segments are drawn together and the
+    amendment is marked; nothing before it is deleted.
     """
     df = ledger[ledger["settled"].fillna(False).astype(bool)].copy()
     if df.empty:
-        return [{"date": None, "profit": 0.0, "bankroll": start, "n": 0}][:0]
+        return []
+    if "rule_version" in df.columns:
+        ver = df["rule_version"].astype(str).replace({"nan": RULE_STAGE0,
+                                                      "None": RULE_STAGE0})
+    else:
+        ver = pd.Series([RULE_STAGE0] * len(df), index=df.index)
     day = df["settle_ts"].astype(str).str[:10]
     prof = pd.to_numeric(df[column], errors="coerce").fillna(0.0)
-    g = pd.DataFrame({"date": day, "profit": prof}).groupby("date", sort=True)
-    out = g["profit"].agg(["sum", "size"]).reset_index()
-    out.columns = ["date", "profit", "n"]
-    out["bankroll"] = start + out["profit"].cumsum()
-    return out.to_dict("records")
+    frame = pd.DataFrame({"rule_version": ver, "date": day, "profit": prof})
+    out = []
+    for version in sorted(frame["rule_version"].unique()):
+        seg = frame[frame["rule_version"] == version]
+        g = seg.groupby("date", sort=True)["profit"].agg(["sum", "size"]).reset_index()
+        g.columns = ["date", "profit", "n"]
+        g["bankroll"] = start + g["profit"].cumsum()
+        g["rule_version"] = version
+        out.extend(g.to_dict("records"))
+    return out
 
 
 def roi_summary(ledger: pd.DataFrame, column: str = "profit", draws: int = 2000,
@@ -509,15 +613,40 @@ def kelly_implied_drawdown(ledger: pd.DataFrame, column: str = "profit",
     return float(np.median(np.max(peak - paths, axis=1)))
 
 
+def rule_rows(ledger: pd.DataFrame, version: str = RULE_VERSION) -> pd.DataFrame:
+    """The rows written under one version of the sizing rule.
+
+    A ledger with no `rule_version` column at all — a synthetic frame, or one
+    written before the amendment — is read as `stage0`, which is what it is.
+    """
+    if ledger.empty:
+        return ledger
+    if "rule_version" not in ledger.columns:
+        have = pd.Series([RULE_STAGE0] * len(ledger), index=ledger.index)
+    else:
+        have = ledger["rule_version"].astype(str).replace({"nan": RULE_STAGE0,
+                                                           "None": RULE_STAGE0})
+    return ledger[have == str(version)]
+
+
 def gate_progress(ledger: pd.DataFrame, stat: str = PRIMARY_STAT,
-                  draws: int = 2000, seed: int = 0) -> dict:
+                  draws: int = 2000, seed: int = 0,
+                  version: str = RULE_VERSION) -> dict:
     """Stage 1 progress on the primary test, each condition scored separately.
 
     Every count is on the *primary* test — hits props, taker prices, settled
     — because that is what docs/bankroll.md's gate is written about. A gate
     met on the maker ledger only is not met, so nothing here reads a maker
     column.
+
+    And only on tickets written under `version` of the sizing rule.
+    docs/bankroll.md Amendment 1 restarts the Stage 1 window at the
+    amendment: the pre-amendment tickets stay in the ledger and are reported,
+    but a window that mixed two sizing rules would not be a test of either.
     """
+    ledger = rule_rows(ledger, version)
+    if ledger.empty:
+        ledger = pd.DataFrame(columns=list(LEDGER_COLUMNS))
     settled = ledger["settled"].fillna(False).astype(bool)
     prim = ledger[(ledger["prop_stat"].astype(str) == stat) & settled]
     prim = prim[prim["result"].astype(str) != VOID]
@@ -538,5 +667,5 @@ def gate_progress(ledger: pd.DataFrame, stat: str = PRIMARY_STAT,
         "drawdown": {"realised": s["max_drawdown"], "kelly_implied": implied,
                      "allowed": allowed, "met": dd_ok},
     }
-    return {"stat": stat, "conditions": conds,
+    return {"stat": stat, "rule_version": str(version), "conditions": conds,
             "met": bool(all(c["met"] for c in conds.values()))}

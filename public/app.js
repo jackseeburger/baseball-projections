@@ -1977,7 +1977,8 @@ function renderPaperLedger() {
 
   document.getElementById("paper-curve-note").textContent =
     `Start ${r.start_bankroll.toLocaleString()} units, quarter Kelly capped at ` +
-    `${pct(r.kelly_cap, 0)} of the running bankroll, a bet only where the model ` +
+    `${pct(r.kelly_cap, 0)} of the running bankroll and ${pct(r.slate_cap, 0)} ` +
+    "of it across a whole slate (Amendment 1), a bet only where the model " +
     `disagrees with the quote by more than ${pct(r.threshold, 0)}. ` +
     `Fees: ${r.fee}. The three curves are the same tickets under three rules — ` +
     "crossing the quote and paying the fee, the same but selected by the " +
@@ -2029,12 +2030,31 @@ function renderPaperCurve(d) {
     .attr("y1", y(d.rules.start_bankroll)).attr("y2", y(d.rules.start_bankroll))
     .attr("stroke", "#888").attr("stroke-dasharray", "3,3");
 
+  // Amendment 1 reset the paper bankroll, so each rule_version is its own
+  // segment and the curve is drawn per segment rather than as one line that
+  // walks through a reset no ledger ever walked.
   const line = d3.line().x(p => x(p.date)).y(p => y(p.bankroll));
   series.forEach((s, i) => {
-    svg.append("path").datum(d.curves[s.key]).attr("fill", "none")
-      .attr("stroke", s.color).attr("stroke-width", 2).attr("d", line);
+    const groups = d3.group(d.curves[s.key], p => p.rule_version || "stage0");
+    groups.forEach(pts => {
+      svg.append("path").datum(pts).attr("fill", "none")
+        .attr("stroke", s.color).attr("stroke-width", 2).attr("d", line);
+    });
     svg.append("text").attr("x", width - m.right + 8).attr("y", m.top + 14 + i * 18)
       .attr("fill", s.color).attr("font-size", 12).text(s.label);
+  });
+  // A dated marker for every amendment to the pre-registration that falls
+  // inside the window the curve covers.
+  (d.amendments || []).forEach(a => {
+    const at = dates.find(dt => dt >= a.date);
+    if (!at) return;
+    svg.append("line").attr("x1", x(at)).attr("x2", x(at))
+      .attr("y1", m.top).attr("y2", height - m.bottom)
+      .attr("stroke", "#e0a03a").attr("stroke-dasharray", "4,3");
+    svg.append("text").attr("x", x(at) + 4).attr("y", m.top + 10)
+      .attr("fill", "#e0a03a").attr("font-size", 11)
+      .text(`Amendment ${esc(a.date)}`)
+      .append("title").text(a.note);
   });
 }
 
@@ -2062,13 +2082,32 @@ function renderPaperGate(d) {
 }
 
 function renderPaperROI(d) {
-  const stats = Array.from(new Set(Object.keys(d.roi.taker))).sort(
+  const byVersion = d.roi_by_rule_version;
+  if (byVersion) {
+    // One table per version of the sizing rule. Amendment 1 changed the
+    // stakes, so pooling the two would average two rules into one number.
+    const host = document.getElementById("paper-roi");
+    host.innerHTML = Object.keys(byVersion).sort().map(v => {
+      const gated = byVersion[v].scored_by_the_gate;
+      return `<h4>Rule ${esc(v)} — ${byVersion[v].tickets.toLocaleString()} ` +
+        `tickets${gated ? " · scored by the Stage 1 gate"
+                        : " · history, not counted toward the gate"}</h4>` +
+        roiTable(byVersion[v]);
+    }).join("");
+    return;
+  }
+  document.getElementById("paper-roi").innerHTML = roiTable(d.roi);
+}
+
+function roiTable(d) {
+  const stats = Array.from(new Set(Object.keys(d.roi ? d.roi.taker : d.taker))).sort(
     (a, b) => (a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b)));
   let h = '<table class="acc-table"><thead><tr><th>Prop</th><th>Settled</th>' +
     "<th>Staked</th><th>ROI, taker</th><th>95% CI</th><th>ROI, maker</th>" +
     "<th>95% CI</th></tr></thead><tbody>";
   stats.forEach(s => {
-    const t = d.roi.taker[s] || {}, mk = (d.roi.maker || {})[s] || {};
+    const roi = d.roi || d;
+    const t = roi.taker[s] || {}, mk = (roi.maker || {})[s] || {};
     h += `<tr><td class="name-cell">${esc(s)}</td>` +
       `<td class="num">${(t.n || 0).toLocaleString()}</td>` +
       `<td class="num">${(t.staked || 0).toFixed(1)}</td>` +
@@ -2077,7 +2116,7 @@ function renderPaperROI(d) {
       `<td class="num">${pct(mk.roi)}</td>` +
       `<td class="num">(${pct(mk.roi_lo)}, ${pct(mk.roi_hi)})</td></tr>`;
   });
-  document.getElementById("paper-roi").innerHTML = h + "</tbody></table>";
+  return h + "</tbody></table>";
 }
 
 // ══════════════════════════════════════════════════════════════════

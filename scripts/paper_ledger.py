@@ -96,6 +96,12 @@ def load_ledger(path: Path = LEDGER_PATH) -> pd.DataFrame:
         for c in paper.LEDGER_COLUMNS:
             if c not in led.columns:
                 led[c] = np.nan
+        # Every committed row that predates Amendment 1 was written under the
+        # unamended sizing rule and is stamped as such. Nothing is dropped and
+        # nothing is re-priced: the history stays, flagged, and the Stage 1
+        # window is scored on `stage0.1` alone.
+        led["rule_version"] = (led["rule_version"].astype(object)
+                               .where(led["rule_version"].notna(), paper.RULE_STAGE0))
         return led[paper.LEDGER_COLUMNS]
     return pd.DataFrame(columns=paper.LEDGER_COLUMNS)
 
@@ -252,25 +258,21 @@ def run(snapshots: dict, ledger: pd.DataFrame, closes: pd.DataFrame | None,
         # would be hindsight on the ledger's own path.
         so_far = pd.concat([ledger] + new, ignore_index=True) if (len(ledger) or new) \
             else pd.DataFrame(columns=paper.LEDGER_COLUMNS)
-        bankroll = paper.START_BANKROLL
-        if len(so_far):
-            done = so_far[so_far["settled"].fillna(False).astype(bool) &
-                          (so_far["game_start"].astype(str) < ts)]
-            bankroll += float(pd.to_numeric(done["profit"], errors="coerce").fillna(0).sum())
+        bankroll = running_bankroll(so_far, ts)
         ctx = build_contexts(rows, season)
         priced = price_snapshot(rows, ctx)
         if priced.empty:
             continue
         if bankroll <= 0:
-            # Ruin. docs/bankroll.md sizes each ticket at up to 5% of the
-            # bankroll and says nothing about how many tickets one evening may
-            # carry; a Kalshi prop slate offers hundreds at once, so the first
-            # evening staked 9,069 units of a 1,000-unit bankroll and the
-            # paper bankroll went through zero. `pnl.kelly_stake` on a
-            # non-positive bankroll returns a negative stake, which is not a
-            # bet in either direction, so emission stops here rather than
-            # inventing a rule the pre-registration does not contain. Recorded
-            # and reported; not fixed by re-tuning after seeing the number.
+            # Ruin. `pnl.kelly_stake` on a non-positive bankroll returns a
+            # negative stake, which is not a bet in either direction, so
+            # emission stops rather than inventing a rule the pre-registration
+            # does not contain. This is what the unamended rule did on
+            # 2026-09-03: a per-ticket cap of 5% says nothing about a slate of
+            # hundreds, the evening staked 19.7x the bankroll, and the paper
+            # bankroll went through zero. Amendment 1 caps the slate at 20% and
+            # restarts from 1,000, so this branch is now a guard rather than
+            # the end of the ledger.
             logger.warning("%s: paper bankroll is %.2f — ruin, no tickets emitted",
                            ts, bankroll)
             continue
@@ -285,6 +287,34 @@ def run(snapshots: dict, ledger: pd.DataFrame, closes: pd.DataFrame | None,
     led = paper.settle_from(led, results)
     led = replay_maker(led, snapshots)
     return led.sort_values(["snapshot_ts", "ticket_id"], kind="stable").reset_index(drop=True)
+
+
+def running_bankroll(so_far: pd.DataFrame, ts: str,
+                     version: str = paper.RULE_VERSION) -> float:
+    """The bankroll a ticket written at `ts` is sized against.
+
+    1,000 units plus everything settled from a game that had already started
+    — sizing off the final bankroll would be hindsight on the ledger's own
+    path — and counting **only** the tickets written under the current version
+    of the sizing rule.
+
+    That last clause is docs/bankroll.md Amendment 1. The pre-amendment
+    tickets took the paper bankroll through zero, and a bankroll that has been
+    through zero cannot be sized from; the amendment resets it to the
+    pre-registered 1,000 units and restarts the Stage 1 window there. The old
+    tickets are not deleted and their losses are not erased — they are in the
+    ledger, flagged, reported, and outside the window.
+    """
+    bankroll = paper.START_BANKROLL
+    if so_far is None or not len(so_far):
+        return bankroll
+    rows = paper.rule_rows(so_far, version)
+    if not len(rows):
+        return bankroll
+    done = rows[rows["settled"].fillna(False).astype(bool) &
+                (rows["game_start"].astype(str) < str(ts))]
+    return bankroll + float(pd.to_numeric(done["profit"], errors="coerce")
+                            .fillna(0).sum())
 
 
 def replay_maker(ledger: pd.DataFrame, snapshots: dict) -> pd.DataFrame:
@@ -328,6 +358,28 @@ def by_stat(ledger: pd.DataFrame, column: str, draws: int, seed: int) -> dict:
     return out
 
 
+def roi_by_rule_version(ledger: pd.DataFrame, post: pd.DataFrame,
+                        filled: pd.DataFrame, draws: int, seed: int) -> dict:
+    """The same three ROI tables, split by the sizing rule the ticket was under.
+
+    Pooling them would average two different rules into one number.
+    docs/bankroll.md Amendment 1 says which of the two the gate is scored on;
+    both are reported.
+    """
+    out = {}
+    for version in sorted(set(ledger["rule_version"].astype(str))):
+        out[version] = {
+            "taker": by_stat(paper.rule_rows(ledger, version), "profit", draws, seed),
+            "taker_posterior": by_stat(paper.rule_rows(post, version), "profit",
+                                       draws, seed),
+            "maker": by_stat(paper.rule_rows(filled, version), "maker_profit",
+                             draws, seed),
+            "tickets": int(len(paper.rule_rows(ledger, version))),
+            "scored_by_the_gate": bool(version == paper.RULE_VERSION),
+        }
+    return out
+
+
 def ruin_note(ledger: pd.DataFrame, snapshots: dict) -> dict | None:
     """Whether the paper bankroll went through zero, and what that means.
 
@@ -339,6 +391,7 @@ def ruin_note(ledger: pd.DataFrame, snapshots: dict) -> dict | None:
     so in plain words rather than showing a curve that stops for no visible
     reason.
     """
+    ledger = paper.rule_rows(ledger, paper.RULE_STAGE0)
     curve = paper.bankroll_curve(ledger)
     if not curve or curve[-1]["bankroll"] > 0:
         return None
@@ -346,11 +399,13 @@ def ruin_note(ledger: pd.DataFrame, snapshots: dict) -> dict | None:
     staked = float(pd.to_numeric(ledger["stake"], errors="coerce").fillna(0).sum())
     emitted = set(ledger["snapshot_ts"].astype(str))
     return {
+        "rule_version": paper.RULE_STAGE0,
         "date": first["date"],
         "bankroll": first["bankroll"],
         "total_staked": staked,
         "exposure_multiple": staked / paper.START_BANKROLL,
         "snapshots_after_ruin": sum(1 for ts in snapshots if ts not in emitted),
+        "amended_by": f"Amendment 1 ({paper.AMENDMENT_DATE})",
         "note": (
             f"The paper bankroll went through zero on {first['date']}. The "
             f"pre-registered rule sizes every ticket at up to 5% of bankroll "
@@ -362,7 +417,12 @@ def ruin_note(ledger: pd.DataFrame, snapshots: dict) -> dict | None:
             f"has no Kelly stake. Nothing was re-tuned after seeing this: the "
             f"per-ticket cap and the 1,000-ticket Stage 1 gate in "
             f"docs/bankroll.md are not compatible on this book, and that is a "
-            f"question for the pre-registration, not for the code."),
+            f"question for the pre-registration, not for the code. That question "
+            f"was answered on {paper.AMENDMENT_DATE} by Amendment 1: the total "
+            f"stake across one slate is capped at {paper.SLATE_CAP:.0%} of "
+            f"bankroll, the sizing changes and nothing else does, the Stage 1 "
+            f"window restarts at the amendment, and these tickets stay in the "
+            f"ledger flagged `stage0` without counting toward the gate."),
     }
 
 
@@ -386,6 +446,8 @@ def to_document(ledger: pd.DataFrame, snapshots: dict, draws: int = 2000,
             "start_bankroll": paper.START_BANKROLL,
             "kelly_fraction": paper.KELLY_FRACTION,
             "kelly_cap": paper.KELLY_CAP,
+            "slate_cap": paper.SLATE_CAP,
+            "rule_version": paper.RULE_VERSION,
             "threshold": paper.THRESHOLD,
             "tau": paper.TAU,
             "fee": "Kalshi taker, round_up_to_cent(0.07·C·P·(1−P)); "
@@ -410,7 +472,15 @@ def to_document(ledger: pd.DataFrame, snapshots: dict, draws: int = 2000,
             "by_context_source": {k: int(v) for k, v in
                                   ledger["context_source"].astype(str)
                                   .value_counts().items()},
+            "by_rule_version": {k: int(v) for k, v in
+                                ledger["rule_version"].astype(str)
+                                .value_counts().items()},
         },
+        "amendments": [{
+            "date": paper.AMENDMENT_DATE,
+            "rule_version": paper.RULE_VERSION,
+            "note": paper.AMENDMENT_NOTE,
+        }],
         "ruin": ruin_note(ledger, snapshots),
         "curves": {
             "taker": paper.bankroll_curve(ledger, "profit"),
@@ -422,12 +492,17 @@ def to_document(ledger: pd.DataFrame, snapshots: dict, draws: int = 2000,
             "taker_posterior": by_stat(post, "profit", draws, seed),
             "maker": by_stat(filled, "maker_profit", draws, seed),
         },
+        "roi_by_rule_version": roi_by_rule_version(ledger, post, filled, draws, seed),
         "gate": paper.gate_progress(ledger, draws=draws, seed=seed),
     }
     doc["gate"]["note"] = (
         "docs/bankroll.md Stage 1. All four conditions on the primary test "
         "(hits props, taker prices, after fees). A gate met on the maker "
-        "ledger only is not met.")
+        f"ledger only is not met. Scored on rule_version {paper.RULE_VERSION} "
+        f"only: Amendment 1 ({paper.AMENDMENT_DATE}) capped the per-slate "
+        "exposure and restarted the Stage 1 window, so the tickets written "
+        "under the unamended sizing stay in the ledger and are reported but do "
+        "not count toward the gate.")
     return doc
 
 
