@@ -126,7 +126,7 @@ one hid the fact that two of them are much emptier than the first.
 | | **Hitting** | **Pitching** | **Defence / catching** |
 |---|---|---|---|
 | **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8, not yet wired; HSGP version lost | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
-| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm DRAWS with it on K%, BB% and HR/PA (BAS-69, BAS-73) | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
+| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm DRAWS with it on K%, BB% and HR/PA (BAS-69, BAS-73); structural track IN FLIGHT: covariates in the likelihood (BAS-83), joint multi-component (BAS-84), measurement model (BAS-85) | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
 | **L3 Playing time** | PA — **gated**, the biggest win in the repo | batters faced — **gated** (B-P) | innings by position — **does not exist** |
 | **L4 Assembly** | rates × PA → wOBA → wRC+ → oWAR | rates × BF → FIP / RA9 → pWAR | runs saved → dWAR |
 | ↓ | | | |
