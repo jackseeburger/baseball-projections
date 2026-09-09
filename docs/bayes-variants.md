@@ -2,7 +2,7 @@
 
 Tracked as [BAS-69](https://linear.app/sigils/issue/BAS-69).
 
-**Status: pre-registered; the vacuity check has been run, the sweep has not.** Predictions below were written into the
+**Status: complete. All three predictions scored below against the full sweep.** Predictions below were written into the
 commit that added the model options, before any variant was fitted. Results get
 appended to this file — including the ones that go against the predictions,
 which is the only reason writing them down first is worth anything.
@@ -194,4 +194,130 @@ hardware. `scripts/run_intraseason_backtest_dense.py` already defaults to
 `include_pitcher=False`, so the published sweep and these timings are the same
 arm — but it is worth writing down, because an unlucky default here is the
 difference between a five-hour sweep and one that never lands.
+
+## Result 2: the verdict
+
+48 (season, cutoff) pairs — biweekly across 2022, 2024, 2025, 2026 — 192 MCMC
+fits, 171,108 scored rows, 14,259 per arm on the common set. Every number
+below is clustered by player; the unclustered t is reported alongside because
+it runs **2.4-2.9x** larger here, in line with the 3.71x
+[the previous sweep](densified-intraseason-backtest.md) measured.
+
+| arm | vs | Δ MAE | t (player) | t (cell) | t (unclustered, **wrong**) | cells W-L |
+| --- | --- | --- | --- | --- | --- | --- |
+| `bayes_flat` | `marcel_tuned` | +0.00121 | **4.08** | 14.00 | 11.19 | 1-47 |
+| `bayes_walk` | `marcel_tuned` | **+0.00033** | **1.40** | 4.98 | 3.42 | 8-40 |
+| `bayes_age` | `marcel_tuned` | +0.00118 | 4.00 | 12.42 | 10.95 | 1-47 |
+| `bayes_walk_age` | `marcel_tuned` | +0.00031 | 1.28 | 4.53 | 3.13 | 9-39 |
+| `bayes_walk` | `bayes_flat` | **−0.00087** | **−3.45** | −7.63 | −8.86 | **43-5** |
+| `bayes_age` | `bayes_flat` | −0.00002 | −0.54 | −0.98 | −1.38 | 28-20 |
+| `bayes_walk` | `marcel` (stock) | −0.00042 | −1.20 | −4.02 | −3.18 | 32-16 |
+
+The flat arm reproduces the previous sweep closely — +0.00121 here against
++0.00110 there, on a disjoint set of cutoffs — which is the check that says
+the harness is measuring the same thing.
+
+### Prediction 1: **holds**
+
+> `ability_walk` closes most of the gap. Remaining deficit ≤ +0.0005, \|t\| < 2.
+
++0.00033 with t = 1.40. The gap to `marcel_tuned` closes by **73%**, and what
+is left is no longer distinguishable from zero on the primary clustering.
+Against the flat arm the walk wins **43 of 48 cutoffs** at t = −3.45.
+
+Recency was the missing ingredient, and giving the model a way to *estimate*
+it recovers most of what hand-tuning bought Marcel.
+
+### Prediction 2: **holds**
+
+> `constrained_age` alone moves essentially nothing. \|Δ\| < 0.0002, \|t\| < 1.5.
+
+−0.00002 against the flat arm, t = −0.54. Predicted for the stated reason: the
+age term is one global curve estimated on hundreds of thousands of plate
+appearances, so it is already the best-determined thing in the model and
+constraining it can only fail to help.
+
+### Prediction 3: **not supported**
+
+> The combination does not beat `ability_walk` alone.
+
+Scored directly rather than by comparing two columns against a third:
+`bayes_walk_age` − `bayes_walk` = **−0.0000289**, t(player) −1.47, better at
+**31 of 48** cutoffs. The point estimate goes the other way from the
+prediction. It is not significant on the primary clustering (\|t\| < 2), and
+the improvement is about **3% of the walk's own effect** — but "not
+significant" is not what was predicted, and the honest score is that the
+prediction failed rather than that it survived on a technicality.
+
+### The robustness check that mattered most
+
+`marcel_tuned`'s constants were fitted walk-forward on 2020-2024. Two of the
+four seasons here fall inside that window and two do not, so the split says
+whether any of this is the baseline being flattered by its own training data.
+
+| | `bayes_flat` | `bayes_walk` | `bayes_walk_age` |
+| --- | --- | --- | --- |
+| inside 2020-2024 (24 cells) | +0.00113, t 2.53 | +0.00028, t 0.84 | +0.00025, t 0.75 |
+| clean holdout 2025-2026 (24 cells) | +0.00130, t 3.92 | +0.00040, t 1.23 | +0.00037, t 1.15 |
+
+The flat arm's deficit is *larger* in the clean holdout, not smaller, so it
+was never a tuning-window artifact — and the walk closes the same share of it
+on both halves. Nothing here depends on which seasons Marcel was tuned on.
+
+### What the model learned, in its own parameters
+
+Across all 48 fits of each variant:
+
+| parameter | mean | range | what it says |
+| --- | --- | --- | --- |
+| `sigma_step` | **0.1336** | 0.111 - 0.169 | ~2.3 points of K% of talent drift per season |
+| `peak_age` | 28.4 | 27.2 - 29.9 | where K% bottoms out |
+| `slope_young` | 0.0254 | 0.017 - 0.038 | K% *falls* steeply toward the peak |
+| `slope_old` | 0.0080 | 0.005 - 0.014 | and rises gently after it |
+
+`sigma_step` never approaches the 0.02 collapse threshold at any cutoff in any
+season — the tightest fit puts it at 0.111, five times the threshold. Whatever
+else is true, the data are emphatic that K% talent moves between seasons.
+
+**An independent corroboration worth recording.** `scripts/tune_marcel.py`
+fits `marcel_tuned`'s K% age curve by coordinate search on season aggregates,
+and lands on `age_slope_old = 0.008`. The hierarchical model, at the plate
+appearance, with a Beta-scaled peak and HalfNormal slopes, lands on **0.0080**.
+Two estimators sharing no code, no likelihood and no data representation
+agreeing to two significant figures on how fast a hitter's strikeout rate
+rises after his peak. They disagree on the young side — Marcel's grid picks a
+flat 0.0 before a peak at 30, the model picks 0.0254 before a peak at 28.4 —
+so this is agreement about decline, not about the whole curve.
+
+**Sampling.** Zero divergences in all 192 fits. Worst R-hat 1.039, and the
+walk variants sample *better* than the flat model, not worse (lowest ESS 130
+and 124 against the flat model's 57) — a random walk over three season nodes
+gives the sampler an easier geometry than one level fighting all three
+seasons at once. Median 91s per walk fit against 64s flat, so the walk costs
+1.4x, not the 3-4x its parameter count suggests.
+
+### What ships, and what does not
+
+`ability_walk` clears its gate against `bayes_flat`: −0.00087, t = −3.45, 43
+of 48 cutoffs, on the common set, out of sample, holding on the clean
+holdout. That is a real win and it is the first time anything on the Bayesian
+track has cleared one.
+
+It does **not** clear a gate against `marcel_tuned`, which is the bar that
+decides what the site serves. +0.00033 at t = 1.40 is a tie, not a win, and
+§3 says the incumbent keeps its place on a tie. **`marcel_tuned` stays the
+live rest-of-season engine.**
+
+The honest summary is that the hierarchical model has gone from *losing* to
+tuned Marcel to *drawing* with it, by learning the one thing tuning had that
+it did not. Drawing is not winning. What it buys is a model that now matches
+the baseline while also carrying a posterior, which is the thing Marcel
+structurally cannot do — so the next question is whether that posterior is
+worth anything on a decision, not whether the point estimate can be squeezed
+further.
+
+`constrained_age` does not ship in either direction: it neither helps nor
+hurts, and an unused parameterisation with a tighter prior is not free
+complexity to carry. Its value was diagnostic — it says the free quadratic was
+not the problem, and it produced the `slope_old` agreement above.
 

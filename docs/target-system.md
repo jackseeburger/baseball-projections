@@ -56,10 +56,18 @@ leaves and carrying the variance.
 │    · partially pooled player ability — shrinkage ESTIMATED           │
 │    · Layer 1 output as a covariate                                   │
 │    · context: park, platoon, opposing pitcher, count                 │
-│    · within-season random walk on skill                              │
+│    · random walk on skill — DONE between seasons (BAS-69), not yet   │
+│      within one                                                      │
 │    · hierarchical aging curve                                        │
 │  OUTPUT: a posterior per player per rate — not a number.             │
-│  STATUS: K% exists and loses to Marcel; four components not started. │
+│  STATUS: K% DRAWS with tuned Marcel; four components not started.    │
+│  BAS-69 gave the model a season random walk on player ability —      │
+│  recency it estimates rather than one we fix — and that closed 73%   │
+│  of the deficit: +0.00033 MAE at t 1.40 over 48 cutoffs, from        │
+│  +0.00121 at t 4.08. It beats its own flat self at 43 of 48 (t       │
+│  -3.45), which is a real gate cleared; it does not beat Marcel, so   │
+│  Marcel keeps serving. A draw with a posterior attached is worth     │
+│  more than a draw without one — see docs/bayes-variants.md.          │
 │  Statcast covariates clear the gate ON TOP of tuned Marcel, so the   │
 │  layer-1 → layer-2 path is proven even though layer 2's own          │
 │  Bayesian engine is not yet the one serving.                         │
@@ -118,7 +126,7 @@ one hid the fact that two of them are much emptier than the first.
 | | **Hitting** | **Pitching** | **Defence / catching** |
 |---|---|---|---|
 | **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8, not yet wired; HSGP version lost | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
-| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm inside noise | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
+| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm now DRAWS with it (BAS-69) | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
 | **L3 Playing time** | PA — **gated**, the biggest win in the repo | batters faced — **gated** (B-P) | innings by position — **does not exist** |
 | **L4 Assembly** | rates × PA → wOBA → wRC+ → oWAR | rates × BF → FIP / RA9 → pWAR | runs saved → dWAR |
 | ↓ | | | |
