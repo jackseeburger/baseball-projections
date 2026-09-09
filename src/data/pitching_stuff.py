@@ -174,10 +174,11 @@ def fastball_reference(pitches: pd.DataFrame) -> pd.DataFrame:
     against. A pitcher-season with fewer than `MIN_FASTBALLS` four-seamers and
     sinkers gets no row, so every relative feature comes back NaN for him and
     the model treats him as a pitcher whose fastball is unknown rather than as
-    a pitcher whose fastball is league average. In 2015 that is about 6% of
-    pitcher-seasons and essentially all of them are position players and
-    one-appearance callups; among pitchers with 200+ pitches it is under 1%,
-    and the ones it catches are real — a knuckleballer has no fastball.
+    a pitcher whose fastball is league average. That catches 6.0% of 2015
+    pitcher-seasons and 10.6% of 2024's — the rise is position players pitching
+    in blowouts, which is a real change in the data and not a change in this
+    rule. Among pitcher-seasons of 200 pitches or more it is 0.3% in both, and
+    those are genuine: a knuckleballer has no fastball to measure against.
     """
     fb = pitches[pitches["pitch_type"].isin(FASTBALL_TYPES)]
     if fb.empty:
