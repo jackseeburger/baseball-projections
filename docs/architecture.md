@@ -165,15 +165,24 @@ Consequences:
 - **Agreement with FanGraphs is not a score.** The coin-flip control proved
   September playoff odds can't distinguish models; use per-game Brier and
   component MAE.
-- **A covariate has to earn its own gain (from 2026-09-09, BAS-80).** A
-  layer-1 measurement is served as a covariate only if the arm clears the
-  gate *and* its covariate-only share — the arm against the same shape with
-  the covariate removed (the recalibration control) — clears |t| > 2.5 on
-  the same cells. BAS-79 served two components whose gain was mostly a
-  fitted intercept and withheld the one whose gain was all measurement,
-  because the rule looked only at the total. The rule in force at the time
-  is the one that counts, so BAS-72 and BAS-79 stand; this applies from the
-  next serving decision.
+- **A covariate has to earn its own gain (from 2026-09-09, BAS-80; the
+  bar revised the same day, BAS-82).** A layer-1 measurement is served as a
+  covariate only if the arm clears the gate *and* its covariate-only share
+  — the arm against the same shape with the covariate removed (the
+  recalibration control) — is **worth at least 1.0% of the served
+  baseline's MAE at |t| > 2.0** on the same cells. BAS-79 served two
+  components whose gain was mostly a fitted intercept and withheld the one
+  whose gain was all measurement, because the rule looked only at the
+  total; the first fix (|t| > 2.5 on the share alone) then turned out to
+  flip on ±0.1 of a t between two baselines half a percent apart (BAS-80),
+  because a bare significance bar is a function of how many players were
+  scored, not of whether the gain is worth serving. The 1.0% floor is not
+  fitted to any component: it is the gain tuning Marcel's own constants
+  was worth (1.1%, contact-quality.md §4), rounded down — a measurement
+  has to be worth at least that to earn its moving parts. `docs/`
+  `serving-rules.md` scores the candidates on every decision to date. The
+  rule in force at the time is the one that counts, so BAS-72 and BAS-79
+  stand; this applies from the next serving decision.
 
 Which *method* a station reaches for — hierarchical Bayes, machine learning,
 or neither — is a separate question from the bar it has to clear, and is
