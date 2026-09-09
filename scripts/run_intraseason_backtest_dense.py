@@ -58,6 +58,16 @@ key on the component as well as (season, cutoff, variant) — three components
 x four variants is twelve MCMC fits per cutoff, and the one-season-per-process
 rule below matters proportionally more.
 
+**Layer-1 covariates (BAS-83, docs/bayes-covariates.md).**
+`--bayes-covariates contact` re-keys every requested variant to its
+covariate-carrying twin — `ability_walk` becomes `ability_walk+contact`, arm
+`bayes_walk+contact` — so the hierarchical model reads the same six
+contact-quality aggregates the served `contact_additive` engine reads.
+`--contact-arm` puts `contact_additive` itself (Marcel plus those aggregates,
+baseline pinned at 1, fitted walk-forward on cell seasons strictly before the
+predict year) into the same cell, which is what makes the comparison paired on
+identical information rather than two tables read side by side.
+
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
     python -c "from src.data.pa_outcomes_pipeline import build_pa_dataset; \\
@@ -144,10 +154,38 @@ VARIANT_ARM_NAMES = {
     "constrained_age": "bayes_age",
     "ability_walk+constrained_age": "bayes_walk_age",
 }
+
+# ─── layer-1 covariates (BAS-83, docs/bayes-covariates.md) ───
+# `--bayes-covariates contact` re-keys every requested variant to its
+# covariate-carrying twin: "ability_walk" becomes "ability_walk+contact"
+# (arm `bayes_walk+contact`), scored alongside — never in place of — the
+# no-covariate arms, since the whole comparison is one against the other.
+# The names are derived rather than a second hand-written table so a variant
+# added above cannot be silently missing its covariate twin.
+COVARIATE_SETS = ("contact",)
+
+
+def covariate_variant(variant: str, covariates: str | None) -> str:
+    return f"{variant}+{covariates}" if covariates else variant
+
+
+def covariate_arm_name(variant: str, covariates: str | None) -> str:
+    base = VARIANT_ARM_NAMES[variant]
+    return f"{base}+{covariates}" if covariates else base
+
+
+VARIANT_ARM_NAMES.update({
+    covariate_variant(v, c): covariate_arm_name(v, c)
+    for v in list(VARIANT_ARM_NAMES) for c in COVARIATE_SETS
+})
 ARM_NAME_VARIANT = {arm: variant for variant, arm in VARIANT_ARM_NAMES.items()}
-# The pre-registration's full design: the two flags each on their own, and
-# together. Default sweep scope, overridable with --variants.
-DEFAULT_VARIANTS = list(VARIANT_ARM_NAMES)
+# The BAS-69 pre-registration's full design: the two flags each on their own,
+# and together. Default sweep scope, overridable with --variants. Covariate
+# twins are *not* in the default — they are opted into with
+# `--bayes-covariates`, so a command written before BAS-83 runs the sweep it
+# always ran.
+DEFAULT_VARIANTS = ["flat", "ability_walk", "constrained_age",
+                    "ability_walk+constrained_age"]
 
 # Posterior scalars a variant's own structure adds, named exactly as
 # docs/bayes-variants.md's math names them. `model_diagnostics()` (src/models/
@@ -169,6 +207,13 @@ VARIANT_OWN_PARAMS = {
     # the trace is skipped rather than raised on. The test below pins the
     # names against the model module so the next mismatch is loud.
     "constrained_age": ["peak_age", "slope_young", "slope_old"],
+    # BAS-83: one scalar per contact aggregate, named exactly as
+    # `src.models.pa_rate.build_model` names it. These are what the
+    # pre-registration's vacuity check reads — barrel rate on HR/PA and
+    # average EV on K% have to exclude zero, or the covariate block is
+    # decorative and predictions 1-3 are untestable rather than false.
+    "contact": [f"beta_cov_{f}" for f in
+                ("ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean")],
 }
 
 
@@ -220,6 +265,75 @@ def bayes_prior_seasons(year: int, available: set[int], max_priors: int = 2) -> 
             priors.append(y)
         y -= 1
     return tuple(sorted({*priors, year}))
+
+
+# ─── contact_additive, the served covariate engine, as a sweep arm (BAS-83) ───
+
+# `src.eval.contact.LIVE_CELL_SEASONS` is the full walk-forward training set
+# for the additive fit. Only the seasons whose PA parquet is actually on disk
+# can be used, so the arm reports which ones it fitted on rather than failing
+# or, worse, quietly training on fewer cells than a reader assumes.
+CONTACT_ARM = "contact_additive"
+
+
+def _available_cell_seasons(pa_dir: Path, predict_year: int) -> tuple[int, ...]:
+    from src.eval.contact import LIVE_CELL_SEASONS
+
+    return tuple(s for s in LIVE_CELL_SEASONS
+                 if s < predict_year
+                 and (pa_dir / f"pa_outcomes_{s}.parquet").exists())
+
+
+def make_contact_provider(component: str, cutoff: str, year: int,
+                          seasons_table: pd.DataFrame, monthly: pd.DataFrame,
+                          pa_dir: Path, sink: dict | None = None):
+    """The `contact_additive` engine (docs/contact-quality.md §8) as a harness
+    provider at one cutoff — the comparator BAS-83 pre-registered.
+
+    This is the *served* shape, not the free fit: `fit_contact(...,
+    fixed_base=True)` pins `marcel_tuned`'s coefficient at exactly 1 and fits
+    only the intercept and the six covariate coefficients, on cell seasons
+    strictly before `year`. It is the same construction
+    `src.projections.ros.contact_engine_provider` serves live, down to the
+    month-lagged cutoff (`ros.contact_cutoff`), so what the sweep scores and
+    what the board serves are one estimator.
+
+    Returns `None` — the arm is simply absent from that cell — when there are
+    no training cell seasons on disk before `year`, rather than fitting on
+    nothing.
+    """
+    from src.eval import contact as contact_eval
+    from src.projections.ros import contact_cutoff
+
+    cell_seasons = _available_cell_seasons(pa_dir, year)
+    if not cell_seasons:
+        logger.warning("contact_additive: no PA parquets before %d — arm skipped",
+                       year)
+        return None
+    cells = contact_eval.build_hitter_cells(
+        seasons_table, pa_dir, [component], seasons=cell_seasons)
+    if cells.empty:
+        logger.warning("contact_additive: no training cells for %s before %d",
+                       component, year)
+        return None
+    cells = contact_eval.attach_live_features(cells, monthly)
+    fit = contact_eval.fit_contact(cells, component,
+                                   features=contact_eval.FEATURES,
+                                   fixed_base=True)
+    if sink is not None:
+        sink.update({
+            "component": component, "cutoff": cutoff,
+            "train_seasons": [int(s) for s in cell_seasons],
+            "n_rows": fit.n_rows, "n_cells": fit.n_cells,
+            "coef": dict(fit.coef),
+            "contact_cutoff": str(contact_cutoff(cutoff).date()),
+        })
+    config = contact_eval.ContactProviderConfig(
+        monthly=monthly, cutoff=contact_cutoff(cutoff), predict_year=year,
+        fit=fit, base_provider=INTRASEASON_BASELINES["marcel_tuned"],
+        side="hitter",
+    )
+    return contact_eval.contact_provider(config)
 
 
 def preseason_bayes_provider(component: str, projections_dir: Path, year: int):
@@ -286,8 +400,13 @@ def _variant_config(variant: str, **kwargs):
     from src.eval.bayes_arm import BayesArmConfig
 
     on = set(variant.split("+"))
+    cov = sorted(on & set(COVARIATE_SETS))
+    if len(cov) > 1:
+        raise ValueError(f"variant {variant!r} names more than one covariate "
+                         f"set ({cov}); one block per arm")
     config = BayesArmConfig(
         ability_walk="ability_walk" in on, constrained_age="constrained_age" in on,
+        covariates=(cov[0] if cov else None),
         **kwargs,
     )
     assert config.variant() == variant, (
@@ -318,6 +437,8 @@ def variant_param_summary(trace, config) -> dict:
     not assume a naming convention that turns out to be wrong.
     """
     on = [n for n in ("ability_walk", "constrained_age") if getattr(config, n)]
+    if getattr(config, "covariates", None):
+        on.append(config.covariates)
     names = [p for n in on for p in VARIANT_OWN_PARAMS.get(n, [])]
     out: dict = {}
     posterior = getattr(trace, "posterior", None) if trace is not None else None
@@ -330,7 +451,12 @@ def variant_param_summary(trace, config) -> dict:
         vals = vals[np.isfinite(vals)]
         if vals.size == 0:
             continue
-        out[name] = {"mean": float(vals.mean()), "sd": float(vals.std())}
+        # The 90% interval rides along because BAS-83's vacuity check is
+        # "does this coefficient's posterior exclude zero", which a mean and
+        # an sd only answer under a normality assumption nobody checked.
+        out[name] = {"mean": float(vals.mean()), "sd": float(vals.std()),
+                     "q05": float(np.percentile(vals, 5)),
+                     "q95": float(np.percentile(vals, 95))}
     return out
 
 
@@ -498,6 +624,11 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              pa_dir: Path = ROOT / "data/parquet/pa_outcomes",
              variants: list[str] | None = None,
              components: list[str] | None = None,
+             covariates: str | None = None,
+             seasons_table_for_contact: pd.DataFrame | None = None,
+             monthly: pd.DataFrame | None = None,
+             contact_arm: bool = False,
+             contact_fits: list[dict] | None = None,
              ) -> tuple[pd.DataFrame, list[dict]]:
     """Score every requested bayes variant, plus the cheap baselines, at each
     (component, season, cutoff) — one fit per (component, variant, season,
@@ -528,6 +659,11 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
     costs nothing to skip).
     """
     variants = list(variants) if variants else DEFAULT_VARIANTS
+    if covariates:
+        if covariates not in COVARIATE_SETS:
+            raise ValueError(f"unknown covariate set {covariates!r}; known: "
+                             f"{list(COVARIATE_SETS)}")
+        variants = [covariate_variant(v, covariates) for v in variants]
     unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
     if unknown:
         raise ValueError(f"unknown bayes variant(s) {unknown}; "
@@ -593,6 +729,15 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
                 ]
 
                 providers = dict(INTRASEASON_BASELINES)
+                if contact_arm:
+                    sink: dict = {}
+                    cp = make_contact_provider(
+                        component, cutoff, year, seasons_table_for_contact,
+                        monthly, pa_dir, sink)
+                    if cp is not None:
+                        providers[CONTACT_ARM] = cp
+                        if contact_fits is not None:
+                            contact_fits.append(sink)
                 providers.update(make_variant_providers(
                     cutoff, year, variants, config_kwargs, fits,
                     component=component))
@@ -827,11 +972,19 @@ def variant_comparison(cells: pd.DataFrame, arm: str, base: str,
 
 
 def build_variant_comparison_table(bayes: pd.DataFrame, component: str = "k_rate",
-                                   bases: tuple[str, ...] = ("marcel_tuned", "marcel", "bayes_flat"),
+                                   bases: tuple[str, ...] = ("marcel_tuned", "marcel",
+                                                             "bayes_flat", "bayes_walk",
+                                                             CONTACT_ARM),
                                    ) -> pd.DataFrame:
     """`variant_comparison` for every scored variant against every base in
     `bases`, skipping a variant against itself (diff is identically zero and
-    says nothing)."""
+    says nothing).
+
+    `bayes_walk` and `contact_additive` joined the base list for BAS-83: the
+    covariate arms have to be read against their own no-covariate twin (does
+    the covariate pay?) and against Marcel carrying the same covariate (does
+    the hierarchy pay?), and a base absent from the checkpoint is skipped by
+    `variant_comparison` returning `{}` rather than erroring."""
     present = set(bayes["model"].unique()) if not bayes.empty else set()
     arms = [a for a in VARIANT_ARM_NAMES.values() if a in present]
     rows = []
@@ -989,6 +1142,14 @@ def main() -> None:
     # five hitter components. The bayes arm only serves the three per-PA
     # binomials, and its default stays k_rate alone so a command that names
     # neither runs exactly the sweep it always ran.
+    ap.add_argument("--bayes-covariates", default=None, choices=list(COVARIATE_SETS),
+                    help="layer-1 covariate block to add to every requested "
+                         "variant (BAS-83, docs/bayes-covariates.md); default "
+                         "off, which is the sweep exactly as it ran before")
+    ap.add_argument("--contact-arm", action="store_true",
+                    help="also score `contact_additive` — Marcel plus the same "
+                         "contact aggregates, the served shape — at every "
+                         "bayes cell, so the covariate comparison is paired")
     ap.add_argument("--bayes-components", nargs="+",
                     default=list(DEFAULT_BAYES_COMPONENTS),
                     choices=list(BAYES_COMPONENTS),
@@ -1022,16 +1183,34 @@ def main() -> None:
         # BAYES_SEASONS entry is a subset of CHEAP_SEASONS by construction),
         # so the cheap sweep's PA frames already cover every prior a fit
         # needs.
-        pa_by_year = load_pa_by_year(CHEAP_SEASONS, args.pa_dir)
+        available = tuple(y for y in CHEAP_SEASONS
+                          if (args.pa_dir / f"pa_outcomes_{y}.parquet").exists())
+        pa_by_year = load_pa_by_year(
+            tuple(sorted(set(available) | set(args.bayes_seasons))), args.pa_dir)
+        monthly = None
+        contact_fits: list[dict] = []
+        if args.contact_arm or args.bayes_covariates:
+            from src.data.contact_quality import load_monthly
+
+            monthly = load_monthly()
         bayes, fits = run_bayes(seasons_table, pa_by_year, tuple(args.bayes_seasons),
                                 BIWEEKLY_MMDD, args.min_trials, checkpoint=bayes_ckpt,
                                 fits_path=fits_path, draws=args.bayes_draws,
                                 tune=args.bayes_tune, chains=args.bayes_chains,
                                 sampler=args.bayes_sampler, pa_dir=args.pa_dir,
                                 variants=variants,
-                                components=args.bayes_components)
+                                components=args.bayes_components,
+                                covariates=args.bayes_covariates,
+                                seasons_table_for_contact=seasons_table,
+                                monthly=monthly,
+                                contact_arm=args.contact_arm,
+                                contact_fits=contact_fits)
+        if contact_fits:
+            (args.out_dir / "contact_additive_fits.json").write_text(
+                json.dumps(contact_fits, indent=1))
         print(f"bayes sweep: {len(bayes)} rows, {len(fits)} fits, "
-             f"components {args.bayes_components}, variants {variants} "
+             f"components {args.bayes_components}, variants {variants}, "
+             f"covariates {args.bayes_covariates} "
              f"-> {bayes_ckpt}")
 
     if args.stage in ("analyze", "all"):

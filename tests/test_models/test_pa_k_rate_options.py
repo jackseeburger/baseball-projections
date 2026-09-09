@@ -96,11 +96,19 @@ def test_model_options_label_and_to_dict():
     default = ModelOptions()
     assert default.ability_walk is False and default.constrained_age is False
     assert "flat" in default.label() and "quadratic" in default.label()
-    assert default.to_dict() == {"ability_walk": False, "constrained_age": False}
+    assert default.covariates is None
+    assert default.to_dict() == {"ability_walk": False, "constrained_age": False,
+                                 "covariates": None}
 
     both = ModelOptions(ability_walk=True, constrained_age=True)
     assert "walk" in both.label() and "constrained" in both.label()
-    assert both.to_dict() == {"ability_walk": True, "constrained_age": True}
+    assert both.to_dict() == {"ability_walk": True, "constrained_age": True,
+                              "covariates": None}
+
+    cov = ModelOptions(ability_walk=True, covariates="contact")
+    assert "covariates=" in cov.label() and "barrel" in cov.label()
+    assert cov.to_dict()["covariates"] == [
+        "ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean"]
 
 
 # ─── build_model no longer raises, and the flat path is untouched ─────────
