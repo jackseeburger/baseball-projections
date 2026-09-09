@@ -11,7 +11,10 @@ right, and it is easy to get wrong in ways a real run would hide:
   either direction, so an arm that is 4% *worse* in August must fail it;
 * coverage (prediction 4) is `None` for an arm with no interval, not 0% —
   `contact_additive` does not make the claim, and scoring it as a total
-  failure would be a lie in the headline;
+  failure would be a lie in the headline; and the interval that gets scored
+  is the predictive one, because the thing it is scored against is a rate
+  over a finite number of trials and the rate's own posterior does not carry
+  that noise;
 * the loadings are recorded on one fit record per component out of one fit,
   so counting cutoffs has to deduplicate, or "excludes zero at every cutoff"
   gets easier to satisfy the more components are fit.
@@ -151,7 +154,15 @@ def test_pooled_needs_a_gain_on_hr_and_a_draw_on_k():
 
 # --- prediction 4: coverage -------------------------------------------------
 
-def _coverage_cells(fraction_inside, model, n=200, month=5, seed=9):
+def _coverage_cells(fraction_inside, model, n=200, month=5, seed=9,
+                    sd=0.0001):
+    """Cells where a known fraction of realised rates land inside the band.
+
+    The rate-only band is written directly (`pred_q10`/`pred_q90`). `pred_sd`
+    is tiny by default so that the *predictive* band, which is the posterior
+    sd and the binomial sd in quadrature, is dominated by the binomial term
+    and is a known width — which lets the two readings be tested apart.
+    """
     rng = np.random.default_rng(seed)
     rows = []
     for i in range(n):
@@ -160,10 +171,12 @@ def _coverage_cells(fraction_inside, model, n=200, month=5, seed=9):
         rows.append({
             "component": "hr_rate", "model": model, "batter": 1000 + i,
             "predicted": 0.03, "realized_successes": 10,
-            "realized_rate": realized, "trials": 300, "season": 2024,
+            "realized_rate": realized if inside else 0.30,
+            "trials": 300, "season": 2024,
             "cutoff": f"2024-{month:02d}-01",
             "pred_q10": 0.02 if inside else 0.05,
             "pred_q90": 0.04 if inside else 0.06,
+            "pred_sd": sd,
         })
     rng.shuffle(rows)
     return pd.DataFrame(rows)
@@ -180,16 +193,45 @@ def test_coverage_counts_cells_not_trials():
     assert cov["mean_width"] > 0
 
 
+def test_the_predictive_band_is_wider_than_the_rate_band():
+    """The realised rate carries binomial noise the rate's posterior does
+    not, so the interval that can cover it is the wider one. If these two
+    ever came out equal the binomial term would have been dropped."""
+    cells = _coverage_cells(0.8, bas85.MEASUREMENT_ARM)
+    rate = bas85.coverage(cells, bas85.MEASUREMENT_ARM, "hr_rate")
+    pred = bas85.coverage(cells, bas85.MEASUREMENT_ARM, "hr_rate",
+                          predictive=True)
+    assert pred["mean_width"] > rate["mean_width"]
+    # 300 trials at p=0.03: binomial sd ~0.0099, so an 80% band is ~+-0.0127.
+    assert pred["mean_width"] == pytest.approx(2 * 1.2816 * 0.00985, rel=0.02)
+
+
+def test_the_verdict_is_taken_on_the_predictive_reading(monkeypatch):
+    """Both readings are reported; only one is scored, and the payload says
+    which — a reader who quotes the wrong one should be able to see that it
+    is not the number the verdict came from."""
+    cells = pd.concat([_coverage_cells(0.80, bas85.MEASUREMENT_ARM),
+                       _coverage_cells(0.60, bas85.WALK_ARM, seed=10)],
+                      ignore_index=True)
+    scored = bas85.score_prediction_4(cells, "hr_rate")
+    assert scored["scored_on"] == "predictive"
+    assert set(scored["predictive"]) == set(scored["rate_only"])
+    assert (scored["predictive"][bas85.MEASUREMENT_ARM]["mean_width"]
+            > scored["rate_only"][bas85.MEASUREMENT_ARM]["mean_width"])
+
+
 def test_an_arm_with_no_interval_scores_none_not_zero():
     """`contact_additive` has no posterior at all. Reporting 0% coverage for
     it would read as a catastrophic miscalibration of an arm that never made
     the claim."""
     cells = _coverage_cells(0.8, bas85.MEASUREMENT_ARM)
-    plain = cells.drop(columns=["pred_q10", "pred_q90"]).assign(
+    plain = cells.drop(columns=["pred_q10", "pred_q90", "pred_sd"]).assign(
         model=bas85.CONTACT_ARM)
-    cov = bas85.coverage(plain, bas85.CONTACT_ARM, "hr_rate")
-    assert cov["covered"] is None
-    assert cov["n"] == 0
+    for predictive in (False, True):
+        cov = bas85.coverage(plain, bas85.CONTACT_ARM, "hr_rate",
+                             predictive=predictive)
+        assert cov["covered"] is None
+        assert cov["n"] == 0
 
 
 def test_the_prediction_needs_both_halves():

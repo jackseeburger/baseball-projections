@@ -218,14 +218,43 @@ def score_prediction_3(pooled: dict) -> dict:
 
 # ─── prediction 4: posterior coverage ──────────────────────────────────────
 
-def coverage(cells: pd.DataFrame, model: str, component: str,
-             months=None) -> dict:
-    """How often the 80% posterior interval covers the realised rate.
+# The 80% interval's half-width in standard deviations, for the predictive
+# reading below. Normal, because the predictive distribution of a realised
+# rate over a hundred-plus trials is a binomial mean and is close enough to
+# one at the 10th and 90th percentiles; the tails this prediction is scored
+# on are not the ones where that approximation is doing any work.
+Z80 = 1.2815515655446004
 
-    `pred_q10`/`pred_q90` are written into the cell parquet by the arms that
-    carry an interval (`src.eval.bayes_arm`; the harness carries any `pred_*`
-    column through). An arm without them scores `None` rather than 0 —
-    `contact_additive` has no interval at all, which the pre-registration
+
+def _band(g: pd.DataFrame, predictive: bool):
+    """`(lo, hi)` for one arm's cells, either interval.
+
+    The `pred_q10`/`pred_q90` pair is an interval on the **rate** — what the
+    posterior says the hitter's true rest-of-season rate is. What it is
+    scored against is a *realised* rate over a finite number of trials, which
+    carries binomial noise on top. The two readings of the pre-registration
+    differ by exactly that noise, so both are computed and reported and the
+    verdict is taken on the predictive one, which is the reading under which
+    "covers 75-85%" is a statement a correctly-specified model can satisfy.
+
+    The predictive band is the posterior sd of the rate and the binomial sd
+    at the realised trial count, added in quadrature.
+    """
+    if not predictive:
+        return g["pred_q10"], g["pred_q90"]
+    p = g["predicted"].clip(1e-6, 1 - 1e-6)
+    sd = np.sqrt(g["pred_sd"] ** 2 + p * (1 - p) / g["trials"])
+    return g["predicted"] - Z80 * sd, g["predicted"] + Z80 * sd
+
+
+def coverage(cells: pd.DataFrame, model: str, component: str,
+             months=None, predictive: bool = False) -> dict:
+    """How often the 80% interval covers the realised rate.
+
+    `pred_q10`/`pred_q90`/`pred_sd` are written into the cell parquet by the
+    arms that carry a posterior (`src.eval.bayes_arm`; the harness carries any
+    `pred_*` column through). An arm without them scores `None` rather than
+    0 — `contact_additive` has no interval at all, which the pre-registration
     says in as many words, and reporting that as "0% coverage" would read as
     a catastrophic failure of an arm that simply does not make the claim.
 
@@ -235,14 +264,15 @@ def coverage(cells: pd.DataFrame, model: str, component: str,
     g = cells[(cells["component"] == component) & (cells["model"] == model)]
     if months is not None:
         g = g[g["cutoff"].map(cutoff_month).isin(months)]
-    if g.empty or not {"pred_q10", "pred_q90"} <= set(g.columns):
+    need = ["pred_sd"] if predictive else ["pred_q10", "pred_q90"]
+    if g.empty or not set(need) <= set(g.columns):
         return {"n": 0, "covered": None}
-    g = g.dropna(subset=["pred_q10", "pred_q90"])
+    g = g.dropna(subset=need)
     if g.empty:
         return {"n": 0, "covered": None}
-    inside = ((g["realized_rate"] >= g["pred_q10"])
-              & (g["realized_rate"] <= g["pred_q90"]))
-    below = (g["realized_rate"] < g["pred_q10"]).mean()
+    lo, hi = _band(g, predictive)
+    inside = (g["realized_rate"] >= lo) & (g["realized_rate"] <= hi)
+    below = (g["realized_rate"] < lo).mean()
     return {
         "n": int(len(g)), "covered": float(inside.mean()),
         # Which tail the misses fall in says whether the interval is too
@@ -250,22 +280,45 @@ def coverage(cells: pd.DataFrame, model: str, component: str,
         # and those are different repairs.
         "miss_low": float(below),
         "miss_high": float(1.0 - inside.mean() - below),
-        "mean_width": float((g["pred_q90"] - g["pred_q10"]).mean()),
+        "mean_width": float((hi - lo).mean()),
+    }
+
+
+def coverage_table(cells: pd.DataFrame, component: str,
+                   predictive: bool) -> dict:
+    return {
+        MEASUREMENT_ARM: coverage(cells, MEASUREMENT_ARM, component,
+                                  predictive=predictive),
+        f"{MEASUREMENT_ARM}_may": coverage(cells, MEASUREMENT_ARM, component,
+                                           REGIMES["may"], predictive),
+        f"{WALK_ARM}_may": coverage(cells, WALK_ARM, component,
+                                    REGIMES["may"], predictive),
+        CONTACT_ARM: coverage(cells, CONTACT_ARM, component,
+                              predictive=predictive),
     }
 
 
 def score_prediction_4(cells: pd.DataFrame, component: str) -> dict:
+    """Both readings reported; the verdict on the predictive one.
+
+    The pre-registration says "the 80% posterior interval on the rest-of-
+    season *rate* covers the realised rate". The realised rate is a rate over
+    a finite number of trials, so the interval that can cover it 80% of the
+    time is the predictive one — the rate's posterior widened by the binomial
+    noise of the trials actually played. The rate-only interval is reported
+    beside it, unscored, because the gap between the two is the honest
+    measure of how much of the miss is the model and how much is the sample.
+    """
     lo, hi = COVERAGE_TARGET
-    meas = coverage(cells, MEASUREMENT_ARM, component)
-    meas_may = coverage(cells, MEASUREMENT_ARM, component, REGIMES["may"])
-    walk_may = coverage(cells, WALK_ARM, component, REGIMES["may"])
+    predictive = coverage_table(cells, component, predictive=True)
     out = {
         "target": list(COVERAGE_TARGET),
-        MEASUREMENT_ARM: meas,
-        f"{MEASUREMENT_ARM}_may": meas_may,
-        f"{WALK_ARM}_may": walk_may,
-        CONTACT_ARM: coverage(cells, CONTACT_ARM, component),
+        "scored_on": "predictive",
+        "predictive": predictive,
+        "rate_only": coverage_table(cells, component, predictive=False),
     }
+    meas = predictive[MEASUREMENT_ARM]
+    walk_may = predictive[f"{WALK_ARM}_may"]
     out["holds"] = bool(
         meas["covered"] is not None and lo <= meas["covered"] <= hi
         and walk_may["covered"] is not None and walk_may["covered"] < lo)
@@ -402,7 +455,17 @@ def render_loadings(by_cutoff: dict) -> str:
 
 def render_coverage(cov: dict) -> str:
     lo, hi = COVERAGE_TARGET
-    lines = [f"target {lo:.0%}-{hi:.0%} of the 80% interval"]
+    lines = []
+    for reading in ("predictive", "rate_only"):
+        table = cov.get(reading) or {}
+        scored = " (scored)" if reading == cov.get("scored_on") else ""
+        lines.append(f"{reading}{scored}: target {lo:.0%}-{hi:.0%}")
+        lines.append(_render_coverage_table(table))
+    return "\n".join(lines)
+
+
+def _render_coverage_table(cov: dict) -> str:
+    lines = []
     for name, s in cov.items():
         if not isinstance(s, dict) or "covered" not in s:
             continue

@@ -214,3 +214,39 @@ class TestMeasurementConfig:
                              extra_quantiles=(10.0, 90.0))
         assert cfg.extra_quantiles == (10.0, 90.0)
         assert BayesArmConfig(joint=True).extra_quantiles == ()
+
+    def test_the_provider_renames_the_posterior_columns_it_carries(self):
+        """`<component>_q10` -> `pred_q10`, and the posterior sd along with
+        them, because the harness carries `pred_*` columns and nothing else.
+
+        The sd is there because the quantiles are an interval on the *rate*
+        and the thing scored against them is a realised rate over a finite
+        number of trials; reconstructing a predictive interval needs a scale,
+        and two quantiles are not one.
+        """
+        import numpy as np
+
+        from src.eval.bayes_arm import bayes_k_rate_provider
+        import src.eval.bayes_arm as arm
+
+        config = BayesArmConfig(component="hr_rate", measurement=True,
+                                joint=True, extra_quantiles=(10.0, 90.0))
+        projections = pd.DataFrame({
+            "batter": [1, 2], "projected_hr_rate": [0.03, 0.04],
+            "hr_rate_std": [0.004, 0.005],
+            "hr_rate_q10": [0.02, 0.03], "hr_rate_q90": [0.04, 0.05],
+        })
+        fit = type("F", (), {"projections": projections})()
+        # One fit, handed straight back: the rename is what is under test.
+        arm_module_fit = lambda *a, **k: fit  # noqa: E731
+        old = arm.fit_bayes_k_rate
+        arm.fit_bayes_k_rate = arm_module_fit
+        try:
+            provider = bayes_k_rate_provider("2024-06-01", 2024, config)
+            out = provider(pd.DataFrame({"batter": [1, 2], "season": [2024, 2024]}),
+                           COMPONENTS["hr_rate"], 2024)
+        finally:
+            arm.fit_bayes_k_rate = old
+        assert list(out.columns) == ["batter", "predicted", "pred_q10",
+                                     "pred_q90", "pred_sd"]
+        assert np.allclose(out["pred_sd"], [0.004, 0.005])

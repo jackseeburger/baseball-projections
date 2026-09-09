@@ -604,9 +604,20 @@ def bayes_k_rate_provider(
         # asked for quantiles, so every other arm returns the two columns it
         # always returned.
         rename = {comp.projected_col: "predicted"}
-        rename.update({f"{comp.name}_q{q:g}": f"pred_q{q:g}"
-                       for q in config.extra_quantiles
-                       if f"{comp.name}_q{q:g}" in fit.projections.columns})
+        if config.extra_quantiles:
+            rename.update({f"{comp.name}_q{q:g}": f"pred_q{q:g}"
+                           for q in config.extra_quantiles
+                           if f"{comp.name}_q{q:g}" in fit.projections.columns})
+            # The posterior sd of the rate goes too. The quantiles above are
+            # an interval on the *rate*; the thing scored against them is a
+            # realised rate over a finite number of trials, which carries
+            # binomial noise the rate's own posterior does not. Reconstructing
+            # a predictive interval needs a scale, and two quantiles are not
+            # one -- so the sd rides along and the scoring pass can report
+            # coverage both ways (`scripts/analyze_bas85.py`) instead of
+            # committing here to a reading of the pre-registration.
+            if comp.out_columns()["std"] in fit.projections.columns:
+                rename[comp.out_columns()["std"]] = "pred_sd"
         out = fit.projections[["batter", *rename]].rename(columns=rename)
         return out[np.isfinite(out["predicted"])]
 
