@@ -1,6 +1,7 @@
 """Kalshi normalization on real (trimmed) market payloads — no network."""
 import json
 import sys
+from datetime import datetime, timezone
 from itertools import permutations
 from pathlib import Path
 
@@ -105,3 +106,72 @@ def test_zero_quotes_become_none():
          "yes_sub_title": "Washington", "status": "active"}
     r = kalshi.normalize(m, TS)
     assert r["bid"] is None and r["ask"] == 0.26 and r["mid"] is None
+
+
+# ───────────────── the settled prop pull (BAS-78) ─────────────────
+
+class FakeSession:
+    """A `requests.Session` stand-in that records params and replays pages."""
+
+    def __init__(self, pages):
+        self.pages = pages
+        self.calls = []
+
+    def get(self, url, params=None, timeout=None, headers=None):
+        self.calls.append(dict(params or {}))
+        key = (params or {}).get("series_ticker")
+        body = self.pages.get(key, {"markets": [], "cursor": None})
+
+        class R:
+            status_code = 200
+            headers: dict = {}
+
+            def raise_for_status(self): pass
+
+            def json(self): return body
+
+        return R()
+
+
+def settled_market(ticker="KXMLBHIT-26SEP082140TEXSEA-TEXWLANGFORD36-1",
+                   result="yes"):
+    return {
+        "ticker": ticker, "event_ticker": "-".join(ticker.split("-")[:2]),
+        "title": "Wyatt Langford: 1+ hits?", "yes_sub_title": "Wyatt Langford: 1+",
+        "status": "finalized", "result": result, "floor_strike": 0.5,
+        "close_time": "2026-09-09T05:09:59Z",
+        "yes_bid_dollars": "0.62", "yes_ask_dollars": "0.66",
+        "last_price_dollars": "0.64",
+    }
+
+
+def test_settled_prop_pull_asks_for_settled_props_inside_the_window():
+    """Only the prop series, `status=settled`, bounded by `min_close_ts`.
+
+    The window is what keeps the pull bounded: the series has settled every
+    prop of every game of the season, and a snapshot only ever wants the tail
+    the last run may have missed.
+    """
+    sess = FakeSession({"KXMLBHIT": {"markets": [settled_market()], "cursor": None}})
+    now = datetime(2026, 9, 9, 12, 0, tzinfo=timezone.utc)
+    out = kalshi.fetch_settled_props(session=sess, now=now)
+    assert len(out) == 1
+    assert {c["series_ticker"] for c in sess.calls} == set(kalshi.PROP_SERIES)
+    assert {c["status"] for c in sess.calls} == {"settled"}
+    cutoff = int(now.timestamp()) - int(kalshi.SETTLED_LOOKBACK_HOURS * 3600)
+    assert {c["min_close_ts"] for c in sess.calls} == {cutoff}
+
+
+def test_an_open_pull_carries_no_close_time_filter():
+    sess = FakeSession({})
+    kalshi.fetch_markets("KXMLBHIT", session=sess)
+    assert "min_close_ts" not in sess.calls[0]
+    assert sess.calls[0]["status"] == "open"
+
+
+def test_a_settled_prop_normalizes_to_the_same_schema_with_a_result():
+    r = kalshi.normalize(settled_market(), TS)
+    validate(r)
+    assert r["market_type"] == "prop_hits" and r["prop_stat"] == "hits"
+    assert r["result"] == "yes" and r["prop_line"] == 0.5
+    assert r["player_name"] == "Wyatt Langford"

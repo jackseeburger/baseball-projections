@@ -275,6 +275,7 @@ def synthetic(n: int, days: int, per_ticket: float, sd: float = 0.0,
     dates = [f"2026-08-{1 + (i % days):02d}" for i in range(n)]
     return pd.DataFrame({
         "ticket_id": [f"t{i}" for i in range(n)], "snapshot_ts": dates,
+        "rule_version": paper.RULE_VERSION,
         "prop_stat": "hits", "settled": True, "result": "yes",
         "won": True, "profit": prof, "stake": 1.0, "game_pk": np.arange(n),
         "game_date": dates, "settle_ts": dates,
@@ -306,6 +307,96 @@ def test_gate_clears_on_a_ledger_that_meets_all_four():
     assert g["met"]
 
 
+# ───────────────────── Amendment 1: the per-slate cap ───────────────────────
+
+def slate(n: int, **kw) -> pd.DataFrame:
+    """`n` identical priceable rows on distinct markets — one evening's slate."""
+    rows = []
+    for i in range(n):
+        r = priced_row(market_id=f"KXMLBHIT-{i}", game_pk=700000 + i, **kw)
+        rows.append(r)
+    return pd.DataFrame(rows)
+
+
+def test_slate_cap_scales_every_stake_pro_rata():
+    """20 tickets at the 5% per-ticket cap is 100% of bankroll; 20% is allowed.
+
+    Each ticket wants 50 units of a 1,000-unit bankroll, so the slate wants
+    1,000 and may have 200 — a factor of 0.2 applied to every one of them,
+    and the same 20 tickets, unchanged in side, price and count.
+    """
+    rows = slate(20)
+    t = paper.emit(rows, 1000.0)
+    assert len(t) == 20
+    assert t["stake"].sum() == pytest.approx(1000.0 * paper.SLATE_CAP)
+    assert t["stake"].nunique() == 1
+    assert t["stake"].iloc[0] == pytest.approx(0.2 * 1000.0 * paper.KELLY_CAP)
+    assert set(t["side"]) == {"yes"}
+
+
+def test_slate_cap_leaves_a_slate_under_the_cap_untouched():
+    """Three tickets at 5% is 15% of bankroll — inside the cap, so nothing moves."""
+    t = paper.emit(slate(3), 1000.0)
+    assert t["stake"].sum() == pytest.approx(3 * 1000.0 * paper.KELLY_CAP)
+    assert t["stake"].iloc[0] == pytest.approx(1000.0 * paper.KELLY_CAP)
+
+
+def test_slate_cap_preserves_relative_size():
+    """The scaling is one common factor, so the ratio between two tickets holds."""
+    small = priced_row(market_id="small", game_pk=1, p_matchup=0.58, p_model=0.58,
+                       p_over_bb=0.58)
+    big = priced_row(market_id="big", game_pk=2)
+    rows = pd.DataFrame([small, big] + [priced_row(market_id=f"f{i}", game_pk=10 + i)
+                                        for i in range(20)])
+    uncapped = paper.emit(rows, 1000.0, slate_cap=1e9)
+    capped = paper.emit(rows, 1000.0)
+    ratio_u = (uncapped.set_index("market_id")["stake"]["small"] /
+               uncapped.set_index("market_id")["stake"]["big"])
+    ratio_c = (capped.set_index("market_id")["stake"]["small"] /
+               capped.set_index("market_id")["stake"]["big"])
+    assert ratio_c == pytest.approx(ratio_u)
+    assert capped["stake"].sum() == pytest.approx(200.0)
+
+
+def test_emitted_tickets_are_stamped_with_the_amended_rule_version():
+    t = paper.emit(pd.DataFrame([priced_row()]), 1000.0)
+    assert set(t["rule_version"]) == {paper.RULE_VERSION} == {"stage0.1"}
+    assert "rule_version" in paper.LEDGER_COLUMNS
+
+
+def test_the_gate_ignores_pre_amendment_tickets():
+    """A ledger that would clear the gate under `stage0` clears nothing.
+
+    docs/bankroll.md Amendment 1 restarts the Stage 1 window: the tickets
+    written under the unamended sizing stay in the ledger and count toward
+    nothing.
+    """
+    led = synthetic(1200, 25, 0.04, sd=0.15)
+    led["rule_version"] = paper.RULE_STAGE0
+    g = paper.gate_progress(led, draws=200)
+    assert g["rule_version"] == paper.RULE_VERSION
+    assert g["conditions"]["tickets"]["have"] == 0
+    assert not g["met"]
+
+    mixed = pd.concat([led, synthetic(300, 7, 0.04, sd=0.15, seed=2)],
+                      ignore_index=True)
+    assert paper.gate_progress(mixed, draws=200)["conditions"]["tickets"]["have"] == 300
+
+
+def test_the_curve_restarts_at_the_amendment():
+    """Two rule versions are two segments, each starting from 1,000 units."""
+    pre = synthetic(4, 2, -300.0)
+    pre["rule_version"] = paper.RULE_STAGE0
+    post = synthetic(4, 2, 1.0, seed=3)
+    post["settle_ts"] = post["game_date"] = [f"2026-09-{9 + (i % 2):02d}"
+                                             for i in range(4)]
+    curve = paper.bankroll_curve(pd.concat([pre, post], ignore_index=True))
+    first_post = next(p for p in curve if p["rule_version"] == paper.RULE_VERSION)
+    assert first_post["bankroll"] == pytest.approx(paper.START_BANKROLL + 2.0)
+    assert min(p["bankroll"] for p in curve
+               if p["rule_version"] == paper.RULE_STAGE0) < 0
+
+
 def test_gate_counts_only_the_primary_stat():
     led = synthetic(1200, 25, 0.04, sd=0.15)
     led["prop_stat"] = "tb"
@@ -325,3 +416,57 @@ def test_bankroll_curve_starts_at_the_paper_bankroll_and_compounds_by_day():
     assert len(curve) == 3
     assert curve[0]["bankroll"] == pytest.approx(paper.START_BANKROLL + 2.0)
     assert curve[-1]["bankroll"] == pytest.approx(paper.START_BANKROLL + 6.0)
+
+
+# ─────────── settlement sources: the snapshot first (BAS-78) ───────────
+
+def closes_row(market_id="KXMLBHIT-A", over_hit=True):
+    return pd.DataFrame([{"market_id": market_id, "over_hit": over_hit,
+                          "game_start": "2026-09-02T23:00:00+00:00"}])
+
+
+def settled_snapshot(result="yes", ts="2026-09-03T05:00:00+00:00"):
+    return {ts: pd.DataFrame([snap_row(ts=ts, status="settled", result=result)])}
+
+
+def test_the_snapshot_is_preferred_over_the_closes_archive():
+    """Both sources have it; the exchange's own settlement is the one used."""
+    idx = paper.result_index(settled_snapshot("yes"), closes_row(over_hit=True))
+    assert len(idx) == 1
+    assert idx["settle_source"].iloc[0] == "snapshot"
+    assert bool(idx["over_hit"].iloc[0])
+
+
+def test_the_closes_archive_is_still_the_fallback():
+    idx = paper.result_index({}, closes_row(over_hit=False))
+    assert idx["settle_source"].iloc[0] == "closes_archive"
+    assert not bool(idx["over_hit"].iloc[0])
+
+
+def test_a_disagreement_is_logged_and_the_snapshot_wins(caplog):
+    """The venue says no, the box score says yes. That is worth a warning."""
+    with caplog.at_level("WARNING"):
+        idx = paper.result_index(settled_snapshot("no"), closes_row(over_hit=True))
+    assert idx["settle_source"].iloc[0] == "snapshot"
+    assert not bool(idx["over_hit"].iloc[0])
+    assert "KXMLBHIT-A" in caplog.text
+    assert "exchange's own settlement" in caplog.text
+
+
+def test_agreement_is_not_logged(caplog):
+    with caplog.at_level("WARNING"):
+        paper.result_index(settled_snapshot("yes"), closes_row(over_hit=True))
+    assert "KXMLBHIT-A" not in caplog.text
+
+
+def test_a_kalshi_ticket_settles_from_the_snapshot_alone():
+    """The point of the settled pull: no backfill file needed.
+
+    Before BAS-78 this returned nothing, because the open pull dropped a
+    Kalshi prop from the archive the moment it settled.
+    """
+    t = pd.DataFrame([ticket()])
+    out = paper.settle_from(t, paper.result_index(settled_snapshot("yes"), None))
+    assert bool(out["settled"].iloc[0])
+    assert out["settle_source"].iloc[0] == "snapshot"
+    assert out["result"].iloc[0] == "yes"

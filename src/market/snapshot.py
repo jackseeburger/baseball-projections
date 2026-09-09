@@ -47,6 +47,10 @@ def collect(ts: str | None = None, schedule: pd.DataFrame | None = None,
         raw = kalshi.fetch_all(session=session)
         records.extend(kalshi.normalize(m, ts) for m in raw)
         stats["kalshi_markets"] = len(raw)
+        settled = settled_prop_records(ts, session=session,
+                                       seen={r["market_id"] for r in records})
+        records.extend(settled)
+        stats["kalshi_settled_props"] = len(settled)
     if "polymarket" in venues:
         events = polymarket.fetch_events(session=session)
         n = 0
@@ -72,6 +76,35 @@ def collect(ts: str | None = None, schedule: pd.DataFrame | None = None,
     if schedule is not None:
         stats["mapping"] = assign_game_pk(records, schedule)
     return records, stats
+
+
+def settled_prop_records(ts: str, session=None, seen: set | None = None,
+                         hours: float = kalshi.SETTLED_LOOKBACK_HOURS) -> list[dict]:
+    """The last `hours` of Kalshi prop settlements, as snapshot rows.
+
+    Kalshi's open listing drops a market the moment it settles, so without
+    this pull no snapshot ever carries a Kalshi prop's `result` and the paper
+    ledger has to settle every Kalshi ticket from a hand-run backfill instead
+    of from the exchange. These rows are the exchange's own settlement, in the
+    same schema as every other row, and `status` is normalized to "settled"
+    (the API says "finalized" once the payout has run) so that one string
+    means one thing across the archive.
+
+    They are never emittable: `paper.open_props` wants an open status, an
+    empty `result` and a first pitch still ahead, and a settled prop fails all
+    three.
+    """
+    out, seen = [], set(seen or ())
+    for m in kalshi.fetch_settled_props(hours=hours, session=session):
+        r = kalshi.normalize(m, ts)
+        if r["market_type"] not in PROP_MARKET_TYPES or r["market_id"] in seen:
+            continue
+        if not r["result"]:
+            continue            # settled with nothing to settle to: not evidence
+        r["status"] = "settled"
+        seen.add(r["market_id"])
+        out.append(r)
+    return out
 
 
 def assign_player_ids_and_count(records: list[dict], resolver) -> dict:

@@ -89,11 +89,19 @@ def _f(x):
 
 
 def fetch_markets(series_ticker: str, status: str = "open", limit: int = 200,
-                  session=None) -> list[dict]:
-    """All markets in a series (cursor-paginated)."""
+                  session=None, min_close_ts: int | None = None) -> list[dict]:
+    """All markets in a series (cursor-paginated).
+
+    `min_close_ts` is the trade-api's own filter on the market's close time
+    (unix seconds); it is what makes a `status="settled"` pull bounded — the
+    series has settled every prop of every game of the season and we only
+    ever want the last day or two of them.
+    """
     out, cursor = [], None
     while True:
         params = {"series_ticker": series_ticker, "status": status, "limit": limit}
+        if min_close_ts is not None:
+            params["min_close_ts"] = int(min_close_ts)
         if cursor:
             params["cursor"] = cursor
         page = get_json(f"{BASE}/markets", params, session=session)
@@ -110,6 +118,36 @@ def fetch_all(series: dict[str, str] | None = None, status: str = "open",
     for ticker in series:
         raw.extend(fetch_markets(ticker, status=status, session=session))
     return raw
+
+
+# How far back a settled pull reaches. Three snapshots a day at eight-hour
+# spacing means a 48-hour window carries every settlement several times over,
+# so one missed or failed run never loses a result.
+SETTLED_LOOKBACK_HOURS = 48
+
+
+def fetch_settled_props(hours: float = SETTLED_LOOKBACK_HOURS,
+                        series: dict[str, str] | None = None, session=None,
+                        now: datetime | None = None) -> list[dict]:
+    """Prop markets that settled in the last `hours`, with `result` filled in.
+
+    An open pull cannot see these: Kalshi drops a market from `status="open"`
+    the moment it settles, so a prop priced yesterday evening has left the
+    listing by the time the next snapshot runs and no snapshot ever carries
+    its result. That is why the paper ledger had to fall back on a hand-run
+    settlement backfill for every Kalshi ticket. Asking separately for the
+    settled tail closes the archive against the exchange's own settlements.
+
+    The status filter is the API's (`settled` also returns the markets it has
+    already marked `finalized`); the time filter is `min_close_ts`, which the
+    trade-api applies to the market's close time in unix seconds.
+    """
+    cutoff = int(((now or datetime.now(timezone.utc)).timestamp()) - hours * 3600)
+    out = []
+    for ticker in (series or PROP_SERIES):
+        out.extend(fetch_markets(ticker, status="settled", session=session,
+                                 min_close_ts=cutoff))
+    return out
 
 
 def parse_event(event_ticker: str) -> dict:

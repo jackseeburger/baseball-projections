@@ -32,8 +32,8 @@ prediction written down first". Today the answer is: one candidate, no result.
 Every evening a job prices the open Kalshi props in the latest market
 snapshot with the served props model, emits the tickets it *would* place,
 and settles yesterday's from the exchange's own results. A paper bankroll of
-1,000 units, quarter-Kelly capped at 5% of bankroll per ticket, fees charged
-as Kalshi charges them. Two ledgers per ticket: **taker** (cross the ask at
+1,000 units, quarter-Kelly capped at 5% of bankroll per ticket and 20% of it
+across one slate (Amendment 1, below), fees charged as Kalshi charges them. Two ledgers per ticket: **taker** (cross the ask at
 snapshot time, pay the fee) and **maker** (rest at the snapshot bid, fee
 waived, filled only if a later snapshot shows the market traded through the
 price — the fill assumption is written down and is pessimistic on purpose).
@@ -60,6 +60,61 @@ committed, so the history cannot be edited.
 **Vacuity check:** fewer than 150 hits tickets a week means the live market
 is too thin for the Stage 1 window to close this season; report it and
 extend the window into 2027 rather than lowering the bar.
+
+#### **Amendment 1 (2026-09-09) — per-slate exposure**
+
+**The finding.** The first real Stage 0 ledger ran on 2026-09-02 and the
+paper bankroll went through zero on 2026-09-03. Nothing was wrong with the
+code: the rule above caps each *ticket* at 5% of bankroll and says nothing
+about how many tickets one evening may carry, and a Kalshi prop slate offers
+hundreds of them simultaneously. The 2026-09-02 slate staked 9,069 units
+against a 1,000-unit bankroll; across the whole archive the ledger staked
+19,651 units, 19.7x the bankroll, before emission stopped — a non-positive
+bankroll has no Kelly stake. As written, Stage 0 cannot be run: the bankroll
+is destroyed long before the Stage 1 window's 1,000 settled tickets.
+
+**The rule change.** The total stake across every ticket emitted from one
+snapshot is capped at **20% of the running bankroll**. Each ticket keeps its
+quarter-Kelly size capped at 5% of bankroll; if the sum of a slate's stakes
+exceeds the cap, every stake in that slate is scaled down by the same factor,
+pro rata. The cap is a constant in `src/market/paper.py` (`SLATE_CAP`), not a
+flag — a rule that can be edited between runs is not a pre-registration.
+
+**What this does not change.** The *sizing*, and only the sizing. Not the
+selection rule (`pnl.decide` at the same 2-point threshold on the same arm),
+not the served model, not the threshold, not the fee schedule, not the maker
+fill assumption, not the four pre-registered predictions above, and not the
+Stage 1 conditions. Scaling every stake in a slate by one common factor
+cannot change which tickets are written or which of them win; it changes how
+much each is worth.
+
+**When it was made.** After seeing the ruin, and before any rerun. That
+ordering is the thing that could be abused, so it is stated plainly: the
+2026-09-02 and 2026-09-03 tickets were emitted, committed and published under
+the unamended rule, the ruin was published as a finding, and this amendment
+was written afterwards. No parameter was chosen by looking at a return.
+
+**The window restarts.** The Stage 1 window — 1,000 settled tickets on the
+primary test and 21 distinct game-days — **restarts at the amendment**. Every
+ticket emitted before it stays in the ledger, flagged `rule_version="stage0"`,
+is reported in the ROI tables, and counts toward nothing. Tickets from here
+are `rule_version="stage0.1"` and they alone are scored by the gate. A window
+that mixed two sizing rules would be a test of neither.
+
+**The bankroll resets to 1,000.** A bankroll that has been through zero
+cannot be sized from, so the amended rule starts again from the pre-registered
+1,000 units. This is a reset of the *paper* bankroll and not a top-up of a
+real one; the pre-amendment losses are not erased, they are recorded, and the
+bankroll curve draws the two segments separately with the amendment marked
+rather than drawing one line through a discontinuity that never happened.
+
+**Vacuity implication.** At a 20% slate cap the maximum drawdown condition is
+the binding one. The ticket count and the game-day count are now reachable —
+a slate no longer risks the bankroll — and the ROI interval is a question of
+sample size, but a rule that can lose a fifth of the bankroll in an evening
+will show a realised trough that has to stay inside 1.5x what quarter Kelly
+implies, and that is the condition most likely to fail. If Stage 1 is ever
+met, expect the drawdown line to be the close one.
 
 ### Stage 1 — the gate to real money
 
