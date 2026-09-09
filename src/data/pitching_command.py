@@ -400,8 +400,25 @@ def year_over_year(monthly: pd.DataFrame, column: str = "cmd_resid",
                if len(h) > 2 else float("nan"))}
         for s, h in j.groupby("season")
     ]
+    # A diagnostic, **not** the pre-registered quantity: the same correlation
+    # with each season's league level removed first. The walk-forward design
+    # fits a different model for every scored season, so the residual's league
+    # mean moves between seasons (it runs +0.015 in 2017 to -0.007 in 2026);
+    # pooling pairs whose centres sit in different places attenuates the
+    # pooled correlation even when the within-pair correlations do not move.
+    # It is recorded so the failure can be read, and it does not change the
+    # verdict — `r` above is the number the pre-registration names.
+    g2 = g.copy()
+    g2["_z"] = g2.groupby("season")[column].transform(
+        lambda s: (s - s.mean()) / s.std() if s.std() > 0 else s * 0.0)
+    jz = g2.merge(g2.assign(season=g2["season"] - 1), on=["pitcher", "season"],
+                  suffixes=("", "_next"))
+    jz = jz[np.isfinite(jz["_z"]) & np.isfinite(jz["_z_next"])]
+    demeaned = (float(np.corrcoef(jz["_z"], jz["_z_next"])[0, 1])
+                if len(jz) > 2 else float("nan"))
     return {"column": column, "n_pairs": int(len(j)), "r": r,
-            "min_pitches": min_pitches, "by_pair": by_pair}
+            "min_pitches": min_pitches, "by_pair": by_pair,
+            "r_season_demeaned_diagnostic": demeaned}
 
 
 __all__ = [
