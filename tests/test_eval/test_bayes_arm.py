@@ -46,14 +46,43 @@ def test_config_label_states_the_scale():
     assert "no-pitcher" in BayesArmConfig(include_pitcher=False).label()
 
 
-def test_provider_refuses_components_it_does_not_model():
-    """Four of the five components are separate models; serving K% under their
-    name would put a wrong number on the scoreboard."""
+def test_provider_refuses_components_this_model_cannot_serve():
+    """BABIP and ISO are not per-PA binomials — BABIP's denominator is balls
+    in play and ISO's numerator is not a count of trials at all — so they are
+    separate models, and serving another component's number under their name
+    would put a wrong number on the scoreboard. BB% and HR/PA are no longer
+    in this list: since BAS-73 they are the same model with a different
+    numerator."""
     provider = bayes_k_rate_provider("2026-07-01", 2026)
     train = pd.DataFrame({"batter": [1], "season": [2026], "pa": [100], "k": [20]})
-    for name in ("bb_rate", "hr_rate", "iso", "babip"):
-        with pytest.raises(ValueError, match="k_rate only"):
+    for name in ("iso", "babip"):
+        with pytest.raises(ValueError, match="per-PA"):
             provider(train, COMPONENTS[name], 2026)
+
+
+def test_provider_refuses_a_component_its_config_was_not_built_for():
+    """One provider per component. A BB% spec reaching a K%-configured
+    provider is a wiring bug, and it is invisible downstream — the frame it
+    would return is well-formed and wrong."""
+    provider = bayes_k_rate_provider("2026-07-01", 2026)
+    train = pd.DataFrame({"batter": [1], "season": [2026], "pa": [100], "k": [20]})
+    with pytest.raises(ValueError, match="built to fit 'k_rate'"):
+        provider(train, COMPONENTS["bb_rate"], 2026)
+
+
+def test_a_bb_rate_config_serves_bb_rate_and_names_its_column():
+    """The arm's config decides the component, and the column it reads off
+    the projection frame follows it — `projected_bb_rate`, never
+    `projected_k_rate` with BB% numbers in it."""
+    config = BayesArmConfig(component="bb_rate")
+    assert config.rate_component().numerator == "is_bb"
+    assert config.projected_col() == "projected_bb_rate"
+    assert "bb_rate" in config.label()
+
+
+def test_a_config_for_a_component_the_model_cannot_fit_raises_early():
+    with pytest.raises(ValueError, match="unknown component"):
+        BayesArmConfig(component="babip").rate_component()
 
 
 def test_unseen_lists_batters_the_fit_missed_with_forward_aged_ages():

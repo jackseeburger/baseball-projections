@@ -1,0 +1,292 @@
+{
+ "bayes_scope": {
+  "seasons": [
+   2024
+  ],
+  "n_cutoffs": 12,
+  "components": [
+   "bb_rate"
+  ]
+ },
+ "common_set_sizes": {
+  "2024": 244
+ },
+ "bayes_paired_by_cell": [
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-04-15",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 339,
+   "n_clusters": 339,
+   "diff": 0.0011673498,
+   "se": 0.0003086626,
+   "t": 3.7819603442,
+   "win_rate": 0.4516042985
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-04-29",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 350,
+   "n_clusters": 350,
+   "diff": 0.0005047556,
+   "se": 0.0002454804,
+   "t": 2.0561950219,
+   "win_rate": 0.4486879309
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-05-01",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 349,
+   "n_clusters": 349,
+   "diff": 0.0004680898,
+   "se": 0.0002419008,
+   "t": 1.9350485941,
+   "win_rate": 0.446872738
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-05-13",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 353,
+   "n_clusters": 353,
+   "diff": 0.000268881,
+   "se": 0.0002330388,
+   "t": 1.1538034092,
+   "win_rate": 0.4849305495
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-05-27",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 348,
+   "n_clusters": 348,
+   "diff": 0.0001952015,
+   "se": 0.0002086655,
+   "t": 0.9354756445,
+   "win_rate": 0.4936227475
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-06-10",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 336,
+   "n_clusters": 336,
+   "diff": 3.78151e-05,
+   "se": 0.000206361,
+   "t": 0.1832470909,
+   "win_rate": 0.4946896468
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-06-24",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 315,
+   "n_clusters": 315,
+   "diff": -3.2333e-06,
+   "se": 0.0001930058,
+   "t": -0.0167520979,
+   "win_rate": 0.4722222222
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-07-01",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 311,
+   "n_clusters": 311,
+   "diff": -6.88921e-05,
+   "se": 0.000205115,
+   "t": -0.3358706694,
+   "win_rate": 0.5033435596
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-07-08",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 304,
+   "n_clusters": 304,
+   "diff": -0.0001205387,
+   "se": 0.0002074188,
+   "t": -0.5811365182,
+   "win_rate": 0.4808894528
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-07-22",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 280,
+   "n_clusters": 280,
+   "diff": -0.0002614602,
+   "se": 0.0002158265,
+   "t": -1.2114370401,
+   "win_rate": 0.5223822643
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-08-01",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 256,
+   "n_clusters": 256,
+   "diff": -6.07764e-05,
+   "se": 0.0002214573,
+   "t": -0.2744383923,
+   "win_rate": 0.4942171626
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cutoff": "2024-08-05",
+   "arm": "bayes",
+   "base": "marcel_tuned",
+   "n": 244,
+   "n_clusters": 244,
+   "diff": -3.59139e-05,
+   "se": 0.0002273867,
+   "t": -0.1579421268,
+   "win_rate": 0.4951209798
+  }
+ ],
+ "bayes_gap_by_calendar_date": [],
+ "bayes_overall_clustered_vs_unclustered": {
+  "clustered": {
+   "n": 0,
+   "n_clusters": 0,
+   "diff": NaN,
+   "se": NaN,
+   "t": NaN,
+   "win_rate": NaN
+  },
+  "unclustered": {
+   "n": 0,
+   "n_clusters": 0,
+   "diff": NaN,
+   "se": NaN,
+   "t": NaN,
+   "win_rate": NaN
+  }
+ },
+ "bayes_gap_by_calendar_date_vs_stock_marcel": [],
+ "bayes_variant_comparison": [],
+ "bayes_variant_comparison_by_component": {
+  "bb_rate": [
+   {
+    "arm": "bayes_flat",
+    "base": "marcel_tuned",
+    "component": "bb_rate",
+    "diff": 0.0002857896,
+    "n": 3785,
+    "clustered_by_player_se": 0.0001765832,
+    "clustered_by_player_t": 1.6184414527,
+    "clustered_by_player_n_clusters": 392,
+    "clustered_by_cell_se": 0.0001307867,
+    "clustered_by_cell_t": 2.185158435,
+    "clustered_by_cell_n_clusters": 12,
+    "unclustered_se_WRONG": 7.44092e-05,
+    "unclustered_t_WRONG": 3.8407848496,
+    "unclustered_over_player_clustered_t_ratio": 2.3731379613,
+    "n_cells_scored": 12,
+    "arm_wins_cells": 6,
+    "arm_loses_cells": 6
+   },
+   {
+    "arm": "bayes_flat",
+    "base": "marcel",
+    "component": "bb_rate",
+    "diff": 0.0002857896,
+    "n": 3785,
+    "clustered_by_player_se": 0.0001765832,
+    "clustered_by_player_t": 1.6184414527,
+    "clustered_by_player_n_clusters": 392,
+    "clustered_by_cell_se": 0.0001307867,
+    "clustered_by_cell_t": 2.185158435,
+    "clustered_by_cell_n_clusters": 12,
+    "unclustered_se_WRONG": 7.44092e-05,
+    "unclustered_t_WRONG": 3.8407848496,
+    "unclustered_over_player_clustered_t_ratio": 2.3731379613,
+    "n_cells_scored": 12,
+    "arm_wins_cells": 6,
+    "arm_loses_cells": 6
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel_tuned",
+    "component": "bb_rate",
+    "diff": 0.0002461043,
+    "n": 3785,
+    "clustered_by_player_se": 0.0002010412,
+    "clustered_by_player_t": 1.2241485118,
+    "clustered_by_player_n_clusters": 392,
+    "clustered_by_cell_se": 0.0001184019,
+    "clustered_by_cell_t": 2.0785508892,
+    "clustered_by_cell_n_clusters": 12,
+    "unclustered_se_WRONG": 8.51949e-05,
+    "unclustered_t_WRONG": 2.8887210271,
+    "unclustered_over_player_clustered_t_ratio": 2.359779879,
+    "n_cells_scored": 12,
+    "arm_wins_cells": 6,
+    "arm_loses_cells": 6
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel",
+    "component": "bb_rate",
+    "diff": 0.0002461043,
+    "n": 3785,
+    "clustered_by_player_se": 0.0002010412,
+    "clustered_by_player_t": 1.2241485118,
+    "clustered_by_player_n_clusters": 392,
+    "clustered_by_cell_se": 0.0001184019,
+    "clustered_by_cell_t": 2.0785508892,
+    "clustered_by_cell_n_clusters": 12,
+    "unclustered_se_WRONG": 8.51949e-05,
+    "unclustered_t_WRONG": 2.8887210271,
+    "unclustered_over_player_clustered_t_ratio": 2.359779879,
+    "n_cells_scored": 12,
+    "arm_wins_cells": 6,
+    "arm_loses_cells": 6
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "bayes_flat",
+    "component": "bb_rate",
+    "diff": -3.96853e-05,
+    "n": 3785,
+    "clustered_by_player_se": 0.0001843312,
+    "clustered_by_player_t": -0.2152932632,
+    "clustered_by_player_n_clusters": 392,
+    "clustered_by_cell_se": 3.39588e-05,
+    "clustered_by_cell_t": -1.168628249,
+    "clustered_by_cell_n_clusters": 12,
+    "unclustered_se_WRONG": 6.99089e-05,
+    "unclustered_t_WRONG": -0.5676712916,
+    "unclustered_over_player_clustered_t_ratio": 2.6367350426,
+    "n_cells_scored": 12,
+    "arm_wins_cells": 8,
+    "arm_loses_cells": 4
+   }
+  ]
+ }
+}

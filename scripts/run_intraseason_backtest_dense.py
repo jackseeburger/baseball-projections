@@ -49,6 +49,15 @@ otherwise be a live risk. `bayes` is kept as an exact alias for `bayes_flat`
 `make_variant_providers`) so every number this doc already reports under the
 name `bayes` keeps meaning the same thing.
 
+**Components (BAS-73, docs/bayes-components.md).** The bayes arm served K%
+only until BB/PA and HR/PA turned out to be the same hierarchical binomial
+with a different numerator (`src.models.pa_rate`). `--bayes-components`
+selects which; the default is `k_rate` alone, so a command that does not name
+any runs exactly the sweep it always ran. The checkpoint and the fit records
+key on the component as well as (season, cutoff, variant) — three components
+x four variants is twelve MCMC fits per cutoff, and the one-season-per-process
+rule below matters proportionally more.
+
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
     python -c "from src.data.pa_outcomes_pipeline import build_pa_dataset; \\
@@ -69,12 +78,14 @@ cell of a ~40-cell grid on 2026-09-08.
 
     for yr in 2022 2024 2025 2026; do
         python scripts/run_intraseason_backtest_dense.py --stage bayes \
-            --bayes-seasons $yr
+            --bayes-seasons $yr --bayes-components k_rate bb_rate hr_rate
     done
 
 Each season is a fresh process and therefore a fresh JIT cache. The
-checkpoint is keyed on (season, cutoff), so this is exactly equivalent to
-one long run and a run that dies mid-grid loses only its current cell.
+checkpoint is keyed on (component, season, cutoff), so this is exactly
+equivalent to one long run and a run that dies mid-grid loses only its
+current cell. Splitting by component as well as by season is the same trick
+again when the grid is wide enough to need it.
 """
 from __future__ import annotations
 
@@ -324,12 +335,17 @@ def variant_param_summary(trace, config) -> dict:
 
 
 def make_variant_providers(cutoff: str, year: int, variants: list[str],
-                           config_kwargs: dict, fits_sink: list[dict]) -> dict:
+                           config_kwargs: dict, fits_sink: list[dict],
+                           component: str = "k_rate") -> dict:
     """One `bayes_k_rate_provider` call per variant — the cache isolation guard.
 
-    `bayes_k_rate_provider`'s memoization cache keys on `(cutoff_date,
-    predict_year)` only (see src/eval/bayes_arm.py) — no variant in the key.
-    That is safe *within one call* because the cache is a fresh dict created
+    `bayes_k_rate_provider`'s memoization cache keys on `(component,
+    cutoff_date, predict_year)` (see src/eval/bayes_arm.py) — no variant in
+    the key. The component *is* in the key, because one provider object can
+    legitimately be asked for a component more than once at the same cutoff
+    and a date-only key would hand a K% frame back for a BB% request; the
+    variant is not, and does not need to be, because the cache is a fresh
+    dict created
     by that call's own closure, so it cannot see another call's fits. The bug
     this function exists to prevent is upstream of the cache entirely: handing
     the *same provider object* to two different variant names in the
@@ -362,7 +378,7 @@ def make_variant_providers(cutoff: str, year: int, variants: list[str],
     providers: dict = {}
     seen_ids: set[int] = set()
     for variant in variants:
-        config = _variant_config(variant, **config_kwargs)
+        config = _variant_config(variant, component=component, **config_kwargs)
         arm_name = VARIANT_ARM_NAMES[variant]
         holder: dict = {}
 
@@ -375,8 +391,17 @@ def make_variant_providers(cutoff: str, year: int, variants: list[str],
                     f"bayes_k_rate_provider cache must never be shared "
                     f"across variants"
                 )
+            if fit.config.component != component:
+                raise RuntimeError(
+                    f"component isolation broken: provider {_arm!r} was "
+                    f"asked for {component!r} but the fit that came back "
+                    f"reports {fit.config.component!r} — a "
+                    f"bayes_k_rate_provider cache must never be shared "
+                    f"across components either"
+                )
             record = {
-                "cutoff": fit.cutoff_date, "variant": _variant, "arm": _arm,
+                "cutoff": fit.cutoff_date, "component": component,
+                "variant": _variant, "arm": _arm,
                 "scale": fit.config.label(), "diagnostics": fit.diagnostics,
                 "variant_params": variant_param_summary(fit.trace, fit.config),
                 **fit.data_summary,
@@ -451,6 +476,10 @@ def _load_bayes_fits(path: Path) -> list[dict]:
     return fits
 
 
+BAYES_COMPONENTS = ("k_rate", "bb_rate", "hr_rate")
+DEFAULT_BAYES_COMPONENTS = ["k_rate"]
+
+
 def _done_variants_for_cell(have: pd.DataFrame | None) -> set[str]:
     """Which variants a checkpointed (season, cutoff) cell's rows already
     cover, read off the `model` column via `ARM_NAME_VARIANT`. `have=None`
@@ -467,10 +496,20 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              draws: int = 500, tune: int = 500, chains: int = 2,
              sampler: str = "numpyro", include_pitcher: bool = False,
              pa_dir: Path = ROOT / "data/parquet/pa_outcomes",
-             variants: list[str] | None = None) -> tuple[pd.DataFrame, list[dict]]:
+             variants: list[str] | None = None,
+             components: list[str] | None = None,
+             ) -> tuple[pd.DataFrame, list[dict]]:
     """Score every requested bayes variant, plus the cheap baselines, at each
-    (season, cutoff) — one fit per (variant, season, cutoff), memoized across
-    resumed runs at cell granularity.
+    (component, season, cutoff) — one fit per (component, variant, season,
+    cutoff), memoized across resumed runs at cell granularity.
+
+    **Components (BAS-73).** `components` defaults to `["k_rate"]`, so a
+    command that does not name any runs exactly the sweep it always ran. BB%
+    and HR/PA are the same hierarchical binomial with a different numerator
+    (`src.models.pa_rate`) and cost the same per fit, so the grid multiplies:
+    three components x four variants is twelve MCMC fits per cutoff, which is
+    why the module docstring's one-season-per-process rule matters more here
+    than it did — the JIT dies at ~70 compilations.
 
     Resume is all-or-nothing *per cell*, not per variant: if a checkpointed
     cell already carries every arm in `variants`, it is skipped outright; if
@@ -493,14 +532,24 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
     if unknown:
         raise ValueError(f"unknown bayes variant(s) {unknown}; "
                          f"known: {sorted(VARIANT_ARM_NAMES)}")
+    components = list(components) if components else list(DEFAULT_BAYES_COMPONENTS)
+    unknown_c = [c for c in components if c not in BAYES_COMPONENTS]
+    if unknown_c:
+        raise ValueError(f"unknown bayes component(s) {unknown_c}; the "
+                         f"PA-level binomial serves {list(BAYES_COMPONENTS)}")
 
     cells: dict[tuple, pd.DataFrame] = {}
     fits: list[dict] = []
     if checkpoint is not None:
         prev = _load_bayes_checkpoint(checkpoint)
         if not prev.empty:
-            for (season, cutoff), g in prev.groupby(["season", "cutoff"]):
-                cells[(season, cutoff)] = g
+            # Keyed on the component too: a 2024-05-01 BB% cell and a
+            # 2024-05-01 K% cell are different measurements, and before
+            # BAS-73 a two-key groupby would have collapsed them into one
+            # entry whose second write silently replaced the first.
+            for (component, season, cutoff), g in prev.groupby(
+                    ["component", "season", "cutoff"]):
+                cells[(component, season, cutoff)] = g
             n_variant_cells = sum(
                 1 for g in cells.values()
                 for m in g["model"].unique() if m in ARM_NAME_VARIANT
@@ -519,43 +568,54 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
             cutoff = f"{year}-{md}"
             if pd.Timestamp(cutoff) >= last_pa_date:
                 continue
-            key = (year, cutoff)
-            if set(variants) <= _done_variants_for_cell(cells.get(key)):
-                continue
+            for component in components:
+                key = (component, year, cutoff)
+                if set(variants) <= _done_variants_for_cell(cells.get(key)):
+                    continue
 
-            t0 = time.time()
-            config_kwargs = dict(
-                pa_dir=pa_dir, seasons=bayes_seasons, min_pa=50,
-                include_pitcher=include_pitcher, max_batters=None,
-                draws=draws, tune=tune, chains=chains, cores=chains,
-                target_accept=0.9, nuts_sampler=sampler,
-            )
-            # Recomputing the cell invalidates any fit records already
-            # written for it (see the docstring above), so drop them before
-            # `make_variant_providers`'s on_fit hooks append the fresh ones.
-            fits[:] = [f for f in fits if f.get("cutoff") != cutoff]
-
-            providers = dict(INTRASEASON_BASELINES)
-            providers.update(
-                make_variant_providers(cutoff, year, variants, config_kwargs, fits))
-            try:
-                results = backtest(
-                    "k_rate", cutoff_date=cutoff, predict_year=year,
-                    seasons=seasons_table, pa_frame=pa, providers=providers,
-                    min_trials=min_trials,
+                t0 = time.time()
+                config_kwargs = dict(
+                    pa_dir=pa_dir, seasons=bayes_seasons, min_pa=50,
+                    include_pitcher=include_pitcher, max_batters=None,
+                    draws=draws, tune=tune, chains=chains, cores=chains,
+                    target_accept=0.9, nuts_sampler=sampler,
                 )
-            except ValueError as e:
-                logger.warning("skip bayes %s (%s): %s", cutoff, variants, e)
-                continue
-            elapsed = time.time() - t0
-            cells[key] = results.assign(season=year, cutoff=cutoff)
-            out = pd.concat(cells.values(), ignore_index=True)
-            if checkpoint is not None:
-                out.to_parquet(checkpoint, index=False)
-            if fits_path is not None:
-                fits_path.write_text(json.dumps(fits, indent=1))
-            logger.info("bayes: %s done in %.1fs (%d variants: %s, %d cells so far)",
-                       cutoff, elapsed, len(variants), ",".join(variants), len(out))
+                # Recomputing the cell invalidates any fit records already
+                # written for it (see the docstring above), so drop them
+                # before `make_variant_providers`'s on_fit hooks append the
+                # fresh ones. Records written before BAS-73 carry no
+                # "component" key at all; those are k_rate by construction,
+                # which is what the `or "k_rate"` says.
+                fits[:] = [
+                    f for f in fits
+                    if not (f.get("cutoff") == cutoff
+                            and (f.get("component") or "k_rate") == component)
+                ]
+
+                providers = dict(INTRASEASON_BASELINES)
+                providers.update(make_variant_providers(
+                    cutoff, year, variants, config_kwargs, fits,
+                    component=component))
+                try:
+                    results = backtest(
+                        component, cutoff_date=cutoff, predict_year=year,
+                        seasons=seasons_table, pa_frame=pa, providers=providers,
+                        min_trials=min_trials,
+                    )
+                except ValueError as e:
+                    logger.warning("skip bayes %s %s (%s): %s",
+                                   component, cutoff, variants, e)
+                    continue
+                elapsed = time.time() - t0
+                cells[key] = results.assign(season=year, cutoff=cutoff)
+                out = pd.concat(cells.values(), ignore_index=True)
+                if checkpoint is not None:
+                    out.to_parquet(checkpoint, index=False)
+                if fits_path is not None:
+                    fits_path.write_text(json.dumps(fits, indent=1))
+                logger.info("bayes: %s %s done in %.1fs (%d variants: %s, "
+                            "%d rows so far)", component, cutoff, elapsed,
+                            len(variants), ",".join(variants), len(out))
     if not cells:
         return pd.DataFrame(), fits
     return pd.concat(cells.values(), ignore_index=True), fits
@@ -849,9 +909,11 @@ def build_analysis(cheap_path: Path, bayes_path: Path, out_json: Path) -> dict:
             .rename("n").reset_index().to_json(orient="records"))
 
     if not bayes.empty:
+        bayes_components = sorted(bayes["component"].unique().tolist())
         payload["bayes_scope"] = {
             "seasons": sorted(int(s) for s in bayes["season"].unique()),
             "n_cutoffs": int(bayes.groupby("season")["cutoff"].nunique().sum()),
+            "components": bayes_components,
         }
         cs = common_player_sets(bayes, "marcel_tuned")
         payload["common_set_sizes"] = {int(k): len(v) for k, v in cs.items()}
@@ -885,6 +947,18 @@ def build_analysis(cheap_path: Path, bayes_path: Path, out_json: Path) -> dict:
         payload["bayes_variant_comparison"] = json.loads(
             variant_table.to_json(orient="records"))
 
+        # BAS-73: the same table per component. Kept as its own key rather
+        # than folded into the one above so the K% numbers every existing
+        # reader quotes stay exactly where they were, under the same key,
+        # while BB% and HR/PA arrive alongside them.
+        per_component = {}
+        for component in bayes_components:
+            table = build_variant_comparison_table(bayes, component=component)
+            if not table.empty:
+                per_component[component] = json.loads(
+                    table.to_json(orient="records"))
+        payload["bayes_variant_comparison_by_component"] = per_component
+
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(payload, indent=1))
     return payload
@@ -911,6 +985,15 @@ def main() -> None:
     ap.add_argument("--variants", type=str, default=",".join(DEFAULT_VARIANTS),
                     help="comma-separated bayes structural variants to sweep; "
                          f"known: {','.join(VARIANT_ARM_NAMES)}")
+    # Separate from --components, which scopes the *cheap* sweep across all
+    # five hitter components. The bayes arm only serves the three per-PA
+    # binomials, and its default stays k_rate alone so a command that names
+    # neither runs exactly the sweep it always ran.
+    ap.add_argument("--bayes-components", nargs="+",
+                    default=list(DEFAULT_BAYES_COMPONENTS),
+                    choices=list(BAYES_COMPONENTS),
+                    help="components to fit the bayes arm for "
+                         f"(default: {' '.join(DEFAULT_BAYES_COMPONENTS)})")
     args = ap.parse_args()
 
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
@@ -945,9 +1028,11 @@ def main() -> None:
                                 fits_path=fits_path, draws=args.bayes_draws,
                                 tune=args.bayes_tune, chains=args.bayes_chains,
                                 sampler=args.bayes_sampler, pa_dir=args.pa_dir,
-                                variants=variants)
+                                variants=variants,
+                                components=args.bayes_components)
         print(f"bayes sweep: {len(bayes)} rows, {len(fits)} fits, "
-             f"variants {variants} -> {bayes_ckpt}")
+             f"components {args.bayes_components}, variants {variants} "
+             f"-> {bayes_ckpt}")
 
     if args.stage in ("analyze", "all"):
         payload = build_analysis(cheap_ckpt, bayes_ckpt, analysis_path)
@@ -956,9 +1041,11 @@ def main() -> None:
                           if k in ("cheap_scope", "bayes_scope", "common_set_sizes",
                                    "bayes_overall_clustered_vs_unclustered")},
                          indent=1))
-        if payload.get("bayes_variant_comparison"):
-            print("\nvariant comparison (k_rate, pooled; t(player) is the one to trust):")
-            print(render_variant_table(pd.DataFrame(payload["bayes_variant_comparison"])))
+        for component, table in payload.get(
+                "bayes_variant_comparison_by_component", {}).items():
+            print(f"\nvariant comparison ({component}, pooled; t(player) is "
+                  f"the one to trust):")
+            print(render_variant_table(pd.DataFrame(table)))
 
 
 if __name__ == "__main__":

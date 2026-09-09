@@ -1,0 +1,998 @@
+[
+ {
+  "cutoff": "2024-04-15",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0187335592457722,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 305.71604715878243,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.710671015390354,
+    0.6442702306488789
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 17914,
+  "partial_batters": 420,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-14",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5180434588733895,
+  "n_cells": 1907,
+  "n_pa": 381056,
+  "n_batters": 687,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 84.6
+ },
+ {
+  "cutoff": "2024-04-15",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0191979900496193,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 105.3430074643016,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.7780322922896988,
+    0.7430828438127214
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.15899830415168878,
+    "sd": 0.039708146808960953
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 17914,
+  "partial_batters": 420,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-14",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5180434588733895,
+  "n_cells": 1907,
+  "n_pa": 381056,
+  "n_batters": 687,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 102.6
+ },
+ {
+  "cutoff": "2024-04-29",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0234495097975154,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 201.89050925981903,
+   "min_ess_var": "beta_age",
+   "divergences": 0,
+   "bfmi": [
+    0.657794265202718,
+    0.6139136880972333
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 32101,
+  "partial_batters": 460,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-28",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5181803166754957,
+  "n_cells": 1946,
+  "n_pa": 395091,
+  "n_batters": 692,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 94.3
+ },
+ {
+  "cutoff": "2024-04-29",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.024160748609222,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 161.16845023281988,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.7082061302268436,
+    0.730212422959503
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.1598032518763143,
+    "sd": 0.034327287036045796
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 32101,
+  "partial_batters": 460,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-28",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5181803166754957,
+  "n_cells": 1946,
+  "n_pa": 395091,
+  "n_batters": 692,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 139.4
+ },
+ {
+  "cutoff": "2024-05-01",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0234899216783753,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 243.37889973531165,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.6272698309670997,
+    0.6312241870863163
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 34079,
+  "partial_batters": 466,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-30",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5181803166754957,
+  "n_cells": 1954,
+  "n_pa": 397115,
+  "n_batters": 694,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 74.3
+ },
+ {
+  "cutoff": "2024-05-01",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0257249014091987,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 166.32020382104827,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6888378243560923,
+    0.7447518105616548
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.1566023883825196,
+    "sd": 0.03392108726279741
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 34079,
+  "partial_batters": 466,
+  "first_game": "2024-03-20",
+  "last_game": "2024-04-30",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5181803166754957,
+  "n_cells": 1954,
+  "n_pa": 397115,
+  "n_batters": 694,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 130.7
+ },
+ {
+  "cutoff": "2024-05-13",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0229288371319003,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 253.91069754991094,
+   "min_ess_var": "beta_age",
+   "divergences": 0,
+   "bfmi": [
+    0.657806217730887,
+    0.6655104042281912
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 45858,
+  "partial_batters": 495,
+  "first_game": "2024-03-20",
+  "last_game": "2024-05-12",
+  "prior_pa": 366155,
+  "league_init_mu": -3.518203124488313,
+  "n_cells": 2000,
+  "n_pa": 408950,
+  "n_batters": 702,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 55.7
+ },
+ {
+  "cutoff": "2024-05-13",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0218493397748984,
+   "max_rhat_var": "player_ability",
+   "min_ess_bulk": 73.71079023920458,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6459290476457737,
+    0.7146729452213811
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.1525694792463533,
+    "sd": 0.03388406390138505
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 45858,
+  "partial_batters": 495,
+  "first_game": "2024-03-20",
+  "last_game": "2024-05-12",
+  "prior_pa": 366155,
+  "league_init_mu": -3.518203124488313,
+  "n_cells": 2000,
+  "n_pa": 408950,
+  "n_batters": 702,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 91.4
+ },
+ {
+  "cutoff": "2024-05-27",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0203356352096455,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 256.0822932687918,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.6629097814345701,
+    0.655174110671545
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 59883,
+  "partial_batters": 511,
+  "first_game": "2024-03-20",
+  "last_game": "2024-05-26",
+  "prior_pa": 366155,
+  "league_init_mu": -3.518260141744601,
+  "n_cells": 2018,
+  "n_pa": 423026,
+  "n_batters": 707,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 82.6
+ },
+ {
+  "cutoff": "2024-05-27",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0685868301218353,
+   "max_rhat_var": "sigma_step",
+   "min_ess_bulk": 34.2058615496598,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6894968366758217,
+    0.6954547894674181
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.1354291127417258,
+    "sd": 0.035577299333717054
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 59883,
+  "partial_batters": 511,
+  "first_game": "2024-03-20",
+  "last_game": "2024-05-26",
+  "prior_pa": 366155,
+  "league_init_mu": -3.518260141744601,
+  "n_cells": 2018,
+  "n_pa": 423026,
+  "n_batters": 707,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 109.9
+ },
+ {
+  "cutoff": "2024-06-10",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.01697374761151,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 284.53510439302585,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.6993832118837011,
+    0.6603421087955598
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 73732,
+  "partial_batters": 536,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-09",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2036,
+  "n_pa": 436836,
+  "n_batters": 711,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 61.8
+ },
+ {
+  "cutoff": "2024-06-10",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0299807965986518,
+   "max_rhat_var": "z_step",
+   "min_ess_bulk": 151.21959189664426,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.7753483212774741,
+    0.679701445716632
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.13617467278845777,
+    "sd": 0.031271655209506845
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 73732,
+  "partial_batters": 536,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-09",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2036,
+  "n_pa": 436836,
+  "n_batters": 711,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 88.4
+ },
+ {
+  "cutoff": "2024-06-24",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0180264649693098,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 251.37334625514202,
+   "min_ess_var": "beta_hand",
+   "divergences": 0,
+   "bfmi": [
+    0.6265592687079702,
+    0.6878581458721543
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 87447,
+  "partial_batters": 549,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-23",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2059,
+  "n_pa": 450509,
+  "n_batters": 718,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 51.4
+ },
+ {
+  "cutoff": "2024-06-24",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0323053291104491,
+   "max_rhat_var": "sigma_step",
+   "min_ess_bulk": 40.18265532286389,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6089883325451041,
+    0.7528796719918024
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.14799077673990074,
+    "sd": 0.031084274360391972
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 87447,
+  "partial_batters": 549,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-23",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2059,
+  "n_pa": 450509,
+  "n_batters": 718,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 79.1
+ },
+ {
+  "cutoff": "2024-07-01",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0227703925514184,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 328.95073232452637,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.608411547440091,
+    0.6022092879847089
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 94640,
+  "partial_batters": 563,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-30",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2072,
+  "n_pa": 457630,
+  "n_batters": 720,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 45.2
+ },
+ {
+  "cutoff": "2024-07-01",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0270772161447037,
+   "max_rhat_var": "z_step",
+   "min_ess_bulk": 112.21538233048429,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6153628816723424,
+    0.6282465851835788
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.13918419303052698,
+    "sd": 0.0321042278355767
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 94640,
+  "partial_batters": 563,
+  "first_game": "2024-03-20",
+  "last_game": "2024-06-30",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2072,
+  "n_pa": 457630,
+  "n_batters": 720,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 83.6
+ },
+ {
+  "cutoff": "2024-07-08",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.029924122863303,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 210.0703858540125,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.5726464787053701,
+    0.6628055736223704
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 101709,
+  "partial_batters": 573,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-07",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2082,
+  "n_pa": 464615,
+  "n_batters": 722,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 56.7
+ },
+ {
+  "cutoff": "2024-07-08",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0275259800533052,
+   "max_rhat_var": "z_step",
+   "min_ess_bulk": 116.32721192939266,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6143813869279766,
+    0.682910987426169
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.13322172808302613,
+    "sd": 0.02827786081901623
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 101709,
+  "partial_batters": 573,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-07",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2082,
+  "n_pa": 464615,
+  "n_batters": 722,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 90.1
+ },
+ {
+  "cutoff": "2024-07-22",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0219280035154212,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 188.78965159384708,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.546372785882986,
+    0.5985668512857044
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 112085,
+  "partial_batters": 581,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-21",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2095,
+  "n_pa": 474937,
+  "n_batters": 726,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 76.7
+ },
+ {
+  "cutoff": "2024-07-22",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.1288340238135204,
+   "max_rhat_var": "sigma_step",
+   "min_ess_bulk": 12.869325302900847,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6331925562449376,
+    0.6077366461869204
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.13795208488344662,
+    "sd": 0.03374495183657727
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 112085,
+  "partial_batters": 581,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-21",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2095,
+  "n_pa": 474937,
+  "n_batters": 726,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 101.9
+ },
+ {
+  "cutoff": "2024-08-01",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0204931651751923,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 273.78633987574847,
+   "min_ess_var": "sigma_ability",
+   "divergences": 0,
+   "bfmi": [
+    0.5833986733757912,
+    0.6285278325141905
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 122501,
+  "partial_batters": 590,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-31",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2127,
+  "n_pa": 485250,
+  "n_batters": 729,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 75.8
+ },
+ {
+  "cutoff": "2024-08-01",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0244005441603177,
+   "max_rhat_var": "z_step",
+   "min_ess_bulk": 115.37167446637783,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6082686697696014,
+    0.6427715717800355
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.12529137164001644,
+    "sd": 0.03294113747320023
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 122501,
+  "partial_batters": 590,
+  "first_game": "2024-03-20",
+  "last_game": "2024-07-31",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183285581611465,
+  "n_cells": 2127,
+  "n_pa": 485250,
+  "n_batters": 729,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 91.2
+ },
+ {
+  "cutoff": "2024-08-05",
+  "component": "hr_rate",
+  "variant": "flat",
+  "arm": "bayes_flat",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=flat, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.023802053369419,
+   "max_rhat_var": "z_ability",
+   "min_ess_bulk": 331.57066145421703,
+   "min_ess_var": "beta_hand",
+   "divergences": 0,
+   "bfmi": [
+    0.6438558196385155,
+    0.6520595139520805
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {},
+  "partial_season": 2024,
+  "partial_pa": 126256,
+  "partial_batters": 596,
+  "first_game": "2024-03-20",
+  "last_game": "2024-08-04",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183456615339326,
+  "n_cells": 2150,
+  "n_pa": 489172,
+  "n_batters": 734,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 63.1
+ },
+ {
+  "cutoff": "2024-08-05",
+  "component": "hr_rate",
+  "variant": "ability_walk",
+  "arm": "bayes_walk",
+  "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+  "diagnostics": {
+   "max_rhat": 1.0413675717317308,
+   "max_rhat_var": "sigma_step",
+   "min_ess_bulk": 101.43155904907401,
+   "min_ess_var": "sigma_step",
+   "divergences": 0,
+   "bfmi": [
+    0.6730907919974685,
+    0.7093021820891534
+   ],
+   "bfmi_ok": true,
+   "healthy": false
+  },
+  "variant_params": {
+   "sigma_step": {
+    "mean": 0.13345082388756502,
+    "sd": 0.027959977758392433
+   }
+  },
+  "partial_season": 2024,
+  "partial_pa": 126256,
+  "partial_batters": 596,
+  "first_game": "2024-03-20",
+  "last_game": "2024-08-04",
+  "prior_pa": 366155,
+  "league_init_mu": -3.5183456615339326,
+  "n_cells": 2150,
+  "n_pa": 489172,
+  "n_batters": 734,
+  "n_pitchers": 0,
+  "n_seasons": 3,
+  "seasons": [
+   2022,
+   2023,
+   2024
+  ],
+  "elapsed_s": 76.3
+ }
+]
