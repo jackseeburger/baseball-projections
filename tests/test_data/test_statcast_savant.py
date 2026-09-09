@@ -86,3 +86,66 @@ def test_html_error_page_is_rejected():
 def test_backwards_range_rejected():
     with pytest.raises(ValueError):
         ss.fetch_season(2026, date(2026, 5, 1), date(2026, 4, 1))
+
+
+# ── retries ──────────────────────────────────────────────────────────────
+
+import requests as _requests
+
+
+class _FlakySession:
+    """Fails the first `failures` calls with `exc_factory()`, then serves rows."""
+
+    def __init__(self, failures, exc_factory, rows=5):
+        self.failures, self.exc_factory, self.rows = failures, exc_factory, rows
+        self.calls = 0
+
+    def get(self, url, params=None, timeout=None, headers=None):
+        self.calls += 1
+        if self.calls <= self.failures:
+            raise self.exc_factory()
+        df = pd.DataFrame({"game_pk": range(self.rows), "at_bat_number": [1] * self.rows,
+                           "pitch_number": [1] * self.rows})
+        return FakeResponse(df.to_csv(index=False))
+
+
+def _http_error(status):
+    resp = _requests.Response()
+    resp.status_code = status
+    return _requests.HTTPError(f"{status}", response=resp)
+
+
+def test_a_502_is_retried_and_the_pull_succeeds():
+    """The 2026-09-09 failure: one gateway error mid-season killed the run."""
+    sess = _FlakySession(failures=2, exc_factory=lambda: _http_error(502))
+    waits = []
+    df = ss.fetch_range(date(2026, 7, 10), date(2026, 7, 12), 2026,
+                        session=sess, sleep=waits.append)
+    assert len(df) == 5 and sess.calls == 3
+    assert waits == [2.0, 4.0]          # doubling backoff, one wait per failure
+
+
+def test_connection_errors_and_timeouts_are_retried():
+    for exc in (_requests.ConnectionError, _requests.Timeout):
+        sess = _FlakySession(failures=1, exc_factory=exc)
+        df = ss.fetch_range(date(2026, 7, 10), date(2026, 7, 12), 2026,
+                            session=sess, sleep=lambda s: None)
+        assert len(df) == 5 and sess.calls == 2
+
+
+def test_a_4xx_is_not_retried():
+    """A bad request does not get better by asking again."""
+    sess = _FlakySession(failures=1, exc_factory=lambda: _http_error(404))
+    with pytest.raises(_requests.HTTPError):
+        ss.fetch_range(date(2026, 7, 10), date(2026, 7, 12), 2026,
+                       session=sess, sleep=lambda s: None)
+    assert sess.calls == 1
+
+
+def test_retries_are_bounded():
+    sess = _FlakySession(failures=99, exc_factory=lambda: _http_error(503))
+    with pytest.raises(_requests.HTTPError):
+        ss.fetch_range(date(2026, 7, 10), date(2026, 7, 12), 2026,
+                       session=sess, retries=3, sleep=lambda s: None)
+    assert sess.calls == 4              # one try plus three retries
+
