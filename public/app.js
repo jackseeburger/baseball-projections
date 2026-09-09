@@ -1966,6 +1966,11 @@ function renderPaperLedger() {
   ].map(m => `<div class="metric-card"><div class="label">${m.label}</div>` +
     `<div class="value">${m.value}</div></div>`).join("");
 
+  const ruinHost = document.getElementById("paper-framing");
+  if (d.ruin) {
+    ruinHost.innerHTML = esc(d.framing) +
+      ` <span class="stale-warning">${esc(d.ruin.note)}</span>`;
+  }
   renderPaperCurve(d);
   renderPaperGate(d);
   renderPaperROI(d);
