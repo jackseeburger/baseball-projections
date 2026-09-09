@@ -1,16 +1,33 @@
 #!/usr/bin/env python3
-"""Export parquet/json data to browser-friendly JSON for D3 dashboard."""
+"""Export parquet/json data to browser-friendly JSON for the D3 dashboard.
 
+Reads scripts/assemble_and_compare.py's output (our_model_2026.parquet,
+comparison_2026.parquet) plus the aging-curve parquets and writes the four
+files public/app.js loads on the Overview, Comparison and Aging pages:
+our_model.json, comparison.json, aging_curves.json, summary.json. All four
+are the same ungated preseason Bayesian components career_war.json carries a
+provenance block for (issue #75) — summary.json gets one too, since it is
+the one of the four shaped as a dict rather than an array or list of
+records, so adding fields to it is not a breaking change for app.js.
+
+Paths used to point at a pre-migration multi-repo layout
+(/home/hermes/projects/baseball-dashboard, /home/hermes/projects/
+baseball-assembly) that does not exist in this repo or any checkout of it.
+"""
 import json
-import pandas as pd
-import numpy as np
+import subprocess
+from datetime import datetime, timezone
 from pathlib import Path
 
-OUT_DIR = Path("/home/hermes/projects/baseball-dashboard/public/data")
+import pandas as pd
+import numpy as np
+
+BASE = Path(__file__).resolve().parent.parent
+OUT_DIR = BASE / "public" / "data"
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-PROJ_DIR = Path("/home/hermes/projects/baseball-assembly/data/projections")
-FG_DIR = Path("/home/hermes/projects/baseball-dashboard/data/projections")
+PROJ_DIR = BASE / "data" / "projections"
+FG_DIR = PROJ_DIR
 
 
 class NpEncoder(json.JSONEncoder):
@@ -117,6 +134,28 @@ for stat in ["k_rate", "bb_rate", "hr_rate", "iso", "babip", "woba", "wrc_plus"]
                 corrs[stat][name] = round(float(common[our_col].corr(common[other_col])), 3)
                 
 summary["correlations"] = corrs
+
+# Provenance (issue #75): "our"/"Bayesian" above is the same ungated
+# preseason component set career_war.json now labels — see that file's
+# `method` field for the actual harness numbers. summary.json is the one of
+# these four files shaped as a dict rather than a bare array, so it is the
+# one that can carry this without changing what app.js expects to iterate.
+try:
+    _sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=BASE,
+                           capture_output=True, text=True, timeout=30)
+    git_sha = (_sha.stdout.strip() or None) if _sha.returncode == 0 else None
+except (OSError, subprocess.SubprocessError):
+    git_sha = None
+summary["generated_at"] = datetime.now(timezone.utc).isoformat()
+summary["git_sha"] = git_sha
+summary["engine"] = "bayes_preseason"
+summary["gated"] = False
+summary["framing"] = (
+    "\"Bayesian\" here and in comparison.json/our_model.json/aging_curves.json "
+    "is the same ungated preseason component set career_war.json is built "
+    "from — it has not beaten tuned Marcel in the harness. See Model "
+    "Accuracy, or career_war.json's own `method` field, for the numbers."
+)
 
 with open(str(OUT_DIR / "summary.json"), "w") as f:
     json.dump(summary, f, cls=NpEncoder, indent=2)

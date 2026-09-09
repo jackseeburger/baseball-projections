@@ -1,9 +1,19 @@
 name: CI
 
+# `workflow_dispatch` is here because GitHub has twice now stopped delivering
+# this repository's Actions events for hours at a stretch — see
+# docs/automation.md, which records the schedule outage of 2026-09-03 and the
+# falsified odd-minute hypothesis. On 2026-09-08 the same thing happened to
+# `pull_request`: four consecutive pushes to an open PR produced Vercel
+# deployments and no CI run at all, with no path filters to explain it. Manual
+# dispatch was the one thing that still worked during the schedule outage, so
+# this workflow now has it too. A branch whose tests have never run is worse
+# than one whose tests failed, because nothing says so.
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:

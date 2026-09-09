@@ -74,18 +74,36 @@ correlated, a linear function of six chain terms explaining 81–90% of its
 log-odds — and lost by .00073 with no |t| above 1.4. *More flexible models over
 the same inputs are not the move.* A new model needs new information.
 
-**The Bayesian arm is no longer losing on component accuracy.** Given the
-current season and an opposing-pitcher term, the hierarchical model moves from
-losing significantly (t 2.4–2.9) to inside noise (t 1.57 / 1.58 / 0.04). That
-is one handicap removed, and it moved the result most of the way. There are
-more handicaps: it has no Statcast input, no within-season skill drift, and no
-context beyond the opposing pitcher.
+**The Bayesian arm draws with tuned Marcel on component accuracy — and the
+route there is the most instructive result on the board.** It took three
+measurements and one of them overturned the previous two.
 
-A tie on component MAE is what the calibration above predicts, and it is not a
-verdict on the method. **The gate decides what we serve, not what we
-research.** A model that fails the gate is an iteration, not a dead end — the
-mistake would be to read "did not clear the gate" as "this approach does not
-work" and stop.
+1. Given the current season and an opposing-pitcher term (BAS-59), the
+   hierarchical model looked like it had moved from losing significantly to
+   inside noise: t 1.57 / 1.58 / 0.04.
+2. [Densifying that](densified-intraseason-backtest.md) from 3 cutoffs to 164
+   killed it. The "dead heat" had rested on **n = 126 hitters at one cutoff**.
+   With real n the model lost at 35 of 36 cells, +0.00110 at clustered t 3.11.
+   The pre-registered pooling explanation failed too. What survived was a
+   sharper question: the arm was indistinguishable from *stock* Marcel at every
+   cutoff, so the deficit was specifically **what tuning bought Marcel**.
+3. [Answering that](bayes-variants.md) closed it. Of tuning's four
+   ingredients the model already had two in better form; of the two it lacked,
+   recency was the one that mattered. A season random walk on player ability —
+   recency the model estimates rather than one we fix — closed **73%** of the
+   deficit: +0.00033 at t 1.40 over 48 cutoffs, beating its own flat self at 43
+   of 48. A constrained age curve moved nothing, exactly as predicted.
+
+So the arc is: apparent tie, then a real loss once measured properly, then a
+real draw once the missing structure was added. Each step was a published
+number, and the middle one contradicted what we had already written down.
+
+A draw is not a win, and `marcel_tuned` keeps serving. But **the gate decides
+what we serve, not what we research.** A model that fails the gate is an
+iteration, not a dead end — the mistake would be to read "did not clear the
+gate" as "this approach does not work" and stop. The remaining handicaps are
+named and unaddressed: no Statcast input, no *within*-season drift (the walk
+is between seasons), and no context beyond the opposing pitcher.
 
 **The largest gains came from data and framing, not method.** Injury/option
 return share: 6.4 PA per hitter at two months (t −5.4). Feeding Marcel the

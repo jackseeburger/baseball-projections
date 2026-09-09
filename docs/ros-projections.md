@@ -30,7 +30,11 @@ the next section has the current numbers.)
 
 **`bayes_preseason` here is a fixed preseason file, not a refit.** It had
 never seen a 2026 plate appearance; `marcel` had seen every one before the
-cutoff. The `marcel` − `marcel_preseason` column below prices that difference
+cutoff. It was also fit by `modal_functions/app.py`'s inlined K% model
+(HSGP age curve, no pitcher term), not by `src/models/pa_k_rate.py` — see
+[modal-src-divergence.md](modal-src-divergence.md) (issue #86) for how that
+was established and why the file itself was left as-is. The `marcel` −
+`marcel_preseason` column below prices that difference
 at 4.6–6.1% of K% MAE, which is the same order as the gap in this table, so
 the numbers here are not on their own a verdict on the Bayesian model. The
 model-against-model comparison — the same estimator refit at each cutoff on

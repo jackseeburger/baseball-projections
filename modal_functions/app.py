@@ -1,7 +1,24 @@
 """Baseball Projections — Modal compute infrastructure.
 
-Single-file Modal app with all entrypoints. Keeps it simple and avoids
-cross-module import issues in Modal's container environment.
+Single-file Modal app with all entrypoints. The model code itself lives in
+`src/models/` — the same modules the test suite imports, the backtest
+harness (`src/eval/bayes_arm.py`) fits, and the gate rule
+(docs/architecture.md #3) scores against Marcel. This file's job is the
+Modal-specific plumbing around those models: volumes, secrets, image,
+wandb logging, and the `/data`/`/models` paths — not a second copy of the
+models themselves.
+
+That used to not be true. Until issue #86, a comment here read "Modal
+requirement — no cross-module imports" and every model was pasted in
+whole, twice. That claim was false — `modal.Image.add_local_python_source`
+has shipped local packages into a function's container for a long time,
+well before the `modal>=0.64` this repo pins (confirmed against Modal's
+own docs, not assumed) — and the two copies had quietly drifted apart: the
+weekly production refit was fitting a different K% model (an HSGP age
+curve, no opposing-pitcher term) than the one every published backtest
+number was scored against. See docs/modal-src-divergence.md for the full
+audit — what diverged, which published numbers came from which copy, and
+what did and did not get changed here as a result.
 
 Usage:
     modal run modal_functions/app.py                    # smoke test
@@ -56,7 +73,13 @@ pymc_image = (
         "scipy>=1.14",
         "scikit-learn>=1.5",
         "tqdm",
+        "requests>=2.31",  # src.data.birthdates fetches the Chadwick register
     )
+    # Ships src/ into the container so the training functions below can
+    # `import src.models...` instead of inlining a second copy of the
+    # model (issue #86). This is Modal's documented mechanism for local
+    # packages, not a workaround — see the module docstring.
+    .add_local_python_source("src")
 )
 
 
@@ -261,6 +284,41 @@ def generate_birth_years_on_volume():
     print(f"Register match rate: {match_rate:.1%}")
 
     return {"n_batters": len(result), "n_missing": n_missing,
+            "path": str(output_path)}
+
+
+@app.function(image=pymc_image, volumes=VOLUME_MOUNTS, timeout=600)
+def generate_birthdates_on_volume():
+    """Write /data/parquet/birthdates.parquet — the full Chadwick schema
+    (birth_year, birth_month, birth_day) `src.models.pa_k_rate.prepare_model_data`
+    needs for a real June-30 seasonal age, via `src.data.birthdates`.
+
+    This is a different file from `generate_birth_years_on_volume`'s
+    `batter_birth_years.parquet` above (year only, calendar-year age, the
+    convention `src.models.iso_rate` / `babip_rate` still use — see
+    docs/modal-src-divergence.md for why that one was left alone). Run
+    this once against the live volume before a `train_pa_k_rate` refit;
+    without it, `prepare_model_data` falls back to `first_year - 23` and
+    logs a warning rather than failing, but the fallback is the estimate
+    real birthdates replaced in `src/` months ago.
+    """
+    import pandas as pd
+
+    from src.data.birthdates import fetch_register
+
+    data_volume.reload()
+    parquet_dir = Path("/data/parquet")
+
+    people = fetch_register()
+    output_path = parquet_dir / "birthdates.parquet"
+    people.to_parquet(output_path, index=False)
+    data_volume.commit()
+
+    n_with_year = int(people["birth_year"].notna().sum())
+    print(f"Chadwick register: {len(people):,} players with an MLBAM id, "
+          f"{n_with_year:,} with a birth year")
+    print(f"Saved {output_path}")
+    return {"n_players": len(people), "n_with_birth_year": n_with_year,
             "path": str(output_path)}
 
 
@@ -478,7 +536,7 @@ def wandb_integration_test():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# PA-level K-Rate Bayesian Model
+# PA-level K-Rate Bayesian Model — the gated model (src/models/pa_k_rate.py)
 # ═══════════════════════════════════════════════════════════════════════════
 
 @app.function(
@@ -493,689 +551,150 @@ def train_pa_k_rate(
     n_draws: int = 2000,
     n_tune: int = 1500,
     n_chains: int = 4,
-    target_accept: float = 0.95,
+    target_accept: float = 0.9,
     min_pa: int = 50,
     projection_year: int = 2026,
     log_wandb: bool = True,
     fast_mode: bool = False,
+    include_pitcher: bool = False,
+    cutoff_date: str = "",
 ):
-    """Batter-season Bayesian K-rate model (Binomial aggregation).
+    """Thin Modal wrapper around `src.models.pa_k_rate` — the gated K% model.
 
-    Hierarchical Binomial model: each batter-season is K ~ Binomial(n_pa, p).
-    logit(p_K) = league_trend[season] + player[batter] + hand + park + age_curve
+    Everything about *what the model is* — the quadratic age curve, the
+    optional zero-mean opposing-pitcher random effect, the exact
+    (batter, season, team, stand[, pitcher]) Binomial cell aggregation, the
+    June-30 seasonal age from the Chadwick register — lives in
+    `src/models/pa_k_rate.py` and is not duplicated here (issue #86). This
+    function does only the Modal-specific parts: reading the volume,
+    resolving the birthdates file, sampling with the requested compute
+    budget, writing results back to `/models`, and logging to wandb.
 
-    Mathematically equivalent to per-PA Bernoulli but ~100x faster (~18K rows
-    instead of ~1.9M).
+    `target_accept` now defaults to 0.9 to match
+    `src.models.pa_k_rate.SAMPLER_KWARGS` (it was 0.95 here before; the
+    workflow never overrides it, so nothing published depended on the old
+    default — see docs/modal-src-divergence.md).
 
-    All model code is inlined (Modal requirement — no cross-module imports).
+    `include_pitcher` and `cutoff_date` default to what the weekly refit
+    has always done — no pitcher term, full history, no walk-forward
+    cutoff — so this rewiring does not silently change what Monday's
+    refit produces by default. The pitcher term in particular is opt-in
+    rather than on because it has not cleared the rest-of-season gate
+    (docs/backtest-baselines.md, BAS-59); turning it on here is what that
+    section's "a full Modal refit should score it at all three cutoffs"
+    now means to run.
     """
-    import gc
-    import time
     import logging
-    import tempfile
 
-    import numpy as np
     import pandas as pd
-    import pymc as pm
-    import pytensor.tensor as pt
-    import arviz as az
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+
+    from src.models import pa_k_rate as k_rate_model
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger("pa_k_rate")
 
-    REFERENCE_AGE = 27.0
-    PARQUET_DIR = Path("/data/parquet")
-
     if fast_mode:
         n_draws, n_tune, n_chains = 200, 200, 2
-        logger.info("⚡ FAST MODE enabled")
+        logger.info("FAST MODE enabled")
 
-    # ─── 1. Load data ───────────────────────────────────────────────────
-    # Reload volume to pick up any recent uploads
+    # ─── 1. Load data (Modal volume paths; everything else is src/) ──────
     data_volume.reload()
-    logger.info("Loading PA outcomes...")
-    pa_dir = PARQUET_DIR / "pa_outcomes"
-    
-    # Try to read birth_year; if not in parquet, we'll compute it after loading
-    keep_cols = ["batter", "game_year", "stand", "is_k", "home_team", "away_team", "inning_topbot"]
-    # Check if birth_year column exists in the parquet files
-    import pyarrow.parquet as pq
-    sample_file = sorted(pa_dir.glob("*.parquet"))[0]
-    schema = pq.read_schema(sample_file)
-    has_birth_year = "birth_year" in schema.names
-    if has_birth_year:
-        keep_cols.append("birth_year")
-        logger.info("birth_year column found in PA parquet files")
-    frames = []
-    for f in sorted(pa_dir.glob("*.parquet")):
-        frames.append(pd.read_parquet(f, columns=keep_cols))
-    df = pd.concat(frames, ignore_index=True)
-    logger.info(f"Loaded {len(df):,} PAs ({df['game_year'].min()}-{df['game_year'].max()})")
-    del frames
-    gc.collect()
+    parquet_dir = Path("/data/parquet")
+    pa_dir = parquet_dir / "pa_outcomes"
+    pf_path = parquet_dir / "park_factors.parquet"
+    birthdates_path = parquet_dir / "birthdates.parquet"
 
-    # Load park factors
-    pf_path = PARQUET_DIR / "park_factors.parquet"
-    park_factors = pd.read_parquet(pf_path) if pf_path.exists() else None
-    if park_factors is not None:
-        logger.info(f"Park factors: {len(park_factors)} rows")
-
-    # ─── 2. Prepare data ────────────────────────────────────────────────
-    # Batting team from inning_topbot
-    df["bat_team"] = np.where(df["inning_topbot"] == "Top", df["away_team"], df["home_team"])
-
-    # Filter pitchers and low-PA batters
-    n_before = df["batter"].nunique()
-    
-    # Step 1: Remove likely pitchers — anyone whose best season is < 80 PA
-    # (real position players get 200+ PA seasons; pitchers batting rarely exceed 80)
-    season_pa = df.groupby(["batter", "game_year"]).size().reset_index(name="season_pa")
-    max_season_pa = season_pa.groupby("batter")["season_pa"].max()
-    likely_hitters = max_season_pa[max_season_pa >= 80].index
-    n_pitchers_removed = n_before - len(likely_hitters)
-    df = df[df["batter"].isin(likely_hitters)].copy()
-    
-    # Step 2: Filter remaining low-PA batters (cup-of-coffee players)
-    pa_counts = df.groupby("batter").size()
-    qualified = pa_counts[pa_counts >= min_pa].index
-    df = df[df["batter"].isin(qualified)].copy()
-    logger.info(f"Batters: {n_before} → {df['batter'].nunique()} "
-                f"(removed {n_pitchers_removed} likely pitchers, >= {min_pa} career PA)")
-
-    # Integer indices
-    seasons = np.sort(df["game_year"].unique())
-    season_map = {yr: i for i, yr in enumerate(seasons)}
-    df["season_idx"] = df["game_year"].map(season_map).astype(np.int64)
-
-    batters = np.sort(df["batter"].unique())
-    batter_map = {b: i for i, b in enumerate(batters)}
-    df["batter_idx"] = df["batter"].map(batter_map).astype(np.int64)
-
-    teams = np.sort(df["bat_team"].unique())
-    team_map = {t: i for i, t in enumerate(teams)}
-    df["team_idx"] = df["bat_team"].map(team_map).astype(np.int64)
-
-    df["stand_idx"] = (df["stand"] == "R").astype(np.int64)
-
-    # ─── Age: get birth years ───
-    if "birth_year" in df.columns:
-        df["birth_year"] = df["birth_year"].astype(np.float64)
-        logger.info(f"Birth years from PA data: 100% coverage")
+    if birthdates_path.exists():
+        birthdates = pd.read_parquet(birthdates_path)
     else:
-        # Compute from hitter_seasons.parquet (has FanGraphs Age column)
-        birth_map = {}
-        hs_path = PARQUET_DIR / "hitter_seasons.parquet"
-        if hs_path.exists():
-            hs = pd.read_parquet(hs_path)
-            # Find the right columns
-            age_col = next((c for c in hs.columns if c.lower() == 'age'), None)
-            yr_col = next((c for c in hs.columns if c.lower() in ('season', 'game_year', 'year')), None)
-            id_col = next((c for c in hs.columns if 'mlbam' in c.lower() or c == 'IDfg' or c == 'fg_id'), None)
-            
-            if age_col and yr_col:
-                hs['_birth'] = hs[yr_col] - hs[age_col]
-                if id_col:
-                    birth_map = hs.groupby(id_col)['_birth'].median().round().astype(int).to_dict()
-                    logger.info(f"Birth years from hitter_seasons ({id_col}): {len(birth_map)} players")
-                else:
-                    logger.info(f"hitter_seasons has no mlbam ID column. Cols: {list(hs.columns)[:10]}")
-        
-        # Fallback: debut year - 24
-        first_year = df.groupby("batter")["game_year"].min().to_dict()
-        def get_by(batter_id):
-            if batter_id in birth_map:
-                return float(birth_map[batter_id])
-            return float(first_year.get(batter_id, 2015) - 24)
-        
-        df["birth_year"] = df["batter"].map(get_by).astype(np.float64)
-        n_real = sum(1 for b in df["batter"].unique() if b in birth_map)
-        logger.info(f"Birth years: {n_real}/{df['batter'].nunique()} from hitter_seasons, rest from debut-24")
-    df["age"] = (df["game_year"] - df["birth_year"]).astype(np.float64)
-    df["age_centered"] = (df["age"] - REFERENCE_AGE).astype(np.float64)
-    
-    logger.info(f"Age range: {df['age'].min():.0f}-{df['age'].max():.0f}, "
-                f"mean={df['age'].mean():.1f}")
-
-    # Park factor lookup (team_idx, season_idx) → log(pf_k)
-    n_teams = len(teams)
-    n_seasons = len(seasons)
-    log_pf = np.zeros((n_teams, n_seasons), dtype=np.float64)
-    if park_factors is not None:
-        # Handle both old schema (year, pf_k) and new (game_year, k_park_factor)
-        yr_col = "game_year" if "game_year" in park_factors.columns else "year"
-        pf_col = "k_park_factor" if "k_park_factor" in park_factors.columns else "pf_k"
-        logger.info(f"Park factor columns: year={yr_col}, k={pf_col}")
-        for _, row in park_factors.iterrows():
-            t = team_map.get(row["team"])
-            s = season_map.get(int(row[yr_col]))
-            if t is not None and s is not None:
-                log_pf[t, s] = np.log(float(row[pf_col]))
-    df["log_pf_k"] = log_pf[df["team_idx"].values, df["season_idx"].values].astype(np.float64)
-
-    # Batter metadata for projections (computed before aggregation)
-    batter_meta = (
-        df.groupby("batter")
-        .agg(stand=("stand", "first"), birth_year=("birth_year", "first"),
-             last_season=("game_year", "max"), total_pa=("is_k", "size"),
-             career_k_rate=("is_k", "mean"))
-        .reset_index()
-    )
-
-    # ─── 2b. Aggregate to batter-season level (Binomial) ────────────────
-    # For team_idx: use team where batter had most PAs that season (mode)
-    team_mode = (
-        df.groupby(["batter", "game_year", "team_idx"])
-        .size()
-        .reset_index(name="pa_count")
-        .sort_values("pa_count", ascending=False)
-        .drop_duplicates(subset=["batter", "game_year"], keep="first")
-        .set_index(["batter", "game_year"])["team_idx"]
-    )
-
-    agg_df = (
-        df.groupby(["batter", "game_year"])
-        .agg(
-            n_k=("is_k", "sum"),
-            n_pa=("is_k", "size"),
-            stand_idx=("stand_idx", "first"),
-            batter_idx=("batter_idx", "first"),
-            season_idx=("season_idx", "first"),
-            age=("age", "first"),
-            age_centered=("age_centered", "first"),
-            log_pf_k=("log_pf_k", "mean"),
-        )
-        .reset_index()
-    )
-
-    # Attach team mode via merge
-    team_mode_df = team_mode.reset_index()
-    team_mode_df.columns = ["batter", "game_year", "team_idx"]
-    agg_df = agg_df.merge(team_mode_df, on=["batter", "game_year"], how="left")
-
-    # Ensure integer types
-    agg_df["n_k"] = agg_df["n_k"].astype(np.int64)
-    agg_df["n_pa"] = agg_df["n_pa"].astype(np.int64)
-    agg_df["team_idx"] = agg_df["team_idx"].astype(np.int64)
-
-    n_obs = len(agg_df)
-    n_batters = len(batters)
-    n_total_pa = int(agg_df["n_pa"].sum())
-    logger.info(f"Aggregated to {n_obs:,} batter-seasons ({n_total_pa:,} total PAs)")
-    logger.info(f"Model data: {n_obs:,} obs, {n_batters:,} batters, {n_seasons} seasons, {n_teams} teams")
-
-    # Free PA-level dataframe
-    del df
-    gc.collect()
-
-    # ─── 2c. Prepare age data for HSGP ──────────────────────────────────
-    # HSGP needs centered age as a 2D array (n_obs, 1)
-    age_centered_vals = agg_df["age_centered"].values.astype(np.float64)
-    
-    # HSGP config
-    # m = number of basis functions (20 is plenty for 1D smooth curve)
-    # c = boundary factor — domain extends to [-L, L] where L = c * half_range
-    #     Must cover training ages AND future projection ages (up to ~45)
-    age_range = age_centered_vals.max() - age_centered_vals.min()
-    HSGP_M = 20       # basis functions
-    HSGP_C = 1.5      # boundary factor (covers ~18 to ~45 with REFERENCE_AGE=27)
-    
-    logger.info(f"HSGP age model: m={HSGP_M} basis functions, c={HSGP_C}, "
-                f"age range [{age_centered_vals.min():.1f}, {age_centered_vals.max():.1f}] centered")
-
-    # ─── 3. Build PyMC model ────────────────────────────────────────────
-    coords = {
-        "batter": batters,
-        "season": seasons,
-        "team": teams,
-        "obs_id": np.arange(n_obs),
-    }
-
-    with pm.Model(coords=coords) as model:
-        # Data containers
-        batter_idx_d = pm.Data("batter_idx", agg_df["batter_idx"].values, dims="obs_id")
-        season_idx_d = pm.Data("season_idx", agg_df["season_idx"].values, dims="obs_id")
-        team_idx_d = pm.Data("team_idx", agg_df["team_idx"].values, dims="obs_id")
-        stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
-        log_pf_d = pm.Data("log_pf_k", agg_df["log_pf_k"].values, dims="obs_id")
-        n_pa_d = pm.Data("n_pa", agg_df["n_pa"].values, dims="obs_id")
-        
-        # Age as mutable data container (for set_data projection)
-        age_c_d = pm.Data("age_centered", age_centered_vals, dims="obs_id")
-
-        # League trend: random walk
-        league_init = pm.Normal("league_init", mu=-1.27, sigma=0.3)
-        league_innovations = pm.Normal("league_innovations", mu=0, sigma=0.05, dims="season")
-        league_trend = pm.Deterministic("league_trend",
-            league_init + pt.cumsum(league_innovations), dims="season")
-
-        # Player ability: non-centered partial pooling
-        mu_ability = pm.Normal("mu_ability", mu=0.0, sigma=0.3)
-        sigma_ability = pm.HalfNormal("sigma_ability", sigma=0.4)
-        z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
-        player_ability = pm.Deterministic("player_ability",
-            mu_ability + sigma_ability * z_ability, dims="batter")
-
-        # Handedness
-        beta_hand = pm.Normal("beta_hand", mu=0.0, sigma=0.2)
-
-        # Park effects: zero-sum
-        park_effect = pm.ZeroSumNormal("park_effect", sigma=0.05, dims="team")
-
-        # ─── Age curve: HSGP (Hilbert Space Gaussian Process) ───────────
-        # Replaces B-spline. Learns a smooth nonlinear aging curve from data.
-        # HSGP is a spectral approximation to a full GP — O(nm) not O(n³).
-        #
-        # Two hyperparameters the model learns:
-        #   eta_age (amplitude) — how much age matters overall
-        #   ell_age (lengthscale) — how smooth the curve is
-        #     large ell → very smooth (age effect changes slowly)
-        #     small ell → more wiggly (can capture sharp transitions)
-        #
-        # Matern-5/2 kernel: twice differentiable, smooth but can capture
-        # asymmetric aging (gradual improvement then faster decline).
-        
-        eta_age = pm.HalfNormal("eta_age", sigma=0.5)
-        ell_age = pm.InverseGamma("ell_age", mu=5.0, sigma=2.0)  # ~5 year lengthscale
-        
-        cov_age = eta_age**2 * pm.gp.cov.Matern52(1, ls=ell_age)
-        gp_age = pm.gp.HSGP(m=[HSGP_M], c=HSGP_C, cov_func=cov_age)
-        age_effect = gp_age.prior("age_effect", X=age_c_d[:, None])
-        
-        # Linear predictor
-        eta = (
-            league_trend[season_idx_d]
-            + player_ability[batter_idx_d]
-            + beta_hand * stand_idx_d
-            + park_effect[team_idx_d]
-            + age_effect
-            + log_pf_d
+        birthdates = None
+        logger.warning(
+            "%s not found -- prepare_model_data will fall back to "
+            "first_year-23 ages. Run `modal run "
+            "modal_functions/app.py::generate_birthdates_on_volume` once "
+            "against this volume to fix that.", birthdates_path,
         )
 
-        # Likelihood: Binomial on aggregated batter-season counts
-        p = pm.math.invlogit(eta)
-        pm.Binomial("obs_k", n=n_pa_d, p=p, observed=agg_df["n_k"].values, dims="obs_id")
+    cutoff = cutoff_date or None
+    pa = k_rate_model.load_pa_data(pa_dir, cutoff_date=cutoff, include_pitcher=include_pitcher)
+    park_factors = k_rate_model.load_park_factors(pf_path)
 
-    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + HSGP_M + 2  # +2 for eta_age, ell_age
-    logger.info(f"Model built: ~{n_params:,} free parameters")
-
-    # Save age values before freeing dataframe (needed for projection interpolation)
-    obs_age_values = agg_df["age"].values.copy()
-    
-    # Free the aggregated dataframe to save memory
-    del agg_df
-    gc.collect()
-
-    # ─── 4. Sample ──────────────────────────────────────────────────────
-    logger.info(f"Sampling: {n_chains} chains × {n_draws} draws (tune={n_tune})")
-    t0 = time.time()
-    with model:
-        trace = pm.sample(
-            draws=n_draws, tune=n_tune, chains=n_chains, cores=1,
-            target_accept=target_accept, nuts_sampler="numpyro",
-            random_seed=42, idata_kwargs={"log_likelihood": False},
-        )
-    elapsed = time.time() - t0
-    logger.info(f"Sampling done in {elapsed:.0f}s")
-
-    # Diagnostics
-    rhat = az.rhat(trace)
-    max_rhat = max(
-        float(rhat[v].values.max()) if rhat[v].values.ndim > 0 else float(rhat[v].values)
-        for v in rhat.data_vars
+    # ─── 2. Prepare, build, sample, project — all src.models.pa_k_rate ───
+    model_data = k_rate_model.prepare_model_data(
+        pa, park_factors, min_pa=min_pa, birthdates=birthdates,
+        cutoff_date=cutoff, include_pitcher=include_pitcher,
     )
-    divergences = 0
-    if hasattr(trace, "sample_stats"):
-        div = trace.sample_stats.get("diverging")
-        if div is not None:
-            divergences = int(div.values.sum())
-    logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
+    del pa
 
-    # ─── 5. Generate multi-year projections ─────────────────────────────
-    # For HSGP, we evaluate the GP at new age points using the learned
-    # spectral basis weights. The HSGP prior creates internal variables
-    # (hsgp_coeffs_) that we can use to reconstruct f(age) at any point.
-    
-    post = trace.posterior
-    lt = post["league_trend"].values
-    pa_vals = post["player_ability"].values
-    bh = post["beta_hand"].values
-    innov = post["league_innovations"].values
+    model = k_rate_model.build_model(model_data)
+    trace = k_rate_model.sample_model(
+        model,
+        draws=n_draws, tune=n_tune, chains=n_chains,
+        target_accept=target_accept, nuts_sampler="numpyro",
+    )
+    diagnostics = k_rate_model.model_diagnostics(trace)
+    logger.info("Max R-hat: %.4f (%s), divergences: %d, BFMI: %s",
+                diagnostics["max_rhat"], diagnostics["max_rhat_var"],
+                diagnostics["divergences"], diagnostics["bfmi"])
 
-    nc, nd = lt.shape[:2]
-    ns = nc * nd
-    lt_flat = lt.reshape(ns, -1)
-    pa_flat = pa_vals.reshape(ns, -1)
-    bh_flat = bh.reshape(ns)
-    innov_flat = innov.reshape(ns, -1)
-    
-    # Extract HSGP internals for manual evaluation at new ages
-    # HSGP stores: _beta (spectral coefficients), and we need the basis functions
-    eta_age_post = post["eta_age"].values.reshape(ns)
-    ell_age_post = post["ell_age"].values.reshape(ns)
-    
-    # Get the HSGP spectral coefficients — named "age_effect_hsgp_coeffs_"
-    hsgp_coeff_names = [v for v in post.data_vars if "hsgp_coeffs" in v or "age_effect" in v]
-    logger.info(f"HSGP posterior variables: {hsgp_coeff_names}")
-    
-    # The age_effect values at training points are stored directly
-    age_effect_post = post["age_effect"].values  # (chains, draws, n_obs)
-    age_effect_flat = age_effect_post.reshape(ns, -1)
-    
-    # For projecting to NEW ages, we need to evaluate the GP basis at those ages.
-    # HSGP uses: f(x) = phi(x)^T @ beta, where phi are spectral basis functions.
-    # We can reconstruct this from the HSGP object's internals.
-    
-    # Get the learned age effect at each observed age, build an interpolation
-    # This is simpler and more robust than reconstructing HSGP basis manually
-    from scipy.interpolate import interp1d
-    
-    # Unique ages in training data and their mean posterior age effects
-    unique_ages = np.sort(np.unique(obs_age_values))
-    # Map each obs to its age, compute mean age effect per unique age per sample
-    obs_ages = obs_age_values
-    
-    # Build age→effect interpolator for each posterior sample
-    # Group observations by age, average the age_effect within each age
-    age_to_obs_idx = {}
-    for i, a in enumerate(obs_ages):
-        age_to_obs_idx.setdefault(float(a), []).append(i)
-    
-    # Mean age effect at each unique age for each sample
-    age_effect_by_age = np.zeros((len(unique_ages), ns))
-    for j, a in enumerate(unique_ages):
-        idx = age_to_obs_idx[float(a)]
-        age_effect_by_age[j, :] = age_effect_flat[:, idx].mean(axis=1)
-    
-    def eval_gp_age_effect(ages_new):
-        """Evaluate GP age effect at new ages via interpolation of posterior."""
-        # Extrapolate linearly beyond training range
-        interp = interp1d(unique_ages, age_effect_by_age, axis=0, 
-                         kind="linear", fill_value="extrapolate")
-        return interp(ages_new)  # (len(ages_new), ns)
-
-    # Extrapolate league trend
-    last_trend = lt_flat[:, -1]
-    innov_std = innov_flat.std(axis=1)
-
-    # Project recently active batters
-    cutoff_year = int(seasons[-1]) - 2  # active in last 3 years
-    active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
-    logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
-
-    # Multi-year projection
-    all_projections = []
-
-    for proj_year in range(projection_year, projection_year + 5):
-        years_ahead = proj_year - int(seasons[-1])
-        projected_trend = last_trend.copy()
-        rng_year = np.random.default_rng(42 + proj_year)
-        for _ in range(years_ahead):
-            projected_trend = projected_trend + rng_year.normal(0, innov_std)
-
-        for _, row in active.iterrows():
-            batter_id = int(row["batter"])
-            b_idx = batter_map[batter_id]
-            proj_age = proj_year - float(row["birth_year"])
-            s_idx = 1 if row["stand"] == "R" else 0
-
-            # GP age effect at projected age
-            age_eff = eval_gp_age_effect(np.array([proj_age])).squeeze()  # (ns,)
-
-            eta_proj = (
-                projected_trend
-                + pa_flat[:, b_idx]
-                + bh_flat * s_idx
-                + age_eff
-            )
-
-            p_k = 1.0 / (1.0 + np.exp(-eta_proj))
-
-            all_projections.append({
-                "batter": batter_id,
-                "projection_year": proj_year,
-                "projected_age": proj_age,
-                "stand": row["stand"],
-                "projected_k_rate": float(np.mean(p_k)),
-                "k_rate_std": float(np.std(p_k)),
-                "k_rate_lower": float(np.percentile(p_k, 5)),
-                "k_rate_upper": float(np.percentile(p_k, 95)),
-                "k_rate_10": float(np.percentile(p_k, 10)),
-                "k_rate_90": float(np.percentile(p_k, 90)),
-                "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
-                "total_pa": int(row["total_pa"]),
-                "career_k_rate": float(row["career_k_rate"]),
-                "last_season": int(row["last_season"]),
-            })
-
-    proj_df = pd.DataFrame(all_projections)
-    proj_df = proj_df.sort_values(["batter", "projection_year"]).reset_index(drop=True)
-
-    # Summary stats
-    proj_2026 = proj_df[proj_df["projection_year"] == projection_year]
-    logger.info(
-        f"Projections generated: {len(proj_df)} total rows "
-        f"({len(proj_2026)} for {projection_year}), "
-        f"median K% = {proj_2026['projected_k_rate'].median():.3f}"
+    projections = k_rate_model.generate_projections(
+        trace, model_data, projection_year=projection_year,
     )
 
-    # Generate the learned aging curve for plotting
-    age_grid = np.linspace(20, 42, 100)
-    aging_curves = eval_gp_age_effect(age_grid)  # (100, ns)
-    aging_curve_mean = aging_curves.mean(axis=1)
-    aging_curve_lower = np.percentile(aging_curves, 5, axis=1)
-    aging_curve_upper = np.percentile(aging_curves, 95, axis=1)
-
-    aging_df = pd.DataFrame({
-        "age": age_grid,
-        "age_effect_mean": aging_curve_mean,
-        "age_effect_lower": aging_curve_lower,
-        "age_effect_upper": aging_curve_upper,
-    })
-
-    # Save projections to volume
+    # ─── 3. Save to /models (Modal-specific) ──────────────────────────────
     proj_dir = Path("/models/projections")
     proj_dir.mkdir(parents=True, exist_ok=True)
     proj_path = proj_dir / f"k_rate_projections_{projection_year}.parquet"
-    proj_df.to_parquet(str(proj_path), index=False)
+    projections.to_parquet(str(proj_path), index=False)
 
-    # Save aging curve
-    aging_path = proj_dir / f"k_rate_aging_curve_{projection_year}.parquet"
-    aging_df.to_parquet(str(aging_path), index=False)
-
-    # Save trace
     trace_dir = Path("/models/traces")
     trace_dir.mkdir(parents=True, exist_ok=True)
     trace_path = trace_dir / f"k_rate_trace_{projection_year}.nc"
     trace.to_netcdf(str(trace_path))
+    models_volume.commit()
+    logger.info("Saved projections + trace to /models volume")
 
-    logger.info(f"Saved projections + aging curve + trace to /models volume")
-
-    # ─── 6. wandb logging ───────────────────────────────────────────────
+    # ─── 4. wandb logging — delegates to src.models.pa_k_rate.log_to_wandb ─
     if log_wandb:
         try:
-            import wandb
-            from datetime import datetime
-
-            run_name = f"pa-k-rate-{projection_year}-{datetime.now():%Y%m%d_%H%M}"
-            run = wandb.init(
-                project="baseball-projections", entity="jseeburger",
-                name=run_name,
-                config={
-                    "model": "pa_k_rate_binomial",
-                    "age_model": "HSGP",
-                    "hsgp_m": HSGP_M, "hsgp_c": HSGP_C,
-                    "kernel": "Matern52",
-                    "likelihood": "binomial_batter_season",
-                    "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
-                    "target_accept": target_accept, "min_pa": min_pa,
+            k_rate_model.log_to_wandb(
+                trace, projections, model_data,
+                model_config={
+                    "model": "pa_k_rate_bernoulli",
+                    "min_pa": min_pa,
                     "projection_year": projection_year,
-                    "n_obs": n_obs, "n_batters": n_batters,
-                    "n_seasons": n_seasons, "n_teams": n_teams,
-                    "n_total_pa": n_total_pa,
-                    "reference_age": REFERENCE_AGE,
+                    "n_obs": model_data["n_obs"],
+                    "n_batters": model_data["n_batters"],
+                    "n_seasons": model_data["n_seasons"],
+                    "n_teams": model_data["n_teams"],
+                    "n_pitchers": model_data["n_pitchers"],
+                    "include_pitcher": include_pitcher,
+                    "cutoff_date": model_data["cutoff_date"],
+                    "reference_age": k_rate_model.REFERENCE_AGE,
+                    "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
+                    "target_accept": target_accept,
+                    "source": "modal_functions/app.py -> src.models.pa_k_rate (issue #86)",
                 },
-                tags=["k-rate", "bayesian", "binomial", "hsgp", "batter-season"],
-                group="hitter-k-rate",
-                job_type="train",
-                reinit=True,
             )
-
-            # Diagnostics
-            wandb.log({
-                "diagnostics/max_rhat": max_rhat,
-                "diagnostics/divergences": divergences,
-                "diagnostics/sampling_time_s": elapsed,
-                "diagnostics/n_params": n_params,
-            })
-
-            # Summary table
-            summary = az.summary(trace, var_names=[
-                "league_init", "mu_ability", "sigma_ability", "beta_hand",
-                "eta_age", "ell_age",
-            ])
-            wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
-            
-            # Log GP hyperparameters
-            eta_age_mean = float(trace.posterior["eta_age"].mean())
-            ell_age_mean = float(trace.posterior["ell_age"].mean())
-            wandb.log({
-                "gp/eta_age_mean": eta_age_mean,
-                "gp/ell_age_mean": ell_age_mean,
-            })
-
-            # Posterior plots — scalars + GP hyperparams
-            for var_group, var_names in [
-                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand"]),
-                ("gp_hyperparams", ["eta_age", "ell_age"]),
-                ("league_trend", ["league_trend"]),
-            ]:
-                try:
-                    ax = az.plot_trace(trace, var_names=var_names, compact=True)
-                    fig = ax.ravel()[0].figure
-                    wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
-                    plt.close(fig)
-                except Exception as e:
-                    logger.warning(f"Failed to plot {var_group}: {e}")
-
-            # ── Aging curve plot ──
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(aging_df["age"], aging_df["age_effect_mean"], "b-", linewidth=2, label="Mean")
-            ax.fill_between(aging_df["age"], aging_df["age_effect_lower"], aging_df["age_effect_upper"],
-                           alpha=0.3, color="blue", label="90% CI")
-            ax.set_xlabel("Age")
-            ax.set_ylabel("Age Effect (logit scale)")
-            ax.set_title(f"Learned K% Aging Curve (HSGP Matern-5/2, ℓ={ell_age_mean:.1f} yr)")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-            # Mark peak age
-            peak_idx = aging_curve_mean.argmin()
-            ax.axvline(x=age_grid[peak_idx], color="red", linestyle=":", alpha=0.5, 
-                       label=f"Peak: {age_grid[peak_idx]:.1f}")
-            ax.legend()
-            wandb.log({"aging_curve": wandb.Image(fig)})
-            plt.close(fig)
-            
-            # ── K% distribution plot (2026 projections) ──
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(proj_2026["projected_k_rate"], bins=50, alpha=0.7, color="steelblue", edgecolor="white")
-            ax.axvline(x=proj_2026["projected_k_rate"].median(), color="red", linestyle="--", 
-                       label=f"Median: {proj_2026['projected_k_rate'].median():.1%}")
-            ax.set_xlabel("Projected K%")
-            ax.set_ylabel("Count")
-            ax.set_title(f"K% Projections Distribution ({projection_year}, n={len(proj_2026)})")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            wandb.log({"projections/k_rate_distribution": wandb.Image(fig)})
-            plt.close(fig)
-            
-            # ── Projected vs Career K% scatter ──
-            fig, ax = plt.subplots(figsize=(8, 8))
-            ax.scatter(proj_2026["career_k_rate"], proj_2026["projected_k_rate"], 
-                      alpha=0.3, s=10, color="steelblue")
-            lims = [0, 0.45]
-            ax.plot(lims, lims, "r--", alpha=0.5, label="y=x")
-            ax.set_xlabel("Career K%")
-            ax.set_ylabel(f"Projected K% ({projection_year})")
-            ax.set_title("Projected vs Career K%")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.set_xlim(lims)
-            ax.set_ylim(lims)
-            wandb.log({"projections/career_vs_projected": wandb.Image(fig)})
-            plt.close(fig)
-            
-            # ── Multi-year trajectory examples (top 5 + bottom 5) ──
-            fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-            for ax_i, (title, ascending) in enumerate([("Lowest K% (Best Contact)", True), ("Highest K%", False)]):
-                ax = axes[ax_i]
-                top5 = proj_2026.sort_values("projected_k_rate", ascending=ascending).head(5)["batter"].values
-                for batter_id in top5:
-                    bdf = proj_df[proj_df["batter"] == batter_id]
-                    career_k = bdf["career_k_rate"].iloc[0]
-                    ax.plot(bdf["projection_year"], bdf["projected_k_rate"], "o-", markersize=4,
-                           label=f"{batter_id} (career: {career_k:.1%})")
-                    ax.fill_between(bdf["projection_year"], bdf["k_rate_lower"], bdf["k_rate_upper"], alpha=0.1)
-                ax.set_xlabel("Year")
-                ax.set_ylabel("K%")
-                ax.set_title(title)
-                ax.legend(fontsize=7)
-                ax.grid(True, alpha=0.3)
-            plt.tight_layout()
-            wandb.log({"projections/multi_year_trajectories": wandb.Image(fig)})
-            plt.close(fig)
-            
-            # Tables
-            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
-            wandb.log({"aging_curve_data": wandb.Table(dataframe=aging_df)})
-
-            # Projections artifact
-            artifact = wandb.Artifact(f"k-rate-projections-{projection_year}", type="projections",
-                                       metadata={"n_batters": len(proj_df),
-                                                  "median_k_rate": float(proj_df["projected_k_rate"].median())})
-            with tempfile.TemporaryDirectory() as tmpdir:
-                p = os.path.join(tmpdir, "projections.parquet")
-                proj_df.to_parquet(p, index=False)
-                artifact.add_file(p, name="projections.parquet")
-            wandb.log_artifact(artifact, aliases=["latest"])
-
-            # Trace artifact
-            trace_artifact = wandb.Artifact(f"k-rate-trace-{projection_year}", type="model",
-                                              metadata={"max_rhat": max_rhat, "divergences": divergences})
-            trace_artifact.add_file(str(trace_path), name="trace.nc")
-            wandb.log_artifact(trace_artifact, aliases=["latest"])
-
-            models_volume.commit()
-            logger.info(f"wandb run: {run.url}")
-            wandb.finish()
         except Exception as e:
             logger.warning(f"wandb logging failed: {e}")
 
-    # Return summary
     return {
         "status": "complete",
-        "n_obs": n_obs,
-        "n_batters": n_batters,
-        "n_seasons": n_seasons,
-        "max_rhat": round(max_rhat, 4),
-        "divergences": divergences,
-        "sampling_time_s": round(elapsed, 1),
-        "n_projections": len(proj_df),
-        "median_k_rate": round(float(proj_2026["projected_k_rate"].median()), 4),
-        "projection_years": list(range(projection_year, projection_year + 5)),
-        "age_model": "HSGP",
-        "hsgp_config": {"m": HSGP_M, "c": HSGP_C, "kernel": "Matern52", "reference_age": REFERENCE_AGE},
-        "aging_curve_summary": {
-            "peak_age": float(age_grid[aging_curve_mean.argmin()]),
-            "age_effect_at_25": float(aging_curves[np.argmin(np.abs(age_grid - 25))].mean()),
-            "age_effect_at_30": float(aging_curves[np.argmin(np.abs(age_grid - 30))].mean()),
-            "age_effect_at_35": float(aging_curves[np.argmin(np.abs(age_grid - 35))].mean()),
-        },
-        "top_5_lowest_k": proj_2026.nsmallest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
-        "top_5_highest_k": proj_2026.nlargest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+        "n_obs": model_data["n_obs"],
+        "n_batters": model_data["n_batters"],
+        "n_seasons": model_data["n_seasons"],
+        "n_pitchers": model_data["n_pitchers"],
+        "include_pitcher": include_pitcher,
+        "cutoff_date": model_data["cutoff_date"],
+        "max_rhat": diagnostics["max_rhat"],
+        "divergences": diagnostics["divergences"],
+        "healthy": diagnostics["healthy"],
+        "n_projections": len(projections),
+        "median_k_rate": round(float(projections["projected_k_rate"].median()), 4),
+        "age_model": "quadratic (src.models.pa_k_rate)",
+        "top_5_lowest_k": projections.nsmallest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
+        "top_5_highest_k": projections.nlargest(5, "projected_k_rate")[["batter", "projected_k_rate", "career_k_rate"]].to_dict("records"),
     }
 
 
@@ -1201,722 +720,135 @@ def train_iso_model(
     log_wandb: bool = True,
     fast_mode: bool = False,
 ):
-    """Batter-season Bayesian ISO model (Normal likelihood, natural scale).
+    """Thin Modal wrapper around `src.models.iso_rate` (issue #86).
 
-    ISO = (1×2B + 2×3B + 3×HR) / AB — measures extra-base power.
-    Unlike K%/BB%/HR which are binary per-PA (Binomial), ISO is a continuous
-    rate, so we use:
-        ISO_obs ~ Normal(ISO_true, sigma_obs / sqrt(AB))
-
-    where sigma_obs is a free parameter capturing measurement noise, and
-    the 1/sqrt(AB) term means more ABs → tighter observations.
-
-    logit is NOT used — all effects operate on the natural ISO scale (~0.05-0.35).
-
-    All model code is inlined (Modal requirement — no cross-module imports).
+    `src/models/iso_rate.py` is an extraction of this function's original
+    body (unchanged model, priors, HSGP age curve, aggregation) — there was
+    no pre-existing `src/` ISO model for this to have diverged from, so
+    nothing about *the model* changed here, only where its code lives. See
+    docs/modal-src-divergence.md.
     """
-    import gc
-    import time
     import logging
-    import tempfile
 
-    import numpy as np
     import pandas as pd
-    import pymc as pm
-    import pytensor.tensor as pt
-    import arviz as az
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+
+    from src.models import iso_rate
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger("iso_model")
 
-    REFERENCE_AGE = 27.0
-    PARQUET_DIR = Path("/data/parquet")
-    LEAGUE_AVG_ISO = 0.150  # ~.145-.155 league average
-
     if fast_mode:
         n_draws, n_tune, n_chains = 200, 200, 2
-        logger.info("⚡ FAST MODE enabled")
+        logger.info("FAST MODE enabled")
 
-    # ─── 1. Load data ───────────────────────────────────────────────────
     data_volume.reload()
-    logger.info("Loading PA outcomes...")
-    pa_dir = PARQUET_DIR / "pa_outcomes"
+    parquet_dir = Path("/data/parquet")
+    pf_path = parquet_dir / "park_factors.parquet"
+    hs_path = parquet_dir / "hitter_seasons.parquet"
 
-    # Check available columns
-    import pyarrow.parquet as pq
-    sample_file = sorted(pa_dir.glob("*.parquet"))[0]
-    schema = pq.read_schema(sample_file)
-    has_birth_year = "birth_year" in schema.names
-
-    # PA parquet uses 'event' (singular), and has pre-computed indicator columns
-    keep_cols = ["batter", "game_year", "stand", "event",
-                 "is_hr", "is_double", "is_triple",
-                 "is_bb", "is_hbp",
-                 "home_team", "away_team", "inning_topbot"]
-    if has_birth_year:
-        keep_cols.append("birth_year")
-        logger.info("birth_year column found in PA parquet files")
-
-    # Only keep columns that actually exist in the schema
-    available_cols = set(schema.names)
-    keep_cols = [c for c in keep_cols if c in available_cols]
-    logger.info(f"Using columns: {keep_cols}")
-
-    frames = []
-    for f in sorted(pa_dir.glob("*.parquet")):
-        frames.append(pd.read_parquet(f, columns=keep_cols))
-    df = pd.concat(frames, ignore_index=True)
-    logger.info(f"Loaded {len(df):,} PAs ({df['game_year'].min()}-{df['game_year'].max()})")
-    del frames
-    gc.collect()
-
-    # Load park factors
-    pf_path = PARQUET_DIR / "park_factors.parquet"
+    raw = iso_rate.load_ab_data(parquet_dir / "pa_outcomes")
     park_factors = pd.read_parquet(pf_path) if pf_path.exists() else None
-    if park_factors is not None:
-        logger.info(f"Park factors: {len(park_factors)} rows, columns: {list(park_factors.columns)}")
+    hitter_seasons = pd.read_parquet(hs_path) if hs_path.exists() else None
 
-    # ─── 2. Compute ISO from PA-level data ───────────────────────────────
-    # Filter to ABs: exclude walks, HBP, sac bunts/flies
-    # AB = PA - BB - HBP - SF - SH - CI (approximately)
-    # Using pre-computed columns where available
-    n_pa_total = len(df)
-
-    # Use 'event' column to filter non-AB events
-    event_col = "event" if "event" in df.columns else "events"
-    non_ab_events = ['walk', 'hit_by_pitch', 'sac_fly', 'sac_bunt',
-                     'sac_fly_double_play', 'sac_bunt_double_play',
-                     'catcher_interf', 'intent_walk']
-    # Filter nulls/empty
-    df = df[df[event_col].notna() & (df[event_col] != '') & (df[event_col] != '0')].copy()
-
-    # Also exclude BB/HBP using indicator columns if available
-    if "is_bb" in df.columns:
-        df_ab = df[(df["is_bb"] == 0) & (df.get("is_hbp", pd.Series(0)) == 0)].copy()
-        # Further exclude sac events
-        df_ab = df_ab[~df_ab[event_col].isin(non_ab_events)].copy()
-    else:
-        df_ab = df[~df[event_col].isin(non_ab_events)].copy()
-    logger.info(f"Filtered to {len(df_ab):,} ABs from {n_pa_total:,} PAs")
-
-    # Compute extra bases per AB using pre-computed indicator columns
-    # ISO = (1×2B + 2×3B + 3×HR) / AB  (standard: SLG - AVG)
-    if "is_double" in df_ab.columns and "is_triple" in df_ab.columns:
-        df_ab['extra_bases'] = (
-            df_ab['is_double'].astype(int) * 1 +
-            df_ab['is_triple'].astype(int) * 2 +
-            df_ab['is_hr'].astype(int) * 3
-        )
-    else:
-        # Fallback to event string matching
-        df_ab['extra_bases'] = (
-            (df_ab[event_col] == 'double').astype(int) * 1 +
-            (df_ab[event_col] == 'triple').astype(int) * 2 +
-            (df_ab[event_col].isin(['home_run'])).astype(int) * 3
-        )
-
-    # Batting team from inning_topbot
-    df_ab["bat_team"] = np.where(df_ab["inning_topbot"] == "Top",
-                                  df_ab["away_team"], df_ab["home_team"])
-
-    # ─── 2b. Filter pitchers (max season AB >= 80) ───────────────────────
-    n_before = df_ab["batter"].nunique()
-    season_ab = df_ab.groupby(["batter", "game_year"]).size().reset_index(name="season_ab")
-    max_season_ab = season_ab.groupby("batter")["season_ab"].max()
-    likely_hitters = max_season_ab[max_season_ab >= 80].index
-    n_pitchers_removed = n_before - len(likely_hitters)
-    df_ab = df_ab[df_ab["batter"].isin(likely_hitters)].copy()
-
-    # Also filter low-AB batters
-    ab_counts = df_ab.groupby("batter").size()
-    qualified = ab_counts[ab_counts >= min_ab].index
-    df_ab = df_ab[df_ab["batter"].isin(qualified)].copy()
-    logger.info(f"Batters: {n_before} → {df_ab['batter'].nunique()} "
-                f"(removed {n_pitchers_removed} likely pitchers, >= {min_ab} career AB)")
-
-    # ─── 2c. Integer indices ──────────────────────────────────────────────
-    seasons = np.sort(df_ab["game_year"].unique())
-    season_map = {yr: i for i, yr in enumerate(seasons)}
-    df_ab["season_idx"] = df_ab["game_year"].map(season_map).astype(np.int64)
-
-    batters = np.sort(df_ab["batter"].unique())
-    batter_map = {b: i for i, b in enumerate(batters)}
-    df_ab["batter_idx"] = df_ab["batter"].map(batter_map).astype(np.int64)
-
-    teams = np.sort(df_ab["bat_team"].unique())
-    team_map = {t: i for i, t in enumerate(teams)}
-    df_ab["team_idx"] = df_ab["bat_team"].map(team_map).astype(np.int64)
-
-    df_ab["stand_idx"] = (df_ab["stand"] == "R").astype(np.int64)
-
-    # ─── Age: get birth years ───
-    if "birth_year" in df_ab.columns:
-        df_ab["birth_year"] = df_ab["birth_year"].astype(np.float64)
-        logger.info("Birth years from PA data: 100% coverage")
-    else:
-        birth_map = {}
-        hs_path = PARQUET_DIR / "hitter_seasons.parquet"
-        if hs_path.exists():
-            hs = pd.read_parquet(hs_path)
-            age_col = next((c for c in hs.columns if c.lower() == 'age'), None)
-            yr_col = next((c for c in hs.columns if c.lower() in ('season', 'game_year', 'year')), None)
-            id_col = next((c for c in hs.columns if 'mlbam' in c.lower() or c == 'IDfg' or c == 'fg_id'), None)
-            if age_col and yr_col:
-                hs['_birth'] = hs[yr_col] - hs[age_col]
-                if id_col:
-                    birth_map = hs.groupby(id_col)['_birth'].median().round().astype(int).to_dict()
-                    logger.info(f"Birth years from hitter_seasons ({id_col}): {len(birth_map)} players")
-
-        first_year = df_ab.groupby("batter")["game_year"].min().to_dict()
-        def get_by(batter_id):
-            if batter_id in birth_map:
-                return float(birth_map[batter_id])
-            return float(first_year.get(batter_id, 2015) - 24)
-
-        df_ab["birth_year"] = df_ab["batter"].map(get_by).astype(np.float64)
-        n_real = sum(1 for b in df_ab["batter"].unique() if b in birth_map)
-        logger.info(f"Birth years: {n_real}/{df_ab['batter'].nunique()} from hitter_seasons, rest from debut-24")
-
-    df_ab["age"] = (df_ab["game_year"] - df_ab["birth_year"]).astype(np.float64)
-    df_ab["age_centered"] = (df_ab["age"] - REFERENCE_AGE).astype(np.float64)
-    logger.info(f"Age range: {df_ab['age'].min():.0f}-{df_ab['age'].max():.0f}, "
-                f"mean={df_ab['age'].mean():.1f}")
-
-    # Park factor lookup — use HR park factor as proxy for ISO (power-driven)
-    n_teams = len(teams)
-    n_seasons = len(seasons)
-    log_pf = np.zeros((n_teams, n_seasons), dtype=np.float64)
-    if park_factors is not None:
-        yr_col = "game_year" if "game_year" in park_factors.columns else "year"
-        pf_col = next((c for c in park_factors.columns if c.lower() in ('pf_hr', 'hr_park_factor')),
-                      next((c for c in park_factors.columns if 'hr' in c.lower() and ('park' in c.lower() or 'pf' in c.lower() or 'factor' in c.lower())), None))
-        if pf_col:
-            logger.info(f"Park factor columns: year={yr_col}, hr={pf_col} (used as ISO proxy)")
-            for _, row in park_factors.iterrows():
-                t = team_map.get(row["team"])
-                s = season_map.get(int(row[yr_col]))
-                if t is not None and s is not None:
-                    # On natural scale: multiply ISO by park factor
-                    # log(pf) so it's additive in the linear predictor
-                    log_pf[t, s] = np.log(float(row[pf_col]))
-        else:
-            logger.warning(f"No HR park factor column found in {list(park_factors.columns)}, using neutral")
-    df_ab["log_pf_hr"] = log_pf[df_ab["team_idx"].values, df_ab["season_idx"].values].astype(np.float64)
-
-    # Batter metadata for projections (computed before aggregation)
-    batter_meta = (
-        df_ab.groupby("batter")
-        .agg(stand=("stand", "first"), birth_year=("birth_year", "first"),
-             last_season=("game_year", "max"), total_ab=("extra_bases", "size"),
-             career_iso=("extra_bases", lambda x: x.sum() / len(x)))
-        .reset_index()
+    model_data = iso_rate.prepare_model_data(
+        raw, park_factors=park_factors, min_ab=min_ab, fast_mode=fast_mode,
+        hitter_seasons=hitter_seasons,
     )
+    del raw
 
-    # ─── 2d. Aggregate to batter-season level ────────────────────────────
-    # For team_idx: use team where batter had most ABs that season (mode)
-    team_mode = (
-        df_ab.groupby(["batter", "game_year", "team_idx"])
-        .size()
-        .reset_index(name="ab_count")
-        .sort_values("ab_count", ascending=False)
-        .drop_duplicates(subset=["batter", "game_year"], keep="first")
-        .set_index(["batter", "game_year"])["team_idx"]
+    model = iso_rate.build_model(model_data)
+    trace = iso_rate.sample_model(
+        model,
+        draws=n_draws, tune=n_tune, chains=n_chains,
+        target_accept=target_accept, nuts_sampler="numpyro",
     )
+    diagnostics = iso_rate.model_diagnostics(trace)
+    logger.info("Max R-hat: %.4f (%s), divergences: %d, BFMI: %s",
+                diagnostics["max_rhat"], diagnostics["max_rhat_var"],
+                diagnostics["divergences"], diagnostics["bfmi"])
 
-    agg_df = (
-        df_ab.groupby(["batter", "game_year"])
-        .agg(
-            total_extra_bases=("extra_bases", "sum"),
-            total_ab=("extra_bases", "size"),
-            stand_idx=("stand_idx", "first"),
-            batter_idx=("batter_idx", "first"),
-            season_idx=("season_idx", "first"),
-            age=("age", "first"),
-            age_centered=("age_centered", "first"),
-            log_pf_hr=("log_pf_hr", "mean"),
-        )
-        .reset_index()
-    )
+    projections = iso_rate.generate_projections(trace, model_data, projection_year=projection_year)
+    aging_df = iso_rate.compute_aging_curve(trace, model_data)
+    proj_2026 = projections[projections["projection_year"] == projection_year]
 
-    # Compute observed ISO per batter-season
-    agg_df["iso_obs"] = agg_df["total_extra_bases"] / agg_df["total_ab"]
-
-    # Filter: min AB per season for reliable ISO
-    min_season_ab = 50 if not fast_mode else 30
-    agg_df = agg_df[agg_df["total_ab"] >= min_season_ab].copy()
-
-    # Attach team mode
-    team_mode_df = team_mode.reset_index()
-    team_mode_df.columns = ["batter", "game_year", "team_idx"]
-    agg_df = agg_df.merge(team_mode_df, on=["batter", "game_year"], how="left",
-                           suffixes=("_drop", ""))
-    if "team_idx_drop" in agg_df.columns:
-        agg_df = agg_df.drop(columns=["team_idx_drop"])
-    agg_df["team_idx"] = agg_df["team_idx"].astype(np.int64)
-
-    # Re-index batters to only those remaining after AB filter
-    remaining_batters = np.sort(agg_df["batter"].unique())
-    new_batter_map = {b: i for i, b in enumerate(remaining_batters)}
-    agg_df["batter_idx"] = agg_df["batter"].map(new_batter_map).astype(np.int64)
-    batters = remaining_batters
-    batter_map = new_batter_map
-
-    n_obs = len(agg_df)
-    n_batters = len(batters)
-    n_total_ab = int(agg_df["total_ab"].sum())
-    logger.info(f"Aggregated to {n_obs:,} batter-seasons ({n_total_ab:,} total ABs, "
-                f"min {min_season_ab} AB/season)")
-    logger.info(f"Model data: {n_obs:,} obs, {n_batters:,} batters, {n_seasons} seasons, {n_teams} teams")
-    logger.info(f"ISO stats: mean={agg_df['iso_obs'].mean():.3f}, "
-                f"std={agg_df['iso_obs'].std():.3f}, "
-                f"median={agg_df['iso_obs'].median():.3f}")
-
-    # Free PA-level dataframe
-    del df, df_ab
-    gc.collect()
-
-    # ─── 2e. Prepare age data for HSGP ──────────────────────────────────
-    age_centered_vals = agg_df["age_centered"].values.astype(np.float64)
-    HSGP_M = 20
-    HSGP_C = 1.5
-
-    logger.info(f"HSGP age model: m={HSGP_M} basis functions, c={HSGP_C}, "
-                f"age range [{age_centered_vals.min():.1f}, {age_centered_vals.max():.1f}] centered")
-
-    # ─── 3. Build PyMC model (Normal likelihood, natural scale) ──────────
-    coords = {
-        "batter": batters,
-        "season": seasons,
-        "team": teams,
-        "obs_id": np.arange(n_obs),
-    }
-
-    # Observation weights: 1/sqrt(AB) — more ABs = tighter observations
-    obs_weights = (1.0 / np.sqrt(agg_df["total_ab"].values)).astype(np.float64)
-
-    with pm.Model(coords=coords) as model:
-        # Data containers
-        batter_idx_d = pm.Data("batter_idx", agg_df["batter_idx"].values, dims="obs_id")
-        season_idx_d = pm.Data("season_idx", agg_df["season_idx"].values, dims="obs_id")
-        team_idx_d = pm.Data("team_idx", agg_df["team_idx"].values, dims="obs_id")
-        stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
-        log_pf_d = pm.Data("log_pf_hr", agg_df["log_pf_hr"].values, dims="obs_id")
-        obs_weight_d = pm.Data("obs_weights", obs_weights, dims="obs_id")
-        age_c_d = pm.Data("age_centered", age_centered_vals, dims="obs_id")
-
-        # League trend: random walk on natural ISO scale
-        # League avg ISO ~0.150
-        league_init = pm.Normal("league_init", mu=LEAGUE_AVG_ISO, sigma=0.03)
-        league_innovations = pm.Normal("league_innovations", mu=0, sigma=0.005,
-                                        dims="season")
-        league_trend = pm.Deterministic("league_trend",
-            league_init + pt.cumsum(league_innovations), dims="season")
-
-        # Player ability: non-centered partial pooling (natural scale)
-        mu_ability = pm.Normal("mu_ability", mu=0.0, sigma=0.03)
-        sigma_ability = pm.HalfNormal("sigma_ability", sigma=0.06)
-        z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
-        player_ability = pm.Deterministic("player_ability",
-            mu_ability + sigma_ability * z_ability, dims="batter")
-
-        # Handedness effect
-        beta_hand = pm.Normal("beta_hand", mu=0.0, sigma=0.02)
-
-        # Park effects: zero-sum (natural scale — small effects)
-        park_effect = pm.ZeroSumNormal("park_effect", sigma=0.01, dims="team")
-
-        # ─── Age curve: HSGP (Hilbert Space Gaussian Process) ───────────
-        # ISO peaks ~27-28, declines after 32 (physical/athletic peak)
-        # On natural scale, age effects are ~±0.03 at most
-        eta_age = pm.HalfNormal("eta_age", sigma=0.03)  # amplitude on natural ISO scale
-        ell_age = pm.InverseGamma("ell_age", mu=5.0, sigma=2.0)
-
-        cov_age = eta_age**2 * pm.gp.cov.Matern52(1, ls=ell_age)
-        gp_age = pm.gp.HSGP(m=[HSGP_M], c=HSGP_C, cov_func=cov_age)
-        age_effect = gp_age.prior("age_effect", X=age_c_d[:, None])
-
-        # Linear predictor (natural ISO scale — NO logit link)
-        # Park factor: on natural scale, ISO * pf ≈ ISO + ISO * (pf - 1)
-        # For small deviations, log_pf * ISO ≈ ISO * (pf - 1), but we use
-        # a multiplicative approach: exp(log_pf) acts as a scaling factor
-        # Simplified: add park_factor_effect = LEAGUE_AVG_ISO * log_pf
-        # This converts log-park-factor to natural-scale ISO adjustment
-        mu_iso = (
-            league_trend[season_idx_d]
-            + player_ability[batter_idx_d]
-            + beta_hand * stand_idx_d
-            + park_effect[team_idx_d]
-            + age_effect
-            + LEAGUE_AVG_ISO * log_pf_d  # park factor on natural scale
-        )
-
-        # Observation noise: sigma_obs / sqrt(AB)
-        # sigma_obs captures the typical single-AB variance of ISO
-        sigma_obs = pm.HalfNormal("sigma_obs", sigma=0.15)
-
-        # Likelihood: Normal with measurement error proportional to 1/sqrt(AB)
-        pm.Normal("obs_iso", mu=mu_iso, sigma=sigma_obs * obs_weight_d,
-                  observed=agg_df["iso_obs"].values, dims="obs_id")
-
-    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + HSGP_M + 2 + 1
-    logger.info(f"Model built: ~{n_params:,} free parameters")
-
-    # Save values needed for projection
-    obs_age_values = agg_df["age"].values.copy()
-
-    del agg_df
-    gc.collect()
-
-    # ─── 4. Sample ──────────────────────────────────────────────────────
-    logger.info(f"Sampling: {n_chains} chains × {n_draws} draws (tune={n_tune})")
-    t0 = time.time()
-    with model:
-        trace = pm.sample(
-            draws=n_draws, tune=n_tune, chains=n_chains, cores=1,
-            target_accept=target_accept, nuts_sampler="numpyro",
-            random_seed=42, idata_kwargs={"log_likelihood": False},
-        )
-    elapsed = time.time() - t0
-    logger.info(f"Sampling done in {elapsed:.0f}s")
-
-    # Diagnostics
-    rhat = az.rhat(trace)
-    max_rhat = max(
-        float(rhat[v].values.max()) if rhat[v].values.ndim > 0 else float(rhat[v].values)
-        for v in rhat.data_vars
-    )
-    divergences = 0
-    if hasattr(trace, "sample_stats"):
-        div = trace.sample_stats.get("diverging")
-        if div is not None:
-            divergences = int(div.values.sum())
-    logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
-
-    # ─── 5. Generate multi-year projections ─────────────────────────────
-    post = trace.posterior
-    lt = post["league_trend"].values
-    pa_vals = post["player_ability"].values
-    bh = post["beta_hand"].values
-    innov = post["league_innovations"].values
-
-    nc, nd = lt.shape[:2]
-    ns = nc * nd
-    lt_flat = lt.reshape(ns, -1)
-    pa_flat = pa_vals.reshape(ns, -1)
-    bh_flat = bh.reshape(ns)
-    innov_flat = innov.reshape(ns, -1)
-
-    # HSGP age effect interpolation
-    age_effect_post = post["age_effect"].values
-    age_effect_flat = age_effect_post.reshape(ns, -1)
-
-    from scipy.interpolate import interp1d
-
-    unique_ages = np.sort(np.unique(obs_age_values))
-    obs_ages = obs_age_values
-
-    age_to_obs_idx = {}
-    for i, a in enumerate(obs_ages):
-        age_to_obs_idx.setdefault(float(a), []).append(i)
-
-    age_effect_by_age = np.zeros((len(unique_ages), ns))
-    for j, a in enumerate(unique_ages):
-        idx = age_to_obs_idx[float(a)]
-        age_effect_by_age[j, :] = age_effect_flat[:, idx].mean(axis=1)
-
-    def eval_gp_age_effect(ages_new):
-        """Evaluate GP age effect at new ages via interpolation of posterior."""
-        interp = interp1d(unique_ages, age_effect_by_age, axis=0,
-                         kind="linear", fill_value="extrapolate")
-        return interp(ages_new)
-
-    # Extrapolate league trend
-    last_trend = lt_flat[:, -1]
-    innov_std = innov_flat.std(axis=1)
-
-    # Project recently active batters
-    cutoff_year = int(seasons[-1]) - 2
-    active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
-    # Only project batters that survived the AB filter
-    active = active[active["batter"].isin(batters)].copy()
-    logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
-
-    all_projections = []
-    for proj_year in range(projection_year, projection_year + 5):
-        years_ahead = proj_year - int(seasons[-1])
-        projected_trend = last_trend.copy()
-        rng_year = np.random.default_rng(42 + proj_year)
-        for _ in range(years_ahead):
-            projected_trend = projected_trend + rng_year.normal(0, innov_std)
-
-        for _, row in active.iterrows():
-            batter_id = int(row["batter"])
-            if batter_id not in batter_map:
-                continue
-            b_idx = batter_map[batter_id]
-            proj_age = proj_year - float(row["birth_year"])
-            s_idx = 1 if row["stand"] == "R" else 0
-
-            age_eff = eval_gp_age_effect(np.array([proj_age])).squeeze()
-
-            iso_proj = (
-                projected_trend
-                + pa_flat[:, b_idx]
-                + bh_flat * s_idx
-                + age_eff
-            )
-
-            # Clip to valid ISO range [0, 0.6]
-            iso_proj = np.clip(iso_proj, 0.0, 0.6)
-
-            all_projections.append({
-                "batter": batter_id,
-                "projection_year": proj_year,
-                "projected_age": proj_age,
-                "stand": row["stand"],
-                "projected_iso": float(np.mean(iso_proj)),
-                "iso_std": float(np.std(iso_proj)),
-                "iso_lower": float(np.percentile(iso_proj, 5)),
-                "iso_upper": float(np.percentile(iso_proj, 95)),
-                "iso_10": float(np.percentile(iso_proj, 10)),
-                "iso_90": float(np.percentile(iso_proj, 90)),
-                "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
-                "total_ab": int(row["total_ab"]),
-                "career_iso": float(row["career_iso"]),
-                "last_season": int(row["last_season"]),
-            })
-
-    proj_df = pd.DataFrame(all_projections)
-    proj_df = proj_df.sort_values(["batter", "projection_year"]).reset_index(drop=True)
-
-    proj_2026 = proj_df[proj_df["projection_year"] == projection_year]
-    logger.info(
-        f"Projections generated: {len(proj_df)} total rows "
-        f"({len(proj_2026)} for {projection_year}), "
-        f"median ISO = {proj_2026['projected_iso'].median():.3f}"
-    )
-
-    # Generate learned aging curve
-    age_grid = np.linspace(20, 42, 100)
-    aging_curves = eval_gp_age_effect(age_grid)
-    aging_curve_mean = aging_curves.mean(axis=1)
-    aging_curve_lower = np.percentile(aging_curves, 5, axis=1)
-    aging_curve_upper = np.percentile(aging_curves, 95, axis=1)
-
-    aging_df = pd.DataFrame({
-        "age": age_grid,
-        "age_effect_mean": aging_curve_mean,
-        "age_effect_lower": aging_curve_lower,
-        "age_effect_upper": aging_curve_upper,
-    })
-
-    # Save projections to volume
+    # ─── Save to /models (Modal-specific) ────────────────────────────────
     proj_dir = Path("/models/projections")
     proj_dir.mkdir(parents=True, exist_ok=True)
-    proj_path = proj_dir / f"iso_projections_{projection_year}.parquet"
-    proj_df.to_parquet(str(proj_path), index=False)
-
-    aging_path = proj_dir / f"iso_aging_curve_{projection_year}.parquet"
-    aging_df.to_parquet(str(aging_path), index=False)
+    projections.to_parquet(str(proj_dir / f"iso_projections_{projection_year}.parquet"), index=False)
+    aging_df.to_parquet(str(proj_dir / f"iso_aging_curve_{projection_year}.parquet"), index=False)
 
     trace_dir = Path("/models/traces")
     trace_dir.mkdir(parents=True, exist_ok=True)
     trace_path = trace_dir / f"iso_trace_{projection_year}.nc"
     trace.to_netcdf(str(trace_path))
-
+    models_volume.commit()
     logger.info("Saved projections + aging curve + trace to /models volume")
 
-    # ─── 6. wandb logging ───────────────────────────────────────────────
+    # ─── wandb logging ─────────────────────────────────────────────────────
     if log_wandb:
         try:
+            import tempfile
+
             import wandb
             from datetime import datetime
 
-            run_name = f"iso-model-{projection_year}-{datetime.now():%Y%m%d_%H%M}"
             run = wandb.init(
                 project="baseball-projections", entity="jseeburger",
-                name=run_name,
+                name=f"iso-model-{projection_year}-{datetime.now():%Y%m%d_%H%M}",
                 config={
-                    "model": "iso_normal",
-                    "age_model": "HSGP",
-                    "hsgp_m": HSGP_M, "hsgp_c": HSGP_C,
-                    "kernel": "Matern52",
-                    "likelihood": "normal_batter_season",
-                    "link": "identity (natural scale)",
+                    "model": "iso_normal", "age_model": "HSGP",
+                    "hsgp_m": iso_rate.HSGP_M, "hsgp_c": iso_rate.HSGP_C,
                     "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
                     "target_accept": target_accept, "min_ab": min_ab,
-                    "min_season_ab": min_season_ab,
                     "projection_year": projection_year,
-                    "n_obs": n_obs, "n_batters": n_batters,
-                    "n_seasons": n_seasons, "n_teams": n_teams,
-                    "n_total_ab": n_total_ab,
-                    "reference_age": REFERENCE_AGE,
-                    "league_avg_iso": LEAGUE_AVG_ISO,
-                    "park_factor": "hr_park_factor (proxy for ISO)",
+                    "n_obs": model_data["n_obs"], "n_batters": model_data["n_batters"],
+                    "n_seasons": model_data["n_seasons"], "n_teams": model_data["n_teams"],
+                    "reference_age": iso_rate.REFERENCE_AGE,
+                    "source": "modal_functions/app.py -> src.models.iso_rate (issue #86)",
                 },
-                tags=["iso", "bayesian", "normal", "hsgp", "batter-season", "natural-scale"],
-                group="hitter-iso",
-                job_type="train",
-                reinit=True,
+                tags=["iso", "bayesian", "normal", "hsgp", "batter-season"],
+                group="hitter-iso", job_type="train", reinit=True,
             )
-
-            # Diagnostics
             wandb.log({
-                "diagnostics/max_rhat": max_rhat,
-                "diagnostics/divergences": divergences,
-                "diagnostics/sampling_time_s": elapsed,
-                "diagnostics/n_params": n_params,
+                "diagnostics/max_rhat": diagnostics["max_rhat"],
+                "diagnostics/divergences": diagnostics["divergences"],
+                "diagnostics/min_ess_bulk": diagnostics["min_ess_bulk"],
             })
-
-            # Summary table
-            summary = az.summary(trace, var_names=[
-                "league_init", "mu_ability", "sigma_ability", "beta_hand",
-                "eta_age", "ell_age", "sigma_obs",
-            ])
-            wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
-
-            # GP hyperparameters
-            eta_age_mean = float(trace.posterior["eta_age"].mean())
-            ell_age_mean = float(trace.posterior["ell_age"].mean())
-            sigma_obs_mean = float(trace.posterior["sigma_obs"].mean())
-            wandb.log({
-                "gp/eta_age_mean": eta_age_mean,
-                "gp/ell_age_mean": ell_age_mean,
-                "model/sigma_obs_mean": sigma_obs_mean,
-            })
-
-            # Posterior plots
-            for var_group, var_names in [
-                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand", "sigma_obs"]),
-                ("gp_hyperparams", ["eta_age", "ell_age"]),
-                ("league_trend", ["league_trend"]),
-            ]:
-                try:
-                    ax = az.plot_trace(trace, var_names=var_names, compact=True)
-                    fig = ax.ravel()[0].figure
-                    wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
-                    plt.close(fig)
-                except Exception as e:
-                    logger.warning(f"Failed to plot {var_group}: {e}")
-
-            # ── Aging curve plot ──
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(aging_df["age"], aging_df["age_effect_mean"], "b-", linewidth=2, label="Mean")
-            ax.fill_between(aging_df["age"], aging_df["age_effect_lower"], aging_df["age_effect_upper"],
-                           alpha=0.3, color="blue", label="90% CI")
-            ax.set_xlabel("Age")
-            ax.set_ylabel("Age Effect (natural ISO scale)")
-            ax.set_title(f"Learned ISO Aging Curve (HSGP Matern-5/2, ℓ={ell_age_mean:.1f} yr)")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-            peak_idx = aging_curve_mean.argmax()
-            ax.axvline(x=age_grid[peak_idx], color="red", linestyle=":", alpha=0.5,
-                       label=f"Peak: {age_grid[peak_idx]:.1f}")
-            ax.legend()
-            wandb.log({"aging_curve": wandb.Image(fig)})
-            plt.close(fig)
-
-            # ── ISO distribution plot ──
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(proj_2026["projected_iso"], bins=50, alpha=0.7, color="steelblue", edgecolor="white")
-            ax.axvline(x=proj_2026["projected_iso"].median(), color="red", linestyle="--",
-                       label=f"Median: {proj_2026['projected_iso'].median():.3f}")
-            ax.set_xlabel("Projected ISO")
-            ax.set_ylabel("Count")
-            ax.set_title(f"ISO Projections Distribution ({projection_year}, n={len(proj_2026)})")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            wandb.log({"projections/iso_distribution": wandb.Image(fig)})
-            plt.close(fig)
-
-            # ── Projected vs Career ISO scatter ──
-            fig, ax = plt.subplots(figsize=(8, 8))
-            ax.scatter(proj_2026["career_iso"], proj_2026["projected_iso"],
-                      alpha=0.3, s=10, color="steelblue")
-            lims = [0, 0.35]
-            ax.plot(lims, lims, "r--", alpha=0.5, label="y=x")
-            ax.set_xlabel("Career ISO")
-            ax.set_ylabel(f"Projected ISO ({projection_year})")
-            ax.set_title("Projected vs Career ISO")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.set_xlim(lims)
-            ax.set_ylim(lims)
-            wandb.log({"projections/career_vs_projected": wandb.Image(fig)})
-            plt.close(fig)
-
-            # ── Multi-year trajectory examples ──
-            fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-            for ax_i, (title, ascending) in enumerate([("Highest ISO (Most Power)", False), ("Lowest ISO", True)]):
-                ax = axes[ax_i]
-                top5 = proj_2026.sort_values("projected_iso", ascending=ascending).head(5)["batter"].values
-                for batter_id in top5:
-                    bdf = proj_df[proj_df["batter"] == batter_id]
-                    career_iso = bdf["career_iso"].iloc[0]
-                    ax.plot(bdf["projection_year"], bdf["projected_iso"], "o-", markersize=4,
-                           label=f"{batter_id} (career: {career_iso:.3f})")
-                    ax.fill_between(bdf["projection_year"], bdf["iso_lower"], bdf["iso_upper"], alpha=0.1)
-                ax.set_xlabel("Year")
-                ax.set_ylabel("ISO")
-                ax.set_title(title)
-                ax.legend(fontsize=7)
-                ax.grid(True, alpha=0.3)
-            plt.tight_layout()
-            wandb.log({"projections/multi_year_trajectories": wandb.Image(fig)})
-            plt.close(fig)
-
-            # Tables
-            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
+            wandb.log({"projections_preview": wandb.Table(dataframe=projections.head(200))})
             wandb.log({"aging_curve_data": wandb.Table(dataframe=aging_df)})
 
-            # Artifacts
             artifact = wandb.Artifact(f"iso-projections-{projection_year}", type="projections",
-                                       metadata={"n_batters": len(proj_df),
-                                                  "median_iso": float(proj_df["projected_iso"].median())})
+                                       metadata={"n_batters": len(projections)})
             with tempfile.TemporaryDirectory() as tmpdir:
                 p = os.path.join(tmpdir, "projections.parquet")
-                proj_df.to_parquet(p, index=False)
+                projections.to_parquet(p, index=False)
                 artifact.add_file(p, name="projections.parquet")
             wandb.log_artifact(artifact, aliases=["latest"])
 
             trace_artifact = wandb.Artifact(f"iso-trace-{projection_year}", type="model",
-                                              metadata={"max_rhat": max_rhat, "divergences": divergences})
+                                             metadata={"max_rhat": diagnostics["max_rhat"],
+                                                       "divergences": diagnostics["divergences"]})
             trace_artifact.add_file(str(trace_path), name="trace.nc")
             wandb.log_artifact(trace_artifact, aliases=["latest"])
 
-            models_volume.commit()
             logger.info(f"wandb run: {run.url}")
             wandb.finish()
         except Exception as e:
             logger.warning(f"wandb logging failed: {e}")
 
-    # Return summary
     return {
         "status": "complete",
         "model_type": "iso_normal (natural scale)",
-        "n_obs": n_obs,
-        "n_batters": n_batters,
-        "n_seasons": n_seasons,
-        "max_rhat": round(max_rhat, 4),
-        "divergences": divergences,
-        "sampling_time_s": round(elapsed, 1),
-        "n_projections": len(proj_df),
+        "n_obs": model_data["n_obs"],
+        "n_batters": model_data["n_batters"],
+        "n_seasons": model_data["n_seasons"],
+        "max_rhat": diagnostics["max_rhat"],
+        "divergences": diagnostics["divergences"],
+        "healthy": diagnostics["healthy"],
+        "n_projections": len(projections),
         "median_iso": round(float(proj_2026["projected_iso"].median()), 4),
         "mean_iso": round(float(proj_2026["projected_iso"].mean()), 4),
-        "projection_years": list(range(projection_year, projection_year + 5)),
         "age_model": "HSGP",
-        "hsgp_config": {"m": HSGP_M, "c": HSGP_C, "kernel": "Matern52", "reference_age": REFERENCE_AGE},
-        "aging_curve_summary": {
-            "peak_age": float(age_grid[aging_curve_mean.argmax()]),
-            "age_effect_at_25": float(aging_curves[np.argmin(np.abs(age_grid - 25))].mean()),
-            "age_effect_at_30": float(aging_curves[np.argmin(np.abs(age_grid - 30))].mean()),
-            "age_effect_at_35": float(aging_curves[np.argmin(np.abs(age_grid - 35))].mean()),
-        },
-        "sigma_obs_mean": round(float(trace.posterior["sigma_obs"].mean()), 4),
         "top_5_highest_iso": proj_2026.nlargest(5, "projected_iso")[["batter", "projected_iso", "career_iso"]].to_dict("records"),
         "top_5_lowest_iso": proj_2026.nsmallest(5, "projected_iso")[["batter", "projected_iso", "career_iso"]].to_dict("records"),
     }
@@ -1944,666 +876,117 @@ def train_babip_model(
     log_wandb: bool = True,
     fast_mode: bool = False,
 ):
-    """Batter-season Bayesian BABIP model (Binomial aggregation).
+    """Thin Modal wrapper around `src.models.babip_rate` (issue #86).
 
-    BABIP = (H - HR) / (AB - K - HR + SF)
-    Simplified: hits on balls in play (excluding HR) / balls in play.
-
-    logit(p_BABIP) = league_trend[season] + player[batter] + hand + park
-                     + log_pf_babip + age_curve
-
-    MLB average BABIP ~.300, logit ≈ -0.847.
-    BABIP declines gradually from day one — speed + bat control erode with age.
-
-    All model code is inlined (Modal requirement — no cross-module imports).
+    `src/models/babip_rate.py` is an extraction of this function's
+    original body (unchanged model, priors, HSGP age curve, aggregation)
+    — there was no pre-existing `src/` BABIP model for this to have
+    diverged from, so nothing about *the model* changed here, only where
+    its code lives. See docs/modal-src-divergence.md.
     """
-    import gc
-    import time
     import logging
-    import tempfile
 
-    import numpy as np
     import pandas as pd
-    import pymc as pm
-    import pytensor.tensor as pt
-    import arviz as az
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+
+    from src.models import babip_rate
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
     logger = logging.getLogger("babip_model")
 
-    REFERENCE_AGE = 27.0
-    PARQUET_DIR = Path("/data/parquet")
-    # League avg BABIP ~.300 → logit ≈ -0.847
-    LEAGUE_INIT_LOGIT = -0.847
-
     if fast_mode:
         n_draws, n_tune, n_chains = 200, 200, 2
-        logger.info("⚡ FAST MODE enabled")
+        logger.info("FAST MODE enabled")
 
-    # ─── 1. Load data ───────────────────────────────────────────────────
     data_volume.reload()
-    logger.info("Loading PA outcomes...")
-    pa_dir = PARQUET_DIR / "pa_outcomes"
+    parquet_dir = Path("/data/parquet")
+    pf_path = parquet_dir / "park_factors.parquet"
+    hs_path = parquet_dir / "hitter_seasons.parquet"
 
-    import pyarrow.parquet as pq
-    sample_file = sorted(pa_dir.glob("*.parquet"))[0]
-    schema = pq.read_schema(sample_file)
-    has_birth_year = "birth_year" in schema.names
-
-    # We need: is_hit, is_hr, is_k, is_in_play for BABIP computation
-    keep_cols = ["batter", "game_year", "stand", "event",
-                 "is_hit", "is_hr", "is_k", "is_in_play",
-                 "is_bb", "is_hbp",
-                 "home_team", "away_team", "inning_topbot"]
-    if has_birth_year:
-        keep_cols.append("birth_year")
-
-    available_cols = set(schema.names)
-    keep_cols = [c for c in keep_cols if c in available_cols]
-    logger.info(f"Using columns: {keep_cols}")
-
-    frames = []
-    for f in sorted(pa_dir.glob("*.parquet")):
-        frames.append(pd.read_parquet(f, columns=keep_cols))
-    df = pd.concat(frames, ignore_index=True)
-    logger.info(f"Loaded {len(df):,} PAs ({df['game_year'].min()}-{df['game_year'].max()})")
-    del frames
-    gc.collect()
-
-    # Load park factors
-    pf_path = PARQUET_DIR / "park_factors.parquet"
+    raw = babip_rate.load_bip_data(parquet_dir / "pa_outcomes")
     park_factors = pd.read_parquet(pf_path) if pf_path.exists() else None
-    if park_factors is not None:
-        logger.info(f"Park factors: {len(park_factors)} rows, columns: {list(park_factors.columns)}")
+    hitter_seasons = pd.read_parquet(hs_path) if hs_path.exists() else None
 
-    # ─── 2. Compute BABIP from PA-level data ─────────────────────────────
-    # Filter to valid events
-    event_col = "event" if "event" in df.columns else "events"
-    df = df[df[event_col].notna() & (df[event_col] != '') & (df[event_col] != '0')].copy()
-    n_total = len(df)
-
-    # BABIP denominator: balls in play = AB - K - HR + SF
-    # With indicator columns: is_in_play captures batted balls
-    # But we need to exclude HRs from both numerator and denominator
-    # BIP (for BABIP) = in-play events that are NOT home runs
-    # Hit on BIP = is_hit AND NOT is_hr
-
-    if "is_in_play" in df.columns:
-        # BIP = balls put in play (excludes K, BB, HBP, but INCLUDES HR)
-        # For BABIP, we exclude HR from both sides
-        df["is_bip_no_hr"] = ((df["is_in_play"] == 1) & (df["is_hr"] == 0)).astype(np.int8)
-        df["is_hit_no_hr"] = ((df["is_hit"] == 1) & (df["is_hr"] == 0)).astype(np.int8)
-    else:
-        # Fallback: manually identify BIP events
-        non_bip_events = ['strikeout', 'strikeout_double_play', 'walk',
-                          'hit_by_pitch', 'sac_bunt', 'sac_bunt_double_play',
-                          'catcher_interf', 'intent_walk', 'home_run']
-        hit_events = ['single', 'double', 'triple']
-        df["is_bip_no_hr"] = (~df[event_col].isin(non_bip_events)).astype(np.int8)
-        df["is_hit_no_hr"] = df[event_col].isin(hit_events).astype(np.int8)
-
-    # Only keep BIP rows for BABIP calculation
-    df_bip = df[df["is_bip_no_hr"] == 1].copy()
-    logger.info(f"Balls in play (excl HR): {len(df_bip):,} from {n_total:,} PAs")
-
-    # Batting team
-    df_bip["bat_team"] = np.where(df_bip["inning_topbot"] == "Top",
-                                   df_bip["away_team"], df_bip["home_team"])
-
-    # ─── 2b. Filter pitchers (max season PA >= 80) ───────────────────────
-    # Use full PA data for pitcher filter (not just BIP)
-    n_before = df_bip["batter"].nunique()
-    season_pa = df.groupby(["batter", "game_year"]).size().reset_index(name="season_pa")
-    max_season_pa = season_pa.groupby("batter")["season_pa"].max()
-    likely_hitters = max_season_pa[max_season_pa >= 80].index
-    n_pitchers_removed = n_before - len(likely_hitters)
-    df_bip = df_bip[df_bip["batter"].isin(likely_hitters)].copy()
-
-    # Filter low-BIP batters
-    bip_counts = df_bip.groupby("batter").size()
-    qualified = bip_counts[bip_counts >= min_ab].index
-    df_bip = df_bip[df_bip["batter"].isin(qualified)].copy()
-    logger.info(f"Batters: {n_before} → {df_bip['batter'].nunique()} "
-                f"(removed {n_pitchers_removed} likely pitchers, >= {min_ab} career BIP)")
-
-    # Free full PA df
-    del df
-    gc.collect()
-
-    # ─── 2c. Integer indices ──────────────────────────────────────────────
-    seasons = np.sort(df_bip["game_year"].unique())
-    season_map = {yr: i for i, yr in enumerate(seasons)}
-    df_bip["season_idx"] = df_bip["game_year"].map(season_map).astype(np.int64)
-
-    batters = np.sort(df_bip["batter"].unique())
-    batter_map = {b: i for i, b in enumerate(batters)}
-    df_bip["batter_idx"] = df_bip["batter"].map(batter_map).astype(np.int64)
-
-    teams = np.sort(df_bip["bat_team"].unique())
-    team_map = {t: i for i, t in enumerate(teams)}
-    df_bip["team_idx"] = df_bip["bat_team"].map(team_map).astype(np.int64)
-
-    df_bip["stand_idx"] = (df_bip["stand"] == "R").astype(np.int64)
-
-    # ─── Age ───
-    if "birth_year" in df_bip.columns:
-        df_bip["birth_year"] = df_bip["birth_year"].astype(np.float64)
-        logger.info("Birth years from PA data: 100% coverage")
-    else:
-        birth_map = {}
-        hs_path = PARQUET_DIR / "hitter_seasons.parquet"
-        if hs_path.exists():
-            hs = pd.read_parquet(hs_path)
-            age_col = next((c for c in hs.columns if c.lower() == 'age'), None)
-            yr_col = next((c for c in hs.columns if c.lower() in ('season', 'game_year', 'year')), None)
-            id_col = next((c for c in hs.columns if 'mlbam' in c.lower() or c == 'IDfg' or c == 'fg_id'), None)
-            if age_col and yr_col:
-                hs['_birth'] = hs[yr_col] - hs[age_col]
-                if id_col:
-                    birth_map = hs.groupby(id_col)['_birth'].median().round().astype(int).to_dict()
-                    logger.info(f"Birth years from hitter_seasons ({id_col}): {len(birth_map)} players")
-
-        first_year = df_bip.groupby("batter")["game_year"].min().to_dict()
-        def get_by(batter_id):
-            if batter_id in birth_map:
-                return float(birth_map[batter_id])
-            return float(first_year.get(batter_id, 2015) - 24)
-
-        df_bip["birth_year"] = df_bip["batter"].map(get_by).astype(np.float64)
-        n_real = sum(1 for b in df_bip["batter"].unique() if b in birth_map)
-        logger.info(f"Birth years: {n_real}/{df_bip['batter'].nunique()} from hitter_seasons, rest from debut-24")
-
-    df_bip["age"] = (df_bip["game_year"] - df_bip["birth_year"]).astype(np.float64)
-    df_bip["age_centered"] = (df_bip["age"] - REFERENCE_AGE).astype(np.float64)
-    logger.info(f"Age range: {df_bip['age'].min():.0f}-{df_bip['age'].max():.0f}, "
-                f"mean={df_bip['age'].mean():.1f}")
-
-    # Park factor — use BABIP park factor if available, else hits
-    n_teams = len(teams)
-    n_seasons = len(seasons)
-    log_pf = np.zeros((n_teams, n_seasons), dtype=np.float64)
-    if park_factors is not None:
-        yr_col = "game_year" if "game_year" in park_factors.columns else "year"
-        # Try babip first, then hits, then neutral
-        pf_col = next((c for c in park_factors.columns if c.lower() in ('pf_babip', 'babip_park_factor')),
-                      next((c for c in park_factors.columns if c.lower() in ('pf_h', 'h_park_factor', 'hit_park_factor')),
-                      None))
-        if pf_col:
-            logger.info(f"Park factor columns: year={yr_col}, babip/hits={pf_col}")
-            for _, row in park_factors.iterrows():
-                t = team_map.get(row["team"])
-                s = season_map.get(int(row[yr_col]))
-                if t is not None and s is not None:
-                    log_pf[t, s] = np.log(float(row[pf_col]))
-        else:
-            logger.warning(f"No BABIP/hits park factor found in {list(park_factors.columns)}, using neutral")
-    df_bip["log_pf_babip"] = log_pf[df_bip["team_idx"].values, df_bip["season_idx"].values].astype(np.float64)
-
-    # Batter metadata for projections
-    batter_meta = (
-        df_bip.groupby("batter")
-        .agg(stand=("stand", "first"), birth_year=("birth_year", "first"),
-             last_season=("game_year", "max"), total_bip=("is_bip_no_hr", "size"),
-             career_babip=("is_hit_no_hr", "mean"))
-        .reset_index()
+    model_data = babip_rate.prepare_model_data(
+        raw, park_factors=park_factors, min_ab=min_ab, fast_mode=fast_mode,
+        hitter_seasons=hitter_seasons,
     )
+    del raw
 
-    # ─── 2d. Aggregate to batter-season level (Binomial) ────────────────
-    team_mode = (
-        df_bip.groupby(["batter", "game_year", "team_idx"])
-        .size()
-        .reset_index(name="bip_count")
-        .sort_values("bip_count", ascending=False)
-        .drop_duplicates(subset=["batter", "game_year"], keep="first")
-        .set_index(["batter", "game_year"])["team_idx"]
+    model = babip_rate.build_model(model_data)
+    trace = babip_rate.sample_model(
+        model,
+        draws=n_draws, tune=n_tune, chains=n_chains,
+        target_accept=target_accept, nuts_sampler="numpyro",
     )
+    diagnostics = babip_rate.model_diagnostics(trace)
+    logger.info("Max R-hat: %.4f (%s), divergences: %d, BFMI: %s",
+                diagnostics["max_rhat"], diagnostics["max_rhat_var"],
+                diagnostics["divergences"], diagnostics["bfmi"])
 
-    agg_df = (
-        df_bip.groupby(["batter", "game_year"])
-        .agg(
-            n_hits_bip=("is_hit_no_hr", "sum"),
-            n_bip=("is_bip_no_hr", "size"),
-            stand_idx=("stand_idx", "first"),
-            batter_idx=("batter_idx", "first"),
-            season_idx=("season_idx", "first"),
-            age=("age", "first"),
-            age_centered=("age_centered", "first"),
-            log_pf_babip=("log_pf_babip", "mean"),
-        )
-        .reset_index()
-    )
+    projections = babip_rate.generate_projections(trace, model_data, projection_year=projection_year)
+    aging_df = babip_rate.compute_aging_curve(trace, model_data)
+    proj_2026 = projections[projections["projection_year"] == projection_year]
 
-    # Min BIP per season filter
-    min_season_bip = 50 if not fast_mode else 30
-    agg_df = agg_df[agg_df["n_bip"] >= min_season_bip].copy()
-
-    # Attach team mode
-    team_mode_df = team_mode.reset_index()
-    team_mode_df.columns = ["batter", "game_year", "team_idx"]
-    agg_df = agg_df.merge(team_mode_df, on=["batter", "game_year"], how="left",
-                           suffixes=("_drop", ""))
-    if "team_idx_drop" in agg_df.columns:
-        agg_df = agg_df.drop(columns=["team_idx_drop"])
-    agg_df["team_idx"] = agg_df["team_idx"].astype(np.int64)
-
-    # Re-index batters
-    remaining_batters = np.sort(agg_df["batter"].unique())
-    new_batter_map = {b: i for i, b in enumerate(remaining_batters)}
-    agg_df["batter_idx"] = agg_df["batter"].map(new_batter_map).astype(np.int64)
-    batters = remaining_batters
-    batter_map = new_batter_map
-
-    # Ensure integer types
-    agg_df["n_hits_bip"] = agg_df["n_hits_bip"].astype(np.int64)
-    agg_df["n_bip"] = agg_df["n_bip"].astype(np.int64)
-
-    n_obs = len(agg_df)
-    n_batters = len(batters)
-    n_total_bip = int(agg_df["n_bip"].sum())
-    obs_babip = agg_df["n_hits_bip"] / agg_df["n_bip"]
-    logger.info(f"Aggregated to {n_obs:,} batter-seasons ({n_total_bip:,} total BIP, "
-                f"min {min_season_bip} BIP/season)")
-    logger.info(f"Model data: {n_obs:,} obs, {n_batters:,} batters, {n_seasons} seasons, {n_teams} teams")
-    logger.info(f"BABIP stats: mean={obs_babip.mean():.3f}, "
-                f"std={obs_babip.std():.3f}, "
-                f"median={obs_babip.median():.3f}")
-
-    # Free BIP-level dataframe
-    del df_bip
-    gc.collect()
-
-    # ─── 2e. Prepare age data for HSGP ──────────────────────────────────
-    age_centered_vals = agg_df["age_centered"].values.astype(np.float64)
-    HSGP_M = 20
-    HSGP_C = 1.5
-
-    logger.info(f"HSGP age model: m={HSGP_M} basis functions, c={HSGP_C}, "
-                f"age range [{age_centered_vals.min():.1f}, {age_centered_vals.max():.1f}] centered")
-
-    # ─── 3. Build PyMC model (Binomial, logit link) ──────────────────────
-    coords = {
-        "batter": batters,
-        "season": seasons,
-        "team": teams,
-        "obs_id": np.arange(n_obs),
-    }
-
-    with pm.Model(coords=coords) as model:
-        # Data containers
-        batter_idx_d = pm.Data("batter_idx", agg_df["batter_idx"].values, dims="obs_id")
-        season_idx_d = pm.Data("season_idx", agg_df["season_idx"].values, dims="obs_id")
-        team_idx_d = pm.Data("team_idx", agg_df["team_idx"].values, dims="obs_id")
-        stand_idx_d = pm.Data("stand_idx", agg_df["stand_idx"].values, dims="obs_id")
-        log_pf_d = pm.Data("log_pf_babip", agg_df["log_pf_babip"].values, dims="obs_id")
-        n_bip_d = pm.Data("n_bip", agg_df["n_bip"].values, dims="obs_id")
-        age_c_d = pm.Data("age_centered", age_centered_vals, dims="obs_id")
-
-        # League trend: random walk
-        # BABIP ~.300 → logit ≈ -0.847
-        league_init = pm.Normal("league_init", mu=LEAGUE_INIT_LOGIT, sigma=0.3)
-        league_innovations = pm.Normal("league_innovations", mu=0, sigma=0.05,
-                                        dims="season")
-        league_trend = pm.Deterministic("league_trend",
-            league_init + pt.cumsum(league_innovations), dims="season")
-
-        # Player ability: non-centered partial pooling
-        mu_ability = pm.Normal("mu_ability", mu=0.0, sigma=0.3)
-        sigma_ability = pm.HalfNormal("sigma_ability", sigma=0.3)
-        z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
-        player_ability = pm.Deterministic("player_ability",
-            mu_ability + sigma_ability * z_ability, dims="batter")
-
-        # Handedness
-        beta_hand = pm.Normal("beta_hand", mu=0.0, sigma=0.2)
-
-        # Park effects: zero-sum
-        park_effect = pm.ZeroSumNormal("park_effect", sigma=0.05, dims="team")
-
-        # ─── Age curve: HSGP ───────────────────────────────────────────
-        # BABIP declines gradually from day one — speed + bat control erode
-        # Small effects expected on logit scale
-        eta_age = pm.HalfNormal("eta_age", sigma=0.3)
-        ell_age = pm.InverseGamma("ell_age", mu=5.0, sigma=2.0)
-
-        cov_age = eta_age**2 * pm.gp.cov.Matern52(1, ls=ell_age)
-        gp_age = pm.gp.HSGP(m=[HSGP_M], c=HSGP_C, cov_func=cov_age)
-        age_effect = gp_age.prior("age_effect", X=age_c_d[:, None])
-
-        # Linear predictor (logit scale)
-        eta = (
-            league_trend[season_idx_d]
-            + player_ability[batter_idx_d]
-            + beta_hand * stand_idx_d
-            + park_effect[team_idx_d]
-            + age_effect
-            + log_pf_d
-        )
-
-        # Likelihood: Binomial
-        p = pm.math.invlogit(eta)
-        pm.Binomial("obs_babip", n=n_bip_d, p=p,
-                     observed=agg_df["n_hits_bip"].values, dims="obs_id")
-
-    n_params = 1 + n_seasons + 2 + n_batters + 1 + (n_teams - 1) + HSGP_M + 2
-    logger.info(f"Model built: ~{n_params:,} free parameters")
-
-    obs_age_values = agg_df["age"].values.copy()
-
-    del agg_df
-    gc.collect()
-
-    # ─── 4. Sample ──────────────────────────────────────────────────────
-    logger.info(f"Sampling: {n_chains} chains × {n_draws} draws (tune={n_tune})")
-    t0 = time.time()
-    with model:
-        trace = pm.sample(
-            draws=n_draws, tune=n_tune, chains=n_chains, cores=1,
-            target_accept=target_accept, nuts_sampler="numpyro",
-            random_seed=42, idata_kwargs={"log_likelihood": False},
-        )
-    elapsed = time.time() - t0
-    logger.info(f"Sampling done in {elapsed:.0f}s")
-
-    # Diagnostics
-    rhat = az.rhat(trace)
-    max_rhat = max(
-        float(rhat[v].values.max()) if rhat[v].values.ndim > 0 else float(rhat[v].values)
-        for v in rhat.data_vars
-    )
-    divergences = 0
-    if hasattr(trace, "sample_stats"):
-        div = trace.sample_stats.get("diverging")
-        if div is not None:
-            divergences = int(div.values.sum())
-    logger.info(f"Max R-hat: {max_rhat:.4f}, Divergences: {divergences}")
-
-    # ─── 5. Generate multi-year projections ─────────────────────────────
-    post = trace.posterior
-    lt = post["league_trend"].values
-    pa_vals = post["player_ability"].values
-    bh = post["beta_hand"].values
-    innov = post["league_innovations"].values
-
-    nc, nd = lt.shape[:2]
-    ns = nc * nd
-    lt_flat = lt.reshape(ns, -1)
-    pa_flat = pa_vals.reshape(ns, -1)
-    bh_flat = bh.reshape(ns)
-    innov_flat = innov.reshape(ns, -1)
-
-    # HSGP age effect interpolation
-    age_effect_post = post["age_effect"].values
-    age_effect_flat = age_effect_post.reshape(ns, -1)
-
-    from scipy.interpolate import interp1d
-
-    unique_ages = np.sort(np.unique(obs_age_values))
-    obs_ages = obs_age_values
-
-    age_to_obs_idx = {}
-    for i, a in enumerate(obs_ages):
-        age_to_obs_idx.setdefault(float(a), []).append(i)
-
-    age_effect_by_age = np.zeros((len(unique_ages), ns))
-    for j, a in enumerate(unique_ages):
-        idx = age_to_obs_idx[float(a)]
-        age_effect_by_age[j, :] = age_effect_flat[:, idx].mean(axis=1)
-
-    def eval_gp_age_effect(ages_new):
-        interp = interp1d(unique_ages, age_effect_by_age, axis=0,
-                         kind="linear", fill_value="extrapolate")
-        return interp(ages_new)
-
-    # Extrapolate league trend
-    last_trend = lt_flat[:, -1]
-    innov_std = innov_flat.std(axis=1)
-
-    # Project recently active batters
-    cutoff_year = int(seasons[-1]) - 2
-    active = batter_meta[batter_meta["last_season"] >= cutoff_year].copy()
-    active = active[active["batter"].isin(batters)].copy()
-    logger.info(f"Projecting {len(active)} batters active since {cutoff_year}")
-
-    all_projections = []
-    for proj_year in range(projection_year, projection_year + 5):
-        years_ahead = proj_year - int(seasons[-1])
-        projected_trend = last_trend.copy()
-        rng_year = np.random.default_rng(42 + proj_year)
-        for _ in range(years_ahead):
-            projected_trend = projected_trend + rng_year.normal(0, innov_std)
-
-        for _, row in active.iterrows():
-            batter_id = int(row["batter"])
-            if batter_id not in batter_map:
-                continue
-            b_idx = batter_map[batter_id]
-            proj_age = proj_year - float(row["birth_year"])
-            s_idx = 1 if row["stand"] == "R" else 0
-
-            age_eff = eval_gp_age_effect(np.array([proj_age])).squeeze()
-
-            eta_proj = (
-                projected_trend
-                + pa_flat[:, b_idx]
-                + bh_flat * s_idx
-                + age_eff
-            )
-
-            p_babip = 1.0 / (1.0 + np.exp(-eta_proj))
-
-            all_projections.append({
-                "batter": batter_id,
-                "projection_year": proj_year,
-                "projected_age": proj_age,
-                "stand": row["stand"],
-                "projected_babip": float(np.mean(p_babip)),
-                "babip_std": float(np.std(p_babip)),
-                "babip_lower": float(np.percentile(p_babip, 5)),
-                "babip_upper": float(np.percentile(p_babip, 95)),
-                "babip_10": float(np.percentile(p_babip, 10)),
-                "babip_90": float(np.percentile(p_babip, 90)),
-                "posterior_mean_ability": float(np.mean(pa_flat[:, b_idx])),
-                "total_bip": int(row["total_bip"]),
-                "career_babip": float(row["career_babip"]),
-                "last_season": int(row["last_season"]),
-            })
-
-    proj_df = pd.DataFrame(all_projections)
-    proj_df = proj_df.sort_values(["batter", "projection_year"]).reset_index(drop=True)
-
-    proj_2026 = proj_df[proj_df["projection_year"] == projection_year]
-    logger.info(
-        f"Projections generated: {len(proj_df)} total rows "
-        f"({len(proj_2026)} for {projection_year}), "
-        f"median BABIP = {proj_2026['projected_babip'].median():.3f}"
-    )
-
-    # Aging curve
-    age_grid = np.linspace(20, 42, 100)
-    aging_curves = eval_gp_age_effect(age_grid)
-    aging_curve_mean = aging_curves.mean(axis=1)
-    aging_curve_lower = np.percentile(aging_curves, 5, axis=1)
-    aging_curve_upper = np.percentile(aging_curves, 95, axis=1)
-
-    aging_df = pd.DataFrame({
-        "age": age_grid,
-        "age_effect_mean": aging_curve_mean,
-        "age_effect_lower": aging_curve_lower,
-        "age_effect_upper": aging_curve_upper,
-    })
-
-    # Save to volume
+    # ─── Save to /models (Modal-specific) ────────────────────────────────
     proj_dir = Path("/models/projections")
     proj_dir.mkdir(parents=True, exist_ok=True)
-    proj_path = proj_dir / f"babip_projections_{projection_year}.parquet"
-    proj_df.to_parquet(str(proj_path), index=False)
-
-    aging_path = proj_dir / f"babip_aging_curve_{projection_year}.parquet"
-    aging_df.to_parquet(str(aging_path), index=False)
+    projections.to_parquet(str(proj_dir / f"babip_projections_{projection_year}.parquet"), index=False)
+    aging_df.to_parquet(str(proj_dir / f"babip_aging_curve_{projection_year}.parquet"), index=False)
 
     trace_dir = Path("/models/traces")
     trace_dir.mkdir(parents=True, exist_ok=True)
     trace_path = trace_dir / f"babip_trace_{projection_year}.nc"
     trace.to_netcdf(str(trace_path))
-
+    models_volume.commit()
     logger.info("Saved projections + aging curve + trace to /models volume")
 
-    # ─── 6. wandb logging ───────────────────────────────────────────────
+    # ─── wandb logging ─────────────────────────────────────────────────────
     if log_wandb:
         try:
+            import tempfile
+
             import wandb
             from datetime import datetime
 
-            run_name = f"babip-model-{projection_year}-{datetime.now():%Y%m%d_%H%M}"
             run = wandb.init(
                 project="baseball-projections", entity="jseeburger",
-                name=run_name,
+                name=f"babip-model-{projection_year}-{datetime.now():%Y%m%d_%H%M}",
                 config={
-                    "model": "babip_binomial",
-                    "age_model": "HSGP",
-                    "hsgp_m": HSGP_M, "hsgp_c": HSGP_C,
-                    "kernel": "Matern52",
-                    "likelihood": "binomial_batter_season",
-                    "link": "logit",
+                    "model": "babip_binomial", "age_model": "HSGP",
+                    "hsgp_m": babip_rate.HSGP_M, "hsgp_c": babip_rate.HSGP_C,
                     "n_draws": n_draws, "n_tune": n_tune, "n_chains": n_chains,
                     "target_accept": target_accept, "min_ab": min_ab,
-                    "min_season_bip": min_season_bip,
                     "projection_year": projection_year,
-                    "n_obs": n_obs, "n_batters": n_batters,
-                    "n_seasons": n_seasons, "n_teams": n_teams,
-                    "n_total_bip": n_total_bip,
-                    "reference_age": REFERENCE_AGE,
-                    "league_init_logit": LEAGUE_INIT_LOGIT,
-                    "park_factor": "pf_babip or pf_h",
+                    "n_obs": model_data["n_obs"], "n_batters": model_data["n_batters"],
+                    "n_seasons": model_data["n_seasons"], "n_teams": model_data["n_teams"],
+                    "reference_age": babip_rate.REFERENCE_AGE,
+                    "source": "modal_functions/app.py -> src.models.babip_rate (issue #86)",
                 },
                 tags=["babip", "bayesian", "binomial", "hsgp", "batter-season"],
-                group="hitter-babip",
-                job_type="train",
-                reinit=True,
+                group="hitter-babip", job_type="train", reinit=True,
             )
-
             wandb.log({
-                "diagnostics/max_rhat": max_rhat,
-                "diagnostics/divergences": divergences,
-                "diagnostics/sampling_time_s": elapsed,
-                "diagnostics/n_params": n_params,
+                "diagnostics/max_rhat": diagnostics["max_rhat"],
+                "diagnostics/divergences": diagnostics["divergences"],
+                "diagnostics/min_ess_bulk": diagnostics["min_ess_bulk"],
             })
-
-            summary = az.summary(trace, var_names=[
-                "league_init", "mu_ability", "sigma_ability", "beta_hand",
-                "eta_age", "ell_age",
-            ])
-            wandb.log({"diagnostics/summary": wandb.Table(dataframe=summary.reset_index())})
-
-            eta_age_mean = float(trace.posterior["eta_age"].mean())
-            ell_age_mean = float(trace.posterior["ell_age"].mean())
-            wandb.log({
-                "gp/eta_age_mean": eta_age_mean,
-                "gp/ell_age_mean": ell_age_mean,
-            })
-
-            for var_group, var_names in [
-                ("scalars", ["league_init", "mu_ability", "sigma_ability", "beta_hand"]),
-                ("gp_hyperparams", ["eta_age", "ell_age"]),
-                ("league_trend", ["league_trend"]),
-            ]:
-                try:
-                    ax = az.plot_trace(trace, var_names=var_names, compact=True)
-                    fig = ax.ravel()[0].figure
-                    wandb.log({f"posterior/{var_group}_trace": wandb.Image(fig)})
-                    plt.close(fig)
-                except Exception as e:
-                    logger.warning(f"Failed to plot {var_group}: {e}")
-
-            # Aging curve plot
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.plot(aging_df["age"], aging_df["age_effect_mean"], "b-", linewidth=2, label="Mean")
-            ax.fill_between(aging_df["age"], aging_df["age_effect_lower"], aging_df["age_effect_upper"],
-                           alpha=0.3, color="blue", label="90% CI")
-            ax.set_xlabel("Age")
-            ax.set_ylabel("Age Effect (logit scale)")
-            ax.set_title(f"Learned BABIP Aging Curve (HSGP Matern-5/2, ℓ={ell_age_mean:.1f} yr)")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.axhline(y=0, color="gray", linestyle="--", alpha=0.5)
-            # BABIP declines — find peak (highest = youngest or maybe mid-20s)
-            peak_idx = aging_curve_mean.argmax()
-            ax.axvline(x=age_grid[peak_idx], color="red", linestyle=":", alpha=0.5,
-                       label=f"Peak: {age_grid[peak_idx]:.1f}")
-            ax.legend()
-            wandb.log({"aging_curve": wandb.Image(fig)})
-            plt.close(fig)
-
-            # BABIP distribution
-            fig, ax = plt.subplots(figsize=(10, 6))
-            ax.hist(proj_2026["projected_babip"], bins=50, alpha=0.7, color="steelblue", edgecolor="white")
-            ax.axvline(x=proj_2026["projected_babip"].median(), color="red", linestyle="--",
-                       label=f"Median: {proj_2026['projected_babip'].median():.3f}")
-            ax.set_xlabel("Projected BABIP")
-            ax.set_ylabel("Count")
-            ax.set_title(f"BABIP Projections Distribution ({projection_year}, n={len(proj_2026)})")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            wandb.log({"projections/babip_distribution": wandb.Image(fig)})
-            plt.close(fig)
-
-            # Projected vs Career scatter
-            fig, ax = plt.subplots(figsize=(8, 8))
-            ax.scatter(proj_2026["career_babip"], proj_2026["projected_babip"],
-                      alpha=0.3, s=10, color="steelblue")
-            lims = [0.15, 0.45]
-            ax.plot(lims, lims, "r--", alpha=0.5, label="y=x")
-            ax.set_xlabel("Career BABIP")
-            ax.set_ylabel(f"Projected BABIP ({projection_year})")
-            ax.set_title("Projected vs Career BABIP")
-            ax.legend()
-            ax.grid(True, alpha=0.3)
-            ax.set_xlim(lims)
-            ax.set_ylim(lims)
-            wandb.log({"projections/career_vs_projected": wandb.Image(fig)})
-            plt.close(fig)
-
-            # Multi-year trajectories
-            fig, axes = plt.subplots(1, 2, figsize=(14, 6))
-            for ax_i, (title, ascending) in enumerate([("Highest BABIP", False), ("Lowest BABIP", True)]):
-                ax = axes[ax_i]
-                top5 = proj_2026.sort_values("projected_babip", ascending=ascending).head(5)["batter"].values
-                for batter_id in top5:
-                    bdf = proj_df[proj_df["batter"] == batter_id]
-                    career = bdf["career_babip"].iloc[0]
-                    ax.plot(bdf["projection_year"], bdf["projected_babip"], "o-", markersize=4,
-                           label=f"{batter_id} (career: {career:.3f})")
-                    ax.fill_between(bdf["projection_year"], bdf["babip_lower"], bdf["babip_upper"], alpha=0.1)
-                ax.set_xlabel("Year")
-                ax.set_ylabel("BABIP")
-                ax.set_title(title)
-                ax.legend(fontsize=7)
-                ax.grid(True, alpha=0.3)
-            plt.tight_layout()
-            wandb.log({"projections/multi_year_trajectories": wandb.Image(fig)})
-            plt.close(fig)
-
-            wandb.log({"projections_preview": wandb.Table(dataframe=proj_df.head(100))})
+            wandb.log({"projections_preview": wandb.Table(dataframe=projections.head(200))})
             wandb.log({"aging_curve_data": wandb.Table(dataframe=aging_df)})
 
             artifact = wandb.Artifact(f"babip-projections-{projection_year}", type="projections",
-                                       metadata={"n_batters": len(proj_df),
-                                                  "median_babip": float(proj_df["projected_babip"].median())})
+                                       metadata={"n_batters": len(projections)})
             with tempfile.TemporaryDirectory() as tmpdir:
                 p = os.path.join(tmpdir, "projections.parquet")
-                proj_df.to_parquet(p, index=False)
+                projections.to_parquet(p, index=False)
                 artifact.add_file(p, name="projections.parquet")
             wandb.log_artifact(artifact, aliases=["latest"])
 
             trace_artifact = wandb.Artifact(f"babip-trace-{projection_year}", type="model",
-                                              metadata={"max_rhat": max_rhat, "divergences": divergences})
+                                             metadata={"max_rhat": diagnostics["max_rhat"],
+                                                       "divergences": diagnostics["divergences"]})
             trace_artifact.add_file(str(trace_path), name="trace.nc")
             wandb.log_artifact(trace_artifact, aliases=["latest"])
 
-            models_volume.commit()
             logger.info(f"wandb run: {run.url}")
             wandb.finish()
         except Exception as e:
@@ -2612,24 +995,16 @@ def train_babip_model(
     return {
         "status": "complete",
         "model_type": "babip_binomial (logit link)",
-        "n_obs": n_obs,
-        "n_batters": n_batters,
-        "n_seasons": n_seasons,
-        "max_rhat": round(max_rhat, 4),
-        "divergences": divergences,
-        "sampling_time_s": round(elapsed, 1),
-        "n_projections": len(proj_df),
+        "n_obs": model_data["n_obs"],
+        "n_batters": model_data["n_batters"],
+        "n_seasons": model_data["n_seasons"],
+        "max_rhat": diagnostics["max_rhat"],
+        "divergences": diagnostics["divergences"],
+        "healthy": diagnostics["healthy"],
+        "n_projections": len(projections),
         "median_babip": round(float(proj_2026["projected_babip"].median()), 4),
         "mean_babip": round(float(proj_2026["projected_babip"].mean()), 4),
-        "projection_years": list(range(projection_year, projection_year + 5)),
         "age_model": "HSGP",
-        "hsgp_config": {"m": HSGP_M, "c": HSGP_C, "kernel": "Matern52", "reference_age": REFERENCE_AGE},
-        "aging_curve_summary": {
-            "peak_age": float(age_grid[aging_curve_mean.argmax()]),
-            "age_effect_at_25": float(aging_curves[np.argmin(np.abs(age_grid - 25))].mean()),
-            "age_effect_at_30": float(aging_curves[np.argmin(np.abs(age_grid - 30))].mean()),
-            "age_effect_at_35": float(aging_curves[np.argmin(np.abs(age_grid - 35))].mean()),
-        },
         "top_5_highest_babip": proj_2026.nlargest(5, "projected_babip")[["batter", "projected_babip", "career_babip"]].to_dict("records"),
         "top_5_lowest_babip": proj_2026.nsmallest(5, "projected_babip")[["batter", "projected_babip", "career_babip"]].to_dict("records"),
     }
@@ -2654,7 +1029,24 @@ def assemble_projections(
 ):
     """Assemble 5 component model posteriors into wOBA → wRC+ → oWAR.
 
-    Pure arithmetic on posterior means — no additional MCMC.
+    Pure arithmetic on posterior means — no additional MCMC, no PyMC model
+    of its own — so this function is outside the scope of issue #86's
+    "Modal defines a model" problem and its guard test
+    (tests/test_models/test_modal_no_inline_model.py). What issue #86's
+    audit *did* find here (docs/modal-src-divergence.md) is worth knowing
+    before running this: it reads five `{component}_projections_{year}.parquet`
+    files from `/models/projections`, but only three of them —
+    `k_rate`, `iso`, `babip` — have a producer anywhere in this file or its
+    git history. There is no `train_bb_rate_model` or `train_hr_rate_model`,
+    on this branch or any other this repo has ever had; `bb_rate` and
+    `hr_rate` projections only exist today as the static April 10, 2026
+    files already committed under `data/projections/` (the `bayes_preseason`
+    arm the backtest harness reads). Running the `assembly` or `all`
+    workflow_dispatch component against a fresh Modal volume will fail at
+    the `bb_rate`/`hr_rate` read unless those two files are placed on the
+    volume some other way first — this function does not build them, and
+    building them is new modelling work with its own gate, not a
+    divergence to close.
 
     Assembly chain:
       K%, BB%, HR rate, ISO, BABIP

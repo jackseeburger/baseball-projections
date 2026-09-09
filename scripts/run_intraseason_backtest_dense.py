@@ -19,12 +19,12 @@ different costs:
                   a 60-game season starting July 23 has no May 1 cutoff, the
                   same convention `run_contact_backtest.py` uses).
 
-    bayes sweep   adds the `bayes` arm — the PA-level K% model refit at the
-                  cutoff (`src.eval.bayes_arm`) — on top of the same cheap
-                  arms. One fit is an MCMC run (~75-90s here with NumPyro on
-                  4 cores; the honest number for whatever machine runs this
-                  is printed at the end of the run), so this sweep is
-                  BIWEEKLY on a 4-season subset (2022, 2024, 2025, 2026) —
+    bayes sweep   adds the `bayes` arm(s) — the PA-level K% model refit at
+                  the cutoff (`src.eval.bayes_arm`) — on top of the same
+                  cheap arms. One fit is an MCMC run (~75-90s here with
+                  NumPyro on 4 cores; the honest number for whatever machine
+                  runs this is printed at the end of the run), so this sweep
+                  is BIWEEKLY on a 4-season subset (2022, 2024, 2025, 2026) —
                   scoped deliberately per the task's cost-control guidance
                   rather than run to completion on all 7 seasons.
 
@@ -36,6 +36,19 @@ September. The three existing cutoffs show the opposite — Bayes worse in May
 and July, only a tie by August. See docs/densified-intraseason-backtest.md
 for the verdict.
 
+**Structural variants (BAS-69, docs/bayes-variants.md).** The bayes sweep
+scores several structures of the same arm in one pass — `flat` (the model as
+scored above), `ability_walk`, `constrained_age`, and their combination —
+selected by flags on `src.eval.bayes_arm.BayesArmConfig`. Each variant gets
+its own name in the results frame (`bayes_flat`, `bayes_walk`, `bayes_age`,
+`bayes_walk_age` — see `VARIANT_ARM_NAMES`) and its own `bayes_k_rate_provider`
+call, so one variant's MCMC fit can never be served under another variant's
+label — see `make_variant_providers`'s docstring for exactly why that would
+otherwise be a live risk. `bayes` is kept as an exact alias for `bayes_flat`
+(same fit, zero extra cost — see the module's "alias" comment in
+`make_variant_providers`) so every number this doc already reports under the
+name `bayes` keeps meaning the same thing.
+
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
     python -c "from src.data.pa_outcomes_pipeline import build_pa_dataset; \\
@@ -45,6 +58,23 @@ Usage:
     python scripts/run_intraseason_backtest_dense.py --stage cheap
     python scripts/run_intraseason_backtest_dense.py --stage bayes
     python scripts/run_intraseason_backtest_dense.py --stage analyze
+
+**Run the bayes stage one season per process.** With four variants it does
+four MCMC fits per cutoff, and NumPyro compiles fresh XLA kernels for each
+one; the JIT's memory is never reclaimed within a process. At around 70
+compilations the run dies with `LLVM ERROR: Unable to allocate section
+memory!` — not an out-of-memory in the usual sense (15 GB was free), and not
+catchable, because LLVM aborts rather than raising. It happened at the 19th
+cell of a ~40-cell grid on 2026-09-08.
+
+    for yr in 2022 2024 2025 2026; do
+        python scripts/run_intraseason_backtest_dense.py --stage bayes \
+            --bayes-seasons $yr
+    done
+
+Each season is a fresh process and therefore a fresh JIT cache. The
+checkpoint is keyed on (season, cutoff), so this is exactly equivalent to
+one long run and a run that dies mid-grid loses only its current cell.
 """
 from __future__ import annotations
 
@@ -59,6 +89,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import numpy as np
 import pandas as pd
+
+# pymc/arviz are not imported here (nor at import time by src.eval.bayes_arm —
+# see its own docstring): this module has to be importable, and its non-bayes
+# functions runnable, in CI, which installs requirements-ci.txt and has
+# neither.
 
 from src.eval.backtest import backtest, score as harness_score
 from src.eval.baselines import INTRASEASON_BASELINES
@@ -84,6 +119,46 @@ BAYES_SEASONS = (2022, 2024, 2025, 2026)
 DEFAULT_COMPONENTS = ["k_rate", "bb_rate", "hr_rate", "babip", "iso"]
 MIN_TRIALS = 100
 PAIRED_BASE = "marcel_tuned"
+
+# ─── bayes structural variants (BAS-69, docs/bayes-variants.md) ───
+# Keys are `BayesArmConfig.variant()`'s own vocabulary — "+".join of whichever
+# of ("ability_walk", "constrained_age") are on, "flat" if neither — so a
+# config built from one of these strings and `.variant()` called on the
+# result always agree; `_variant_config` below asserts that on every config
+# it builds, rather than trusting the two vocabularies to stay in sync by
+# convention alone.
+VARIANT_ARM_NAMES = {
+    "flat": "bayes_flat",
+    "ability_walk": "bayes_walk",
+    "constrained_age": "bayes_age",
+    "ability_walk+constrained_age": "bayes_walk_age",
+}
+ARM_NAME_VARIANT = {arm: variant for variant, arm in VARIANT_ARM_NAMES.items()}
+# The pre-registration's full design: the two flags each on their own, and
+# together. Default sweep scope, overridable with --variants.
+DEFAULT_VARIANTS = list(VARIANT_ARM_NAMES)
+
+# Posterior scalars a variant's own structure adds, named exactly as
+# docs/bayes-variants.md's math names them. `model_diagnostics()` (src/models/
+# pa_k_rate.py) reports the single worst r-hat/ESS across *every* variable in
+# the trace — useful for "did this fit sample cleanly", useless for "what did
+# sigma_step land on", which is what the doc's vacuity check needs: if
+# sigma_step's posterior concentrates near zero the walk collapsed to the flat
+# model and the doc's prediction 1 is untestable, not false. Kept as data here
+# (not logic in bayes_arm.py/pa_k_rate.py) so it can be extended once the
+# variants are actually implemented without touching either file.
+VARIANT_OWN_PARAMS = {
+    "ability_walk": ["sigma_step"],
+    # `peak_age`, not `peak`: the model names the Deterministic that scales
+    # `peak_frac` onto AGE_PEAK_WINDOW `peak_age` (src/models/pa_k_rate.py).
+    # The mismatch cost the first sweep the single most interesting number
+    # this variant produces — where the model actually puts the K% peak,
+    # which is directly comparable to the peak `scripts/tune_marcel.py` fits
+    # for tuned Marcel — and cost it silently, because a name missing from
+    # the trace is skipped rather than raised on. The test below pins the
+    # names against the model module so the next mismatch is loud.
+    "constrained_age": ["peak_age", "slope_young", "slope_old"],
+}
 
 
 def _mmdd_range(start: str, end: str, step_days: int) -> list[str]:
@@ -193,24 +268,247 @@ def run_cheap(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
 
 # ─── bayes sweep ───
 
+def _variant_config(variant: str, **kwargs):
+    """A `BayesArmConfig` for one variant name, self-checked against
+    `BayesArmConfig.variant()` so the two vocabularies (this module's short
+    names, the config's own flags) cannot silently drift apart."""
+    from src.eval.bayes_arm import BayesArmConfig
+
+    on = set(variant.split("+"))
+    config = BayesArmConfig(
+        ability_walk="ability_walk" in on, constrained_age="constrained_age" in on,
+        **kwargs,
+    )
+    assert config.variant() == variant, (
+        f"variant name {variant!r} does not round-trip through "
+        f"BayesArmConfig.variant() (got {config.variant()!r}) — "
+        f"VARIANT_ARM_NAMES and BayesArmConfig's flags have drifted apart"
+    )
+    return config
+
+
+def variant_param_summary(trace, config) -> dict:
+    """Posterior mean/sd for every scalar a variant's own structure adds.
+
+    This is the fits-file half of the vacuity check in
+    docs/bayes-variants.md: `sigma_step`'s posterior mean is the number that
+    says whether `ability_walk` collapsed to the flat model at this window
+    length, and that number lives nowhere else in what gets written down —
+    `model_diagnostics()` only ever reports the single worst r-hat/ESS across
+    every variable. Reads straight off the trace's posterior group rather
+    than through arviz's summary machinery, so this needs nothing beyond
+    `.posterior[name].values` and stays testable without pymc/arviz installed
+    (a plain object with a `.posterior` mapping is enough — see
+    tests/test_scripts/test_run_intraseason_backtest_dense.py).
+
+    A name from VARIANT_OWN_PARAMS that isn't in the trace is skipped, not
+    raised on: the model side may land under a different name than the
+    pre-registration's math used, and this table should say what it found,
+    not assume a naming convention that turns out to be wrong.
+    """
+    on = [n for n in ("ability_walk", "constrained_age") if getattr(config, n)]
+    names = [p for n in on for p in VARIANT_OWN_PARAMS.get(n, [])]
+    out: dict = {}
+    posterior = getattr(trace, "posterior", None) if trace is not None else None
+    if posterior is None:
+        return out
+    for name in names:
+        if name not in posterior:
+            continue
+        vals = np.asarray(posterior[name].values, dtype="float64").ravel()
+        vals = vals[np.isfinite(vals)]
+        if vals.size == 0:
+            continue
+        out[name] = {"mean": float(vals.mean()), "sd": float(vals.std())}
+    return out
+
+
+def make_variant_providers(cutoff: str, year: int, variants: list[str],
+                           config_kwargs: dict, fits_sink: list[dict]) -> dict:
+    """One `bayes_k_rate_provider` call per variant — the cache isolation guard.
+
+    `bayes_k_rate_provider`'s memoization cache keys on `(cutoff_date,
+    predict_year)` only (see src/eval/bayes_arm.py) — no variant in the key.
+    That is safe *within one call* because the cache is a fresh dict created
+    by that call's own closure, so it cannot see another call's fits. The bug
+    this function exists to prevent is upstream of the cache entirely: handing
+    the *same provider object* to two different variant names in the
+    `providers` dict passed to `backtest()`, which would silently score one
+    variant's fit under another variant's label without the cache itself ever
+    doing anything wrong. So this is the one place in the sweep allowed to
+    construct these providers — every variant gets its own
+    `bayes_k_rate_provider(...)` call and its own object — and `on_fit` below
+    re-checks the fit's own `config.variant()` against what was asked for, so
+    a violation of that invariant raises instead of quietly mislabeling a fit.
+    `tests/test_scripts/test_run_intraseason_backtest_dense.py` exercises both
+    guards without needing pymc, by monkeypatching `fit_bayes_k_rate`.
+
+    The one deliberate exception: "flat" is also served under the plain
+    "bayes" key, as the *same* provider object (so the *same* cache) rather
+    than a second call — this is the continuity alias described in the module
+    docstring, and it costs zero extra MCMC because it is a cache hit by
+    construction, never a second fit.
+
+    Per-variant wall time is attached to `fits_sink`'s record for that fit,
+    measured around the provider call rather than inside `on_fit` (which
+    fires before the model's projection pass and before the call returns), so
+    "elapsed_s" is only ever set on a fit that actually ran a real MCMC
+    fit — a cache hit (a second call to an already-fit provider, such as the
+    "bayes" alias resolving after "bayes_flat" already fit) does not overwrite
+    it or add a spurious near-zero timing.
+    """
+    from src.eval.bayes_arm import bayes_k_rate_provider
+
+    providers: dict = {}
+    seen_ids: set[int] = set()
+    for variant in variants:
+        config = _variant_config(variant, **config_kwargs)
+        arm_name = VARIANT_ARM_NAMES[variant]
+        holder: dict = {}
+
+        def on_fit(fit, _variant=variant, _arm=arm_name, _holder=holder):
+            if fit.config.variant() != _variant:
+                raise RuntimeError(
+                    f"cache isolation broken: provider {_arm!r} was asked "
+                    f"for variant {_variant!r} but the fit that came back "
+                    f"reports {fit.config.variant()!r} — a "
+                    f"bayes_k_rate_provider cache must never be shared "
+                    f"across variants"
+                )
+            record = {
+                "cutoff": fit.cutoff_date, "variant": _variant, "arm": _arm,
+                "scale": fit.config.label(), "diagnostics": fit.diagnostics,
+                "variant_params": variant_param_summary(fit.trace, fit.config),
+                **fit.data_summary,
+            }
+            fits_sink.append(record)
+            _holder["record"] = record
+
+        raw = bayes_k_rate_provider(cutoff, year, config, on_fit=on_fit)
+        assert id(raw) not in seen_ids, "two variants got the same provider object"
+        seen_ids.add(id(raw))
+
+        def timed(train, spec, predict_year, _raw=raw, _holder=holder):
+            t0 = time.time()
+            out = _raw(train, spec, predict_year)
+            if "record" in _holder:  # a real fit just happened, not a cache hit
+                _holder["record"]["elapsed_s"] = round(time.time() - t0, 1)
+                del _holder["record"]
+            return out
+
+        providers[arm_name] = timed
+
+    if "flat" in variants:
+        providers["bayes"] = providers[VARIANT_ARM_NAMES["flat"]]
+    return providers
+
+
+def _load_bayes_checkpoint(path: Path) -> pd.DataFrame:
+    """Load a bayes-sweep checkpoint, refusing to reinterpret a pre-variant one.
+
+    Before variants existed, every bayes-arm row here was `model="bayes"` and
+    meant exactly one thing: the flat model, fit under whatever CLI scope
+    (`--bayes-seasons`, sampler settings) that run used. Silently relabelling
+    those rows "bayes_flat" and treating the cell as done would risk two
+    things going wrong without any error to catch them: (1) this run's scope
+    may differ from that old run's, so "already done" would compare a stale,
+    differently-scoped fit against the rest of a table computed under today's
+    settings, and (2) nothing downstream would ever be able to tell an old
+    "bayes" row and a new "bayes_flat" row apart as the same measurement or a
+    different one. A pre-variant checkpoint is therefore a hard stop: move it
+    aside (e.g. rename to cells_bayes.legacy.parquet) and start a fresh one,
+    or rerun --stage bayes from scratch if you want its numbers folded back
+    in as the flat variant.
+    """
+    if not path.exists():
+        return pd.DataFrame()
+    prev = pd.read_parquet(path)
+    if prev.empty or "model" not in prev.columns:
+        return prev
+    present = set(prev["model"].unique())
+    if "bayes" in present and not (set(VARIANT_ARM_NAMES.values()) & present):
+        raise RuntimeError(
+            f"{path} is a pre-variant-sweep checkpoint (only a 'bayes' "
+            f"model column, none of {sorted(VARIANT_ARM_NAMES.values())} "
+            "present) — see _load_bayes_checkpoint's docstring for why this "
+            "isn't reinterpreted automatically. Move it aside and start a "
+            "fresh checkpoint, or rerun --stage bayes from scratch."
+        )
+    return prev
+
+
+def _load_bayes_fits(path: Path) -> list[dict]:
+    """Same refusal as `_load_bayes_checkpoint`, for the diagnostics file."""
+    if not path.exists():
+        return []
+    fits = json.loads(path.read_text())
+    if fits and not all("variant" in f for f in fits):
+        raise RuntimeError(
+            f"{path} has fit records from before variants existed (missing "
+            "'variant'). Move it aside or delete it — see "
+            "_load_bayes_checkpoint's docstring for the same reasoning."
+        )
+    return fits
+
+
+def _done_variants_for_cell(have: pd.DataFrame | None) -> set[str]:
+    """Which variants a checkpointed (season, cutoff) cell's rows already
+    cover, read off the `model` column via `ARM_NAME_VARIANT`. `have=None`
+    (nothing checkpointed for this cell yet) is the empty set."""
+    if have is None:
+        return set()
+    return {ARM_NAME_VARIANT[m] for m in have["model"].unique() if m in ARM_NAME_VARIANT}
+
+
 def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              seasons: tuple[int, ...], cutoffs_mmdd: list[str],
              min_trials: int = MIN_TRIALS, checkpoint: Path | None = None,
              fits_path: Path | None = None,
              draws: int = 500, tune: int = 500, chains: int = 2,
              sampler: str = "numpyro", include_pitcher: bool = False,
-             pa_dir: Path = ROOT / "data/parquet/pa_outcomes") -> tuple[pd.DataFrame, list[dict]]:
-    from src.eval.bayes_arm import BayesArmConfig, bayes_k_rate_provider
+             pa_dir: Path = ROOT / "data/parquet/pa_outcomes",
+             variants: list[str] | None = None) -> tuple[pd.DataFrame, list[dict]]:
+    """Score every requested bayes variant, plus the cheap baselines, at each
+    (season, cutoff) — one fit per (variant, season, cutoff), memoized across
+    resumed runs at cell granularity.
 
-    done = set()
-    frames, fits = [], []
-    if checkpoint is not None and checkpoint.exists():
-        prev = pd.read_parquet(checkpoint)
-        frames.append(prev)
-        done = set(zip(prev["season"], prev["cutoff"]))
-        logger.info("resuming bayes sweep: %d cells already checkpointed", len(prev))
-    if fits_path is not None and fits_path.exists():
-        fits = json.loads(fits_path.read_text())
+    Resume is all-or-nothing *per cell*, not per variant: if a checkpointed
+    cell already carries every arm in `variants`, it is skipped outright; if
+    it is missing even one, the whole cell is recomputed (baselines and every
+    requested variant, not just the missing one) and its old rows are
+    replaced rather than appended to. The alternative — fitting only the
+    missing variant(s) and splicing their rows into an already-checkpointed
+    cell — would score them under a different `common_players` intersection
+    than what is already on disk for that cell (`backtest()` intersects
+    predicted coverage across whatever `providers` dict it is given *in that
+    call*), which is exactly the kind of silent inconsistency this sweep
+    exists to avoid. Refitting an already-done variant is the accepted cost
+    of that guarantee; it only bites a resume that also changes `--variants`
+    mid-sweep, which is rare next to Ctrl-C-and-resume with a fixed variant
+    list (the common case, where every touched cell is already complete and
+    costs nothing to skip).
+    """
+    variants = list(variants) if variants else DEFAULT_VARIANTS
+    unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
+    if unknown:
+        raise ValueError(f"unknown bayes variant(s) {unknown}; "
+                         f"known: {sorted(VARIANT_ARM_NAMES)}")
+
+    cells: dict[tuple, pd.DataFrame] = {}
+    fits: list[dict] = []
+    if checkpoint is not None:
+        prev = _load_bayes_checkpoint(checkpoint)
+        if not prev.empty:
+            for (season, cutoff), g in prev.groupby(["season", "cutoff"]):
+                cells[(season, cutoff)] = g
+            n_variant_cells = sum(
+                1 for g in cells.values()
+                for m in g["model"].unique() if m in ARM_NAME_VARIANT
+            )
+            logger.info("resuming bayes sweep: %d cells checkpointed, "
+                       "%d arm-cells among them", len(cells), n_variant_cells)
+    if fits_path is not None:
+        fits = _load_bayes_fits(fits_path)
 
     available = set(pa_by_year)
     for year in seasons:
@@ -219,27 +517,27 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
         bayes_seasons = bayes_prior_seasons(year, available)
         for md in cutoffs_mmdd:
             cutoff = f"{year}-{md}"
-            if (year, cutoff) in done:
-                continue
             if pd.Timestamp(cutoff) >= last_pa_date:
                 continue
+            key = (year, cutoff)
+            if set(variants) <= _done_variants_for_cell(cells.get(key)):
+                continue
+
             t0 = time.time()
-            config = BayesArmConfig(
+            config_kwargs = dict(
                 pa_dir=pa_dir, seasons=bayes_seasons, min_pa=50,
                 include_pitcher=include_pitcher, max_batters=None,
                 draws=draws, tune=tune, chains=chains, cores=chains,
                 target_accept=0.9, nuts_sampler=sampler,
             )
+            # Recomputing the cell invalidates any fit records already
+            # written for it (see the docstring above), so drop them before
+            # `make_variant_providers`'s on_fit hooks append the fresh ones.
+            fits[:] = [f for f in fits if f.get("cutoff") != cutoff]
+
             providers = dict(INTRASEASON_BASELINES)
-            fit_record = {}
-
-            def on_fit(fit, _rec=fit_record):
-                _rec.update({
-                    "cutoff": fit.cutoff_date, "scale": fit.config.label(),
-                    "diagnostics": fit.diagnostics, **fit.data_summary,
-                })
-
-            providers["bayes"] = bayes_k_rate_provider(cutoff, year, config, on_fit=on_fit)
+            providers.update(
+                make_variant_providers(cutoff, year, variants, config_kwargs, fits))
             try:
                 results = backtest(
                     "k_rate", cutoff_date=cutoff, predict_year=year,
@@ -247,22 +545,20 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
                     min_trials=min_trials,
                 )
             except ValueError as e:
-                logger.warning("skip bayes %s: %s", cutoff, e)
+                logger.warning("skip bayes %s (%s): %s", cutoff, variants, e)
                 continue
             elapsed = time.time() - t0
-            fit_record["elapsed_s"] = round(elapsed, 1)
-            fit_record["bayes_seasons"] = list(bayes_seasons)
-            fits.append(fit_record)
-            results = results.assign(season=year, cutoff=cutoff)
-            frames.append(results)
-            out = pd.concat(frames, ignore_index=True)
+            cells[key] = results.assign(season=year, cutoff=cutoff)
+            out = pd.concat(cells.values(), ignore_index=True)
             if checkpoint is not None:
                 out.to_parquet(checkpoint, index=False)
             if fits_path is not None:
                 fits_path.write_text(json.dumps(fits, indent=1))
-            logger.info("bayes: %s done in %.1fs (%d cells so far)",
-                       cutoff, elapsed, len(out))
-    return pd.concat(frames, ignore_index=True), fits
+            logger.info("bayes: %s done in %.1fs (%d variants: %s, %d cells so far)",
+                       cutoff, elapsed, len(variants), ",".join(variants), len(out))
+    if not cells:
+        return pd.DataFrame(), fits
+    return pd.concat(cells.values(), ignore_index=True), fits
 
 
 # ─── analysis ───
@@ -369,6 +665,170 @@ def overall_clustered(cells: pd.DataFrame, arm: str, base: str = PAIRED_BASE,
     return {"clustered": clustered, "unclustered": unclustered}
 
 
+MIN_CLUSTERS_FOR_T = 2
+
+
+def _suppress_degenerate_t(result: dict) -> dict:
+    """NaN out a t-statistic backed by fewer than two clusters.
+
+    `paired_abs_error_diff` reports `n_clusters` alongside the SE. With one
+    cluster the clustered SE is a sum of one residual and the ratio is
+    meaningless — but finite, and often enormous, which is worse than
+    missing. Returns a copy so the caller's other numbers (diff, n) survive.
+    """
+    if result.get("n_clusters", 0) >= MIN_CLUSTERS_FOR_T:
+        return result
+    out = dict(result)
+    out["t"] = float("nan")
+    out["se"] = float("nan")
+    return out
+
+
+def variant_comparison(cells: pd.DataFrame, arm: str, base: str,
+                       component: str = "k_rate") -> dict:
+    """One pooled arm-vs-base comparison, reported the honest way and the
+    wrong way side by side, plus a per-cell win/loss count.
+
+    docs/densified-intraseason-backtest.md found unclustered t running
+    **3.71x** the player-clustered one on this exact harness (46,591 rows,
+    870 real hitters averaging 54 rows apiece) — not a rounding difference, a
+    number that changes which comparisons look significant. So every
+    comparison here reports three numbers rather than one:
+
+    - clustered by player (the primary read — the same hitter scored at
+      several cutoffs/seasons is not several independent draws about him);
+    - clustered by (season, cutoff) cell — the other defensible grouping,
+      since every row in one cell shares that cutoff's single MCMC fit and
+      its idiosyncrasies. Reported alongside because the two disagreeing
+      would itself be worth knowing, not folded into one "the" clustered
+      number;
+    - unclustered, explicitly labelled `_WRONG` so nobody downstream can
+      quote it by accident, with the ratio to the player-clustered t
+      attached so the inflation is visible without a second lookup.
+
+    `paired_abs_error_diff` (src/eval/tuning.py) already does the clustered
+    math via its `cluster_col` argument — this function only picks the keys
+    and reuses it three times, once per clustering choice, rather than
+    reimplementing anything.
+
+    Win/loss reuses `paired_by_cell`: its `diff` *is* MAE(arm) - MAE(base) on
+    that cell's common population (trials-weighted mean of |err_a| - |err_b|
+    equals the difference of trials-weighted MAEs), so `diff < 0` is exactly
+    "arm's MAE was lower here" with no separate MAE computation needed.
+    """
+    g = cells[cells["component"] == component]
+    a, b = g[g["model"] == arm], g[g["model"] == base]
+    if a.empty or b.empty:
+        return {}
+
+    key_a = a["season"].astype(str) + "|" + a["cutoff"] + "|" + a["batter"].astype(str)
+    key_b = b["season"].astype(str) + "|" + b["cutoff"] + "|" + b["batter"].astype(str)
+    cell_a = a["season"].astype(str) + "|" + a["cutoff"]
+    a = a.assign(_key=key_a, _player=a["batter"], _cell=cell_a)
+    b = b.assign(_key=key_b)
+    cols_a = ["_key", "predicted", "realized_rate", "trials", "_player", "_cell"]
+    cols_b = ["_key", "predicted", "realized_rate", "trials"]
+
+    by_player = paired_abs_error_diff(a[cols_a], b[cols_b], id_col="_key", cluster_col="_player")
+    by_cell = paired_abs_error_diff(a[cols_a], b[cols_b], id_col="_key", cluster_col="_cell")
+    unclustered = paired_abs_error_diff(a[cols_a], b[cols_b], id_col="_key")
+
+    per_cell = paired_by_cell(g, arm, base)
+    wins = int((per_cell["diff"] < 0).sum())
+    losses = int((per_cell["diff"] > 0).sum())
+
+    # A clustered t computed from a single cluster is not a large number, it
+    # is not a number: the between-cluster variance it divides by has no
+    # degrees of freedom left, and floating point returns whatever the last
+    # rounding error happened to be. Scoring one (season, cutoff) pair does
+    # exactly this to the by-cell clustering, and the first run of this table
+    # duly printed t = 2.3e15 next to an honest 1.68. Anything that reads as a
+    # real statistic at a glance and is not one has to be suppressed at the
+    # source, not formatted away.
+    by_cell = _suppress_degenerate_t(by_cell)
+    by_player = _suppress_degenerate_t(by_player)
+
+    t_player = by_player["t"]
+    ratio = (unclustered["t"] / t_player
+            if np.isfinite(t_player) and t_player != 0 else float("nan"))
+
+    return {
+        "arm": arm, "base": base, "component": component,
+        "diff": by_player["diff"], "n": by_player["n"],
+        "clustered_by_player_se": by_player["se"], "clustered_by_player_t": t_player,
+        "clustered_by_player_n_clusters": by_player["n_clusters"],
+        "clustered_by_cell_se": by_cell["se"], "clustered_by_cell_t": by_cell["t"],
+        "clustered_by_cell_n_clusters": by_cell["n_clusters"],
+        "unclustered_se_WRONG": unclustered["se"], "unclustered_t_WRONG": unclustered["t"],
+        "unclustered_over_player_clustered_t_ratio": ratio,
+        "n_cells_scored": int(len(per_cell)),
+        "arm_wins_cells": wins, "arm_loses_cells": losses,
+    }
+
+
+def build_variant_comparison_table(bayes: pd.DataFrame, component: str = "k_rate",
+                                   bases: tuple[str, ...] = ("marcel_tuned", "marcel", "bayes_flat"),
+                                   ) -> pd.DataFrame:
+    """`variant_comparison` for every scored variant against every base in
+    `bases`, skipping a variant against itself (diff is identically zero and
+    says nothing)."""
+    present = set(bayes["model"].unique()) if not bayes.empty else set()
+    arms = [a for a in VARIANT_ARM_NAMES.values() if a in present]
+    rows = []
+    for arm in arms:
+        for base in bases:
+            if arm == base:
+                continue
+            r = variant_comparison(bayes, arm, base, component)
+            if r:
+                rows.append(r)
+    return pd.DataFrame(rows)
+
+
+def render_variant_table(df: pd.DataFrame) -> str:
+    """Terminal-friendly rendering of `build_variant_comparison_table`'s
+    output — the clustered-by-player t is the one to trust; the unclustered
+    one is printed only so it's visible how wrong it would be to quote."""
+    if df.empty:
+        return "(no variant comparisons — bayes checkpoint has no scored variants)"
+    # Widths come from the data, not from a guess: "bayes_walk_age" against
+    # "marcel_tuned" ran the two columns together in the first rendering.
+    arm_w = max([len(str(v)) for v in df["arm"]] + [len("arm")]) + 2
+    base_w = max([len(str(v)) for v in df["base"]] + [len("base")]) + 2
+
+    def num(v, width, places=2):
+        """`nan` prints as a dash. A suppressed t is missing, not zero, and a
+        table that renders it as a number invites someone to quote it.
+
+        Handles `None` as well as `nan` because this table is rendered from
+        the analysis payload after a JSON round-trip, and JSON has no NaN —
+        `to_json` writes `null` and it comes back as `None`.
+        """
+        if v is None:
+            return f"{'-':>{width}}"
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            return f"{'-':>{width}}"
+        return f"{'-':>{width}}" if not np.isfinite(v) else f"{v:>{width}.{places}f}"
+
+    header = (f"{'arm':<{arm_w}}{'base':<{base_w}}{'n':>6}  {'cells':>5}  "
+             f"{'diff':>9}  {'t(player)':>10}  {'t(cell)':>9}  "
+             f"{'t(none) WRONG':>14}  {'ratio':>6}  {'W-L':>9}")
+    lines = [header, "-" * len(header)]
+    for _, r in df.iterrows():
+        lines.append(
+            f"{r['arm']:<{arm_w}}{r['base']:<{base_w}}{r['n']:>6}  "
+            f"{r['n_cells_scored']:>5}  {r['diff']:>+9.5f}  "
+            f"{num(r['clustered_by_player_t'], 10)}  "
+            f"{num(r['clustered_by_cell_t'], 9)}  "
+            f"{num(r['unclustered_t_WRONG'], 14)}  "
+            f"{num(r['unclustered_over_player_clustered_t_ratio'], 6)}  "
+            f"{r['arm_wins_cells']:>4d}-{r['arm_loses_cells']:<4d}"
+        )
+    return "\n".join(lines)
+
+
 def build_analysis(cheap_path: Path, bayes_path: Path, out_json: Path) -> dict:
     cheap = pd.read_parquet(cheap_path) if cheap_path.exists() else pd.DataFrame()
     bayes = pd.read_parquet(bayes_path) if bayes_path.exists() else pd.DataFrame()
@@ -416,6 +876,15 @@ def build_analysis(cheap_path: Path, bayes_path: Path, out_json: Path) -> dict:
         payload["bayes_gap_by_calendar_date_vs_stock_marcel"] = json.loads(
             by_date_stock.to_json(orient="records"))
 
+        # BAS-69: every structural variant present in the checkpoint against
+        # marcel_tuned, stock marcel, and the flat variant (its own control),
+        # clustered by player and by cell, with the unclustered number
+        # labelled as the wrong one to quote — see variant_comparison's
+        # docstring.
+        variant_table = build_variant_comparison_table(bayes)
+        payload["bayes_variant_comparison"] = json.loads(
+            variant_table.to_json(orient="records"))
+
     out_json.parent.mkdir(parents=True, exist_ok=True)
     out_json.write_text(json.dumps(payload, indent=1))
     return payload
@@ -439,7 +908,15 @@ def main() -> None:
     ap.add_argument("--bayes-chains", type=int, default=2)
     ap.add_argument("--bayes-sampler", default="numpyro")
     ap.add_argument("--bayes-seasons", nargs="+", type=int, default=list(BAYES_SEASONS))
+    ap.add_argument("--variants", type=str, default=",".join(DEFAULT_VARIANTS),
+                    help="comma-separated bayes structural variants to sweep; "
+                         f"known: {','.join(VARIANT_ARM_NAMES)}")
     args = ap.parse_args()
+
+    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
+    if unknown:
+        ap.error(f"unknown --variants {unknown}; known: {sorted(VARIANT_ARM_NAMES)}")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     cheap_ckpt = args.out_dir / "cells_cheap.parquet"
@@ -467,8 +944,10 @@ def main() -> None:
                                 BIWEEKLY_MMDD, args.min_trials, checkpoint=bayes_ckpt,
                                 fits_path=fits_path, draws=args.bayes_draws,
                                 tune=args.bayes_tune, chains=args.bayes_chains,
-                                sampler=args.bayes_sampler, pa_dir=args.pa_dir)
-        print(f"bayes sweep: {len(bayes)} rows, {len(fits)} fits -> {bayes_ckpt}")
+                                sampler=args.bayes_sampler, pa_dir=args.pa_dir,
+                                variants=variants)
+        print(f"bayes sweep: {len(bayes)} rows, {len(fits)} fits, "
+             f"variants {variants} -> {bayes_ckpt}")
 
     if args.stage in ("analyze", "all"):
         payload = build_analysis(cheap_ckpt, bayes_ckpt, analysis_path)
@@ -477,6 +956,9 @@ def main() -> None:
                           if k in ("cheap_scope", "bayes_scope", "common_set_sizes",
                                    "bayes_overall_clustered_vs_unclustered")},
                          indent=1))
+        if payload.get("bayes_variant_comparison"):
+            print("\nvariant comparison (k_rate, pooled; t(player) is the one to trust):")
+            print(render_variant_table(pd.DataFrame(payload["bayes_variant_comparison"])))
 
 
 if __name__ == "__main__":

@@ -39,6 +39,14 @@ Design notes, in the order they matter:
   holds no matching file is always a failure (`MISSING`) — the job that fills
   it ran and produced nothing.
 
+- **Known-blocked staleness.** An artifact whose refresh is blocked by
+  something recorded and open carries `blocked_by`. It is still measured and
+  still reported as `STALE` in the table and in the summary; it just does not
+  fail the job, because a permanently red alarm is one nobody reads, and the
+  other five artifacts still need this check to mean something. `blocked_by`
+  must name the issue, and it does not excuse `MISSING` or `ERROR`: not being
+  able to rebuild a file is a different thing from the file disappearing.
+
 - **Only repo artifacts.** `statcast-ingest.yml` writes to R2 and the Modal
   volume; `modal-refit.yml` writes to Modal and W&B. Neither leaves anything in
   the repo, so this script cannot see them, and reaching into R2 would give the
@@ -92,6 +100,12 @@ class Artifact:
     field: str | None = None
     pattern: str | None = None
     ts_format: str | None = None
+    # A known, recorded reason this artifact cannot currently be refreshed —
+    # an issue reference and one line of why. Set it and a STALE reading is
+    # reported but does not fail the job; leave it None and STALE fails, which
+    # is the default and should stay the default. It does NOT excuse MISSING
+    # or ERROR: "we cannot rebuild it" is not "it may vanish".
+    blocked_by: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -125,6 +139,17 @@ class Artifact:
 # this table is the question the API cannot answer — did the job that ran
 # actually produce output — so it is allowed to be slow, and it is not allowed
 # to cry wolf.
+#
+# career-war.yml — Mondays 19:11 UTC only, one slot, no redundancy. This is
+#   not an oversight: the input is season-aggregate posteriors
+#   (data/projections/*_projections_2026.parquet) that a weekly Modal refit
+#   might change and nothing else does, so a second same-day slot would just
+#   re-commit an identical generated_at. Worst legitimate gap between good
+#   runs is 7 days (168h) if every Monday fires; one dropped Monday stretches
+#   that to 14 days (336h). Budget 216h (9 days) leaves 48h of slack for a
+#   late start — GitHub's worst measured delay elsewhere in this repo is
+#   4h25m, so two full days is already generous — while still tripping on a
+#   fully dropped week (336h) well before the next one is due. Issue #75.
 # ---------------------------------------------------------------------------
 ARTIFACTS: tuple[Artifact, ...] = (
     Artifact(
@@ -173,6 +198,24 @@ ARTIFACTS: tuple[Artifact, ...] = (
         required=True,
         workflow="market-snapshot.yml",
     ),
+    Artifact(
+        name="career WAR (ungated Bayesian)",
+        path="public/data/career_war.json",
+        kind="json_field",
+        field="generated_at",
+        budget_hours=216,
+        required=True,
+        workflow="career-war.yml",
+        # This artifact is ~150 days stale on arrival and cannot be rebuilt
+        # today: `build_career_war.py` needs `data/hitter_seasons.parquet`,
+        # which has no automated source in this repo. Holding the whole check
+        # red on a blocker with no available fix is how an alarm stops being
+        # read, and then it cannot catch the artifacts it still can. So it
+        # reports every run and does not fail the job. Delete this line the
+        # moment that input has a source — the 216h budget above is already
+        # the right one for the weekly cadence.
+        blocked_by="#87 — hitter_seasons.parquet has no automated source",
+    ),
 )
 
 
@@ -188,6 +231,8 @@ class Result:
     def failed(self) -> bool:
         if self.status == "ABSENT":
             return self.artifact.required
+        if self.status == "STALE" and self.artifact.blocked_by:
+            return False
         return self.status != "OK"
 
 
@@ -301,13 +346,23 @@ def format_report(results: list[Result], now: datetime) -> str:
                 f"{r.status} {r.artifact.name} ({r.artifact.path}, "
                 f"{r.artifact.workflow}): {r.detail}")
     failures = [r for r in results if r.failed]
+    # An artifact that is stale but `required=False` still has to appear in the
+    # summary. Printing "All N artifacts within budget" directly under a STALE
+    # line would be the same kind of quiet lie this script exists to catch.
+    noted = [r for r in results if r.status != "OK" and not r.failed]
+    lines.append("")
     if failures:
-        lines.append("")
         lines.append(f"{len(failures)} of {len(results)} artifacts out of budget. "
                      "Check the workflow's run history: GitHub drops scheduled "
                      "runs without a trace.")
+    elif noted:
+        lines.append(f"{len(results) - len(noted)} of {len(results)} artifacts "
+                     "within budget; none that can be refreshed is out of it.")
     else:
         lines.append(f"All {len(results)} artifacts within budget.")
+    for r in noted:
+        lines.append(f"  {r.artifact.name} is stale and known-blocked "
+                     f"({r.artifact.blocked_by}) — reported, not failing.")
     return "\n".join(lines)
 
 

@@ -555,6 +555,58 @@ class TestPairedDiff:
         assert big["diff"] < 0
         assert big["se"] < small["se"]
 
+    def test_clustered_se_by_hand(self):
+        """Worked by hand, not just checked against whatever the code
+        currently returns (see BAS-69's clustered-vs-unclustered work in
+        docs/densified-intraseason-backtest.md, which is what this same
+        `cluster_col` argument powers).
+
+        Two clusters of two rows each. `predicted_b == realized_rate`
+        everywhere, so the paired residual is exactly `|predicted_a -
+        realized_rate|`: 0.01 for both rows of cluster A, 0.05 for both rows
+        of cluster B. Every row carries weight (trials) 100.
+
+            mean = (100*0.01*2 + 100*0.05*2) / 400 = 0.03
+            resid_i = 100*(d_i - 0.03) = [-2, -2, 2, 2]   (rows 1-4)
+
+            unclustered: ss = sum(resid_i^2) = 4+4+4+4 = 16
+                         se = sqrt(16)/400 = 0.01, t = 0.03/0.01 = 3.0,
+                         n_clusters = 4 (one per row)
+
+            clustered (sum resid within each cluster first): [-4, 4]
+                         ss = 16+16 = 32
+                         se = sqrt(32)/400 ~= 0.0141421, t ~= 2.12132,
+                         n_clusters = 2
+
+        Clustering *inflates* the SE here (0.01 -> ~0.0141) because the two
+        rows sharing a cluster share the same residual sign and size — the
+        realistic case (the same hitter scored at several cutoffs is not
+        several independent draws about him), and exactly the direction
+        docs/densified-intraseason-backtest.md's real numbers move in
+        (unclustered t 3.71x the clustered one there).
+        """
+        a = pd.DataFrame({
+            "id": [1, 2, 3, 4], "cluster": ["A", "A", "B", "B"],
+            "predicted": [0.21, 0.19, 0.25, 0.15],
+            "realized_rate": [0.20, 0.20, 0.20, 0.20],
+            "trials": [100.0, 100.0, 100.0, 100.0],
+        })
+        b = a.assign(predicted=0.20)[["id", "predicted", "realized_rate", "trials"]]
+
+        unclustered = tuning.paired_abs_error_diff(a, b, id_col="id")
+        clustered = tuning.paired_abs_error_diff(a, b, id_col="id", cluster_col="cluster")
+
+        assert unclustered["diff"] == pytest.approx(0.03)
+        assert unclustered["se"] == pytest.approx(0.01)
+        assert unclustered["t"] == pytest.approx(3.0)
+        assert unclustered["n_clusters"] == 4
+
+        assert clustered["diff"] == pytest.approx(0.03)
+        assert clustered["se"] == pytest.approx(np.sqrt(32) / 400)
+        assert clustered["t"] == pytest.approx(0.03 / (np.sqrt(32) / 400))
+        assert clustered["n_clusters"] == 2
+        assert clustered["se"] > unclustered["se"]
+
 
 # --- the search ---------------------------------------------------------------
 

@@ -267,5 +267,10 @@
       "ZiPS": 0.784,
       "Depth Charts": 0.839
     }
-  }
+  },
+  "generated_at": "2026-09-08T19:40:27.527027+00:00",
+  "git_sha": "6b2e148eb7689ce7540c81f17bc28e461729b4fe",
+  "engine": "bayes_preseason",
+  "gated": false,
+  "framing": "\"Bayesian\" here and in comparison.json/our_model.json/aging_curves.json is the same ungated preseason component set career_war.json is built from \u2014 it has not beaten tuned Marcel in the harness. See Model Accuracy, or career_war.json's own `method` field, for the numbers."
 }

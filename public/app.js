@@ -99,6 +99,18 @@ function fmt(v, stat) {
 function renderOverview() {
   const { comparison, summary } = DATA;
 
+  // Same provenance career_war.json carries (issue #75): "Bayesian" on this
+  // page and the Comparison/Aging pages is the ungated preseason component
+  // set, not the live rest-of-season number the player pages lead with.
+  const framingHost = document.getElementById("overview-framing");
+  if (summary?.framing) {
+    framingHost.innerHTML = `<p class="ros-framing">` +
+      `<span class="badge-ungated" title="has not beaten its baseline in the harness — docs/architecture.md §3">research, ungated</span> ` +
+      `${esc(summary.framing)} ` +
+      `<a href="#" data-page="accuracy" class="ros-link">Model Accuracy →</a></p>`;
+    wireROSLinks(framingHost);
+  }
+
   // Metrics
   const corr_stea = summary.correlations?.woba?.Steamer || 0;
   const corr_zips = summary.correlations?.woba?.ZiPS || 0;
@@ -430,14 +442,43 @@ function renderPlayerCard(player) {
 
   // Career WAR chart
   const mlbam = player.batter;
-  const career = DATA.careerWar?.[mlbam];
+  const career = careerWarPlayer(mlbam);
   const careerCard = document.getElementById("career-war-card");
   if (career) {
     careerCard.style.display = "block";
+    const framingHost = document.getElementById("career-war-framing");
+    framingHost.innerHTML = careerWarFramingHTML();
+    wireROSLinks(framingHost);
     renderCareerWAR(career);
   } else {
     careerCard.style.display = "none";
   }
+}
+
+// The career WAR file carries its own provenance (issue #75): this is the
+// only place on the site that consumes a posterior rather than a point
+// estimate, and it renders on the same player page as the gated
+// rest-of-season number, so the label has to be as visible as the chart.
+// `players` is the current, documented shape (scripts/build_career_war.py);
+// a bare mlbam-keyed object is the pre-#75 shape and is read as a fallback
+// so a checkout that has not regenerated the file yet still renders.
+function careerWarDoc() {
+  return DATA.careerWar || null;
+}
+
+function careerWarPlayer(mlbam) {
+  const doc = careerWarDoc();
+  if (!doc) return null;
+  return (doc.players || doc)[mlbam] || null;
+}
+
+function careerWarFramingHTML() {
+  const doc = careerWarDoc();
+  if (!doc || !doc.framing) return "";
+  return `<p class="ros-framing"><span class="badge-ungated" ` +
+    `title="has not beaten its baseline in the harness — docs/architecture.md §3">research, ungated</span> ` +
+    `${esc(doc.framing)} ` +
+    `<a href="#" data-page="accuracy" class="ros-link">Model Accuracy →</a></p>`;
 }
 
 function renderComponentBars(player) {

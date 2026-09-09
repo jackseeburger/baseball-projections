@@ -61,6 +61,7 @@ ALL_FRESH = {
     "accuracy page data": 5,
     "market snapshot archive": 3,
     "market latest.json": 3,
+    "career WAR (ungated Bayesian)": 5,
 }
 
 
@@ -212,7 +213,7 @@ def test_report_names_the_workflow_to_go_look_at(tmp_path, capsys):
     fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()])
     out = capsys.readouterr().out
     assert "STALE" in out and "market-snapshot.yml" in out
-    assert "1 of 5 artifacts out of budget" in out
+    assert "1 of 6 artifacts out of budget" in out
 
 
 def test_naive_and_zulu_timestamps_are_read_as_utc():
@@ -224,6 +225,58 @@ def test_naive_and_zulu_timestamps_are_read_as_utc():
         datetime(2026, 9, 3, 0, 58, 55, tzinfo=timezone.utc)
 
 
+def test_career_war_just_inside_its_weekly_budget_is_ok(tmp_path):
+    # 215h59m against the 216h (9-day) budget: a run that landed a couple of
+    # days late off a weekly Monday slot is not the alarm.
+    write_tree(tmp_path, {**ALL_FRESH, "career WAR (ungated Bayesian)": 215.98})
+    result = next(r for r in fresh.check_all(tmp_path, NOW)
+                  if r.artifact.name == "career WAR (ungated Bayesian)")
+    assert result.status == "OK"
+
+
+def test_career_war_missed_week_is_stale(tmp_path):
+    # One dropped Monday: the gap to the next good run is 14 days (336h),
+    # well past the 216h budget. It is still reported STALE — but while its
+    # rebuild is blocked (#87) it does not fail the job, so the exit code
+    # stays 0 and the other five artifacts keep a check that means something.
+    write_tree(tmp_path, {**ALL_FRESH, "career WAR (ungated Bayesian)": 336})
+    result = next(r for r in fresh.check_all(tmp_path, NOW)
+                  if r.artifact.name == "career WAR (ungated Bayesian)")
+    assert result.status == "STALE"
+    assert result.failed is False
+    assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 0
+
+
+def test_blocked_by_only_excuses_staleness_not_absence(tmp_path):
+    """`blocked_by` says "we cannot rebuild it", not "it may vanish".
+
+    The distinction is the whole reason it is a separate field from
+    `required`: an artifact we cannot refresh is a known, tracked limitation,
+    while an artifact whose file has disappeared is a regression that still
+    has to fail even when the rebuild is blocked.
+    """
+    art = next(a for a in fresh.ARTIFACTS if a.blocked_by)
+    assert art.required is True
+    assert fresh.Result(art, "STALE").failed is False
+    assert fresh.Result(art, "MISSING").failed is True
+    assert fresh.Result(art, "ERROR").failed is True
+    assert fresh.Result(art, "ABSENT").failed is True
+
+
+def test_a_blocked_artifact_names_the_issue_that_blocks_it():
+    """A `blocked_by` with no issue reference is an excuse, not a record."""
+    for art in fresh.ARTIFACTS:
+        if art.blocked_by:
+            assert "#" in art.blocked_by, art.name
+            assert len(art.blocked_by) > 10, art.name
+
+
+def test_staleness_that_is_not_blocked_still_fails(tmp_path):
+    """The budget logic itself is unchanged — only the blocked entry is exempt."""
+    write_tree(tmp_path, {**ALL_FRESH, "playoff odds board": 100})
+    assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 1
+
+
 def test_budgets_are_under_a_day_where_the_job_runs_more_than_daily():
     """A budget of 24h or more could never catch a whole missed day."""
     for artifact in fresh.ARTIFACTS:
@@ -233,6 +286,10 @@ def test_budgets_are_under_a_day_where_the_job_runs_more_than_daily():
             # Daily job: a missed day is ~48h, so the budget must sit between
             # one clean day and two.
             assert 24 < artifact.budget_hours < 48
+        if artifact.workflow == "career-war.yml":
+            # Weekly, single-slot job: a missed week is ~336h, so the budget
+            # must sit between one clean week and two.
+            assert 168 < artifact.budget_hours < 336
 
 
 def test_table_matches_this_checkout():

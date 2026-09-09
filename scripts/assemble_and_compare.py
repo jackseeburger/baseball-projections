@@ -1,13 +1,27 @@
 #!/usr/bin/env python3
-"""Assemble our model projections and create comparison dataset with FanGraphs systems."""
+"""Assemble our model projections and create comparison dataset with FanGraphs systems.
 
+Writes our_model_2026.parquet and comparison_2026.parquet — the sources
+scripts/export_json.py turns into public/data/our_model.json,
+public/data/comparison.json, public/data/aging_curves.json and
+public/data/summary.json. These are the same ungated preseason Bayesian
+component projections build_career_war.py reads (issue #75): a K% model
+that has not beaten tuned Marcel in the harness (docs/architecture.md §3).
+
+Paths used to point at a pre-migration multi-repo layout
+(/home/hermes/projects/baseball-assembly, /home/hermes/projects/
+baseball-dashboard) that does not exist in this repo or any checkout of it —
+both our own component projections and the FanGraphs comparison files live
+under data/projections/ here, so both old directories collapse to one.
+"""
 import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
 
-PROJ_DIR = Path("/home/hermes/projects/baseball-assembly/data/projections")
-FG_DIR = Path("/home/hermes/projects/baseball-dashboard/data/projections")
+BASE = Path(__file__).resolve().parent.parent
+PROJ_DIR = BASE / "data" / "projections"
+FG_DIR = PROJ_DIR
 OUT_DIR = FG_DIR
 
 # ══════════════════════════════════════════════════════════════════════

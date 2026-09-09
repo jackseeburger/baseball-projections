@@ -1,0 +1,117 @@
+name: Career WAR (ungated Bayesian research)
+
+# Builds the site's only posterior-consuming product (issue #75) and the
+# four files that share its inputs: public/data/career_war.json,
+# our_model.json, comparison.json, aging_curves.json and summary.json.
+#
+# Every one of these reads the *preseason* Bayesian component posteriors
+# (data/projections/*_projections_2026.parquet) — the same components
+# docs/architecture.md §3 keeps out of the odds chain and out of the site's
+# live rest-of-season projection because they lose to tuned Marcel in the
+# harness (docs/ros-projections.md, docs/densified-intraseason-backtest.md).
+# They are shipped anyway, labelled, as research (issue #75 decision (b)):
+# the posterior bands are the only real uncertainty quantification the site
+# serves, and throwing them away to match the gated engine was the more
+# expensive fix for a smaller product.
+#
+# WHY WEEKLY, NOT NIGHTLY: every input here is a season-aggregate posterior.
+# The only thing that can change data/projections/*_projections_2026.parquet
+# is a Modal refit (modal-refit.yml, Mondays 07:29 UTC) followed by a human
+# committing the retrained parquet — there is no path from Modal's volume
+# back into this repo's git history yet (a real gap, not something this
+# workflow papers over: see the PR that added this file). Running more often
+# than that cadence would just re-stamp an identical generated_at against
+# byte-identical inputs (np.random.seed(42) in build_career_war.py makes the
+# draws themselves reproducible too), which is not free — it is a commit
+# with nothing in it every time it runs. Monday, after the refit trigger and
+# spaced more than an hour from every slot in the data-commits group below,
+# is the cadence that actually matches how often the inputs can move.
+#
+# WHY 19:11 UTC AND NOT A ROUND MINUTE — see nightly-odds.yml and
+# docs/automation.md: GitHub's schedule event is best-effort and the start
+# of an hour is its worst window, so every slot in this repo is odd and
+# off the quarter-hour. 19:11 also sits more than an hour from every other
+# data-commits slot that runs on a Monday (07:29 refit, 09:23/12:07/14:53
+# nightly, 10:41/16:37/23:11 market, 13:19 statcast).
+on:
+  schedule:
+    - cron: "11 19 * * 1"    # Mondays 19:11 UTC — weekly, see above
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+# Same group as the other jobs that commit to public/data/ and data/ — see
+# docs/automation.md on why a shared group with cancel-in-progress: false
+# is what keeps two same-day commits from racing each other.
+concurrency:
+  group: data-commits
+  cancel-in-progress: false
+
+jobs:
+  career-war:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-ci.txt
+
+      # Best-effort refresh of data/parquet/hitter_seasons.parquet (career
+      # actual-WAR history — the only input build_career_war.py needs that
+      # this workflow does not already have committed). It is gitignored on
+      # purpose (large, and meant to be fetched rather than tracked), and
+      # src/data/historical_pipeline.py's FanGraphs scraper returns 403 on
+      # every request from this repo's own Claude Code sandbox — confirmed
+      # while building this workflow, not assumed. Whether a GitHub-hosted
+      # runner's IPs fare better is genuinely unknown, so this step is
+      # allowed to fail: build_career_war.py checks for the file itself and
+      # skips its rebuild without failing the job when it is absent, leaving
+      # the last committed career_war.json in place (same "produced nothing"
+      # contract as build_ros_projections.py and build_accuracy_json.py).
+      # A career_war.json that goes stale because this keeps failing is
+      # exactly what scripts/check_freshness.py's new "career WAR" row
+      # exists to surface — see that script for the budget.
+      - name: Refresh historical hitter-WAR data (best effort)
+        continue-on-error: true
+        run: |
+          pip install "pybaseball>=2.2.7"
+          python -m src.data.historical_pipeline
+
+      # The only file on the site built from a posterior rather than a point
+      # estimate (issue #75). Exits 0 whether or not it wrote anything.
+      - name: Build career WAR projections
+        run: python scripts/build_career_war.py
+
+      # Same ungated preseason components, reassembled and compared against
+      # Steamer/ZiPS/Depth Charts for the Overview/Comparison/Aging pages.
+      # Needs nothing build_career_war.py did not already load; kept as two
+      # scripts rather than merged into one because assemble_and_compare.py
+      # writes committed parquet (data/projections/) that export_json.py
+      # then turns into the JSON the site reads, and other tooling may want
+      # the parquet on its own.
+      - name: Rebuild comparison dataset and export dashboard JSON
+        run: |
+          python scripts/assemble_and_compare.py
+          python scripts/export_json.py
+
+      - name: Commit if changed
+        run: |
+          git config user.name "career-war-bot"
+          git config user.email "career-war-bot@users.noreply.github.com"
+          git add public/data/career_war.json public/data/our_model.json \
+                  public/data/comparison.json public/data/aging_curves.json \
+                  public/data/summary.json \
+                  data/projections/our_model_2026.parquet \
+                  data/projections/comparison_2026.parquet
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "data: career WAR + Bayesian comparison snapshot $(date -u +%F)"
+            git pull --rebase origin main
+            git push
+          fi

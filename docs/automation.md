@@ -198,7 +198,11 @@ observed.
 work happened, not that it was correct; that is the backtest harness's job. Nor
 does anything yet age the R2 and Modal outputs of `statcast-ingest.yml` and
 `modal-refit.yml`: those two are now watched for *did it run*, but a refit that
-runs and writes a garbage posterior is still invisible. And the watchdogs are not
+runs and writes a garbage posterior is still invisible. `modal-refit.yml` had a
+sharper version of that problem until issue #86: "did it run" said nothing about
+*which model* it ran, and the production refit had quietly drifted from the one
+the harness gates — see [modal-src-divergence.md](modal-src-divergence.md). And
+the watchdogs are not
 symmetric: `schedule-watchdog.yml` watches `freshness-check.yml` like any other
 scheduled workflow, so if the age check goes quiet we hear about it — but nothing
 watches the schedule watchdog itself, since the run doing the asking is itself a
@@ -266,8 +270,11 @@ all public), which is why the simulator, site, nightly job, and market archive
 shipped before any key existed. Both scheduled jobs run on GitHub Actions, not
 Modal, for that reason; Modal is reserved for Bayesian refits.
 
-Two GitHub Actions jobs commit data to `main` today, serialized by a shared
-`concurrency` group:
+Three GitHub Actions jobs commit data to `main` today (`nightly-odds.yml`,
+`market-snapshot.yml`, `career-war.yml`), serialized by a shared
+`concurrency` group; `statcast-ingest.yml` and `modal-refit.yml` write to R2,
+the Modal volume and W&B instead and are in the table below only because
+they share the same odd-minute scheduling discipline:
 
 | Workflow | Schedule (UTC) | Writes |
 |---|---|---|
@@ -275,6 +282,7 @@ Two GitHub Actions jobs commit data to `main` today, serialized by a shared
 | `market-snapshot.yml` | 10:41, 16:37, 23:11 | `data/market/snapshots/<ts>.jsonl.gz` (immutable) + `public/data/market/latest.json` |
 | `statcast-ingest.yml` | 13:19 | `statcast/statcast_<year>.parquet` and `pa_outcomes/pa_outcomes_<year>.parquet` in R2, then the Modal volume |
 | `modal-refit.yml` | Mondays 07:29 | Modal training runs; diagnostics to W&B |
+| `career-war.yml` | Mondays 19:11 | `public/data/career_war.json`, `our_model.json`, `comparison.json`, `aging_curves.json`, `summary.json`; `data/projections/our_model_2026.parquet` + `comparison_2026.parquet` |
 
 Every minute above is odd and non-round on purpose, and no two production slots
 are within an hour of each other; see the failure write-up above. Two watchdogs
