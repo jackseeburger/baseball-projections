@@ -106,8 +106,8 @@ def test_zone_relative_height_is_in_the_batters_own_units():
 def test_plate_x_is_mirrored_to_the_arm_and_to_the_batters_box():
     """Away-from-the-batter is the same pitch to either side of the plate."""
     r = feats([pitch(stand="R", plate_x=-0.7)])
-    l = feats([pitch(stand="L", plate_x=0.7)])
-    assert r["plate_x_bat"].iloc[0] == pytest.approx(l["plate_x_bat"].iloc[0])
+    lhs = feats([pitch(stand="L", plate_x=0.7)])
+    assert r["plate_x_bat"].iloc[0] == pytest.approx(lhs["plate_x_bat"].iloc[0])
     assert r["plate_x_bat"].iloc[0] > 0
     # The arm-side mirror is the pitcher's, and both of these are righties.
     assert r["plate_x_arm"].iloc[0] == pytest.approx(-0.7)
