@@ -199,6 +199,13 @@ reasoning under-rated how much movement says about a home run.
   consumes.
 - The location arm beats stuff on every season (whiff .4416 vs .4490 in
   2026): roughly a third of the reachable signal is command (BAS-76).
+- **Location is not excluded from the stuff feature set in effect.**
+  Release position plus the velocity and acceleration vector determine the
+  trajectory, so plate location is recoverable from them; BAS-76 measured
+  this directly — the stuff arm reaches AUC .966 on
+  called-strike-given-taken, a target that is almost purely locational.
+  "No location" in this file means no `plate_x`/`plate_z` column, not no
+  location. (BAS-76, `docs/pitching-command.md`.)
 
 ### What ships
 
