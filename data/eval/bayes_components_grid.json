@@ -1,0 +1,5310 @@
+{
+ "ticket": "BAS-73",
+ "scored": "2026-09-09",
+ "scope": {
+  "seasons": [
+   2022,
+   2024,
+   2025,
+   2026
+  ],
+  "n_cutoffs": 48,
+  "components": [
+   "bb_rate",
+   "hr_rate",
+   "k_rate"
+  ]
+ },
+ "common_set_sizes": {
+  "2022": 256,
+  "2024": 244,
+  "2025": 233,
+  "2026": 152
+ },
+ "variant_comparison": {
+  "bb_rate": [
+   {
+    "arm": "bayes_flat",
+    "base": "marcel_tuned",
+    "component": "bb_rate",
+    "diff": 0.0002598955,
+    "n": 14467,
+    "clustered_by_player_se": 0.0001551655,
+    "clustered_by_player_t": 1.6749565069,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 9.95297e-05,
+    "clustered_by_cell_t": 2.6112353256,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 6.09811e-05,
+    "unclustered_t_WRONG": 4.2619048296,
+    "unclustered_over_player_clustered_t_ratio": 2.5444868641,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 17,
+    "arm_loses_cells": 31
+   },
+   {
+    "arm": "bayes_flat",
+    "base": "marcel",
+    "component": "bb_rate",
+    "diff": 0.0002598955,
+    "n": 14467,
+    "clustered_by_player_se": 0.0001551655,
+    "clustered_by_player_t": 1.6749565069,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 9.95297e-05,
+    "clustered_by_cell_t": 2.6112353256,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 6.09811e-05,
+    "unclustered_t_WRONG": 4.2619048296,
+    "unclustered_over_player_clustered_t_ratio": 2.5444868641,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 17,
+    "arm_loses_cells": 31
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel_tuned",
+    "component": "bb_rate",
+    "diff": 0.0003255687,
+    "n": 14467,
+    "clustered_by_player_se": 0.0001549896,
+    "clustered_by_player_t": 2.1005840457,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 0.000100967,
+    "clustered_by_cell_t": 3.2245048401,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 6.23913e-05,
+    "unclustered_t_WRONG": 5.2181763603,
+    "unclustered_over_player_clustered_t_ratio": 2.4841550002,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 22,
+    "arm_loses_cells": 26
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel",
+    "component": "bb_rate",
+    "diff": 0.0003255687,
+    "n": 14467,
+    "clustered_by_player_se": 0.0001549896,
+    "clustered_by_player_t": 2.1005840457,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 0.000100967,
+    "clustered_by_cell_t": 3.2245048401,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 6.23913e-05,
+    "unclustered_t_WRONG": 5.2181763603,
+    "unclustered_over_player_clustered_t_ratio": 2.4841550002,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 22,
+    "arm_loses_cells": 26
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "bayes_flat",
+    "component": "bb_rate",
+    "diff": 6.56732e-05,
+    "n": 14467,
+    "clustered_by_player_se": 0.0001060395,
+    "clustered_by_player_t": 0.6193279011,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 3.24707e-05,
+    "clustered_by_cell_t": 2.022538303,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 4.2723e-05,
+    "unclustered_t_WRONG": 1.5371858552,
+    "unclustered_over_player_clustered_t_ratio": 2.4820226126,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 23,
+    "arm_loses_cells": 25
+   }
+  ],
+  "hr_rate": [
+   {
+    "arm": "bayes_flat",
+    "base": "marcel_tuned",
+    "component": "hr_rate",
+    "diff": 7.54545e-05,
+    "n": 14467,
+    "clustered_by_player_se": 6.47002e-05,
+    "clustered_by_player_t": 1.1662170973,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 1.98041e-05,
+    "clustered_by_cell_t": 3.810049201,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 2.50585e-05,
+    "unclustered_t_WRONG": 3.0111374586,
+    "unclustered_over_player_clustered_t_ratio": 2.5819699142,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 17,
+    "arm_loses_cells": 31
+   },
+   {
+    "arm": "bayes_flat",
+    "base": "marcel",
+    "component": "hr_rate",
+    "diff": 9.99115e-05,
+    "n": 14467,
+    "clustered_by_player_se": 8.4119e-05,
+    "clustered_by_player_t": 1.1877407524,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 4.91684e-05,
+    "clustered_by_cell_t": 2.0320278174,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 3.15475e-05,
+    "unclustered_t_WRONG": 3.1670232667,
+    "unclustered_over_player_clustered_t_ratio": 2.6664263732,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 13,
+    "arm_loses_cells": 35
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel_tuned",
+    "component": "hr_rate",
+    "diff": 1.67555e-05,
+    "n": 14467,
+    "clustered_by_player_se": 5.57727e-05,
+    "clustered_by_player_t": 0.3004245669,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 2.07403e-05,
+    "clustered_by_cell_t": 0.8078724985,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 2.21357e-05,
+    "unclustered_t_WRONG": 0.7569460542,
+    "unclustered_over_player_clustered_t_ratio": 2.5195877352,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 26,
+    "arm_loses_cells": 22
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "marcel",
+    "component": "hr_rate",
+    "diff": 4.12125e-05,
+    "n": 14467,
+    "clustered_by_player_se": 6.96303e-05,
+    "clustered_by_player_t": 0.5918763618,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 5.07512e-05,
+    "clustered_by_cell_t": 0.8120495503,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 2.75793e-05,
+    "unclustered_t_WRONG": 1.4943302745,
+    "unclustered_over_player_clustered_t_ratio": 2.5247338313,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 14,
+    "arm_loses_cells": 34
+   },
+   {
+    "arm": "bayes_walk",
+    "base": "bayes_flat",
+    "component": "hr_rate",
+    "diff": -5.8699e-05,
+    "n": 14467,
+    "clustered_by_player_se": 4.89872e-05,
+    "clustered_by_player_t": -1.1982534712,
+    "clustered_by_player_n_clusters": 688,
+    "clustered_by_cell_se": 2.31376e-05,
+    "clustered_by_cell_t": -2.5369534506,
+    "clustered_by_cell_n_clusters": 48,
+    "unclustered_se_WRONG": 2.0618e-05,
+    "unclustered_t_WRONG": -2.8469814546,
+    "unclustered_over_player_clustered_t_ratio": 2.3759425891,
+    "n_cells_scored": 48,
+    "arm_wins_cells": 26,
+    "arm_loses_cells": 22
+   }
+  ]
+ },
+ "fits": [
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-04-15",
+   "partial_season": 2022,
+   "elapsed_s": 117.6,
+   "diagnostics": {
+    "max_rhat": 1.0179272982156342,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 324.6734417431207,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6655883227458915,
+     0.63957922373552
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 368652,
+   "n_batters": 758
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-04-15",
+   "partial_season": 2022,
+   "elapsed_s": 180.6,
+   "diagnostics": {
+    "max_rhat": 1.02402977841039,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 205.29320248744924,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6672565084642289,
+     0.7617250876975653
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15560523517729502,
+     "sd": 0.018613306890263314
+    }
+   },
+   "n_pa": 368652,
+   "n_batters": 758
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-04-29",
+   "partial_season": 2022,
+   "elapsed_s": 80.4,
+   "diagnostics": {
+    "max_rhat": 1.030120339830508,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 231.85262345848332,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6182033815127069,
+     0.7409015291891916
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 382364,
+   "n_batters": 767
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-04-29",
+   "partial_season": 2022,
+   "elapsed_s": 76.5,
+   "diagnostics": {
+    "max_rhat": 1.031549815700259,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 182.94173620768882,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6938443390247633,
+     0.738065982897971
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15503736762339862,
+     "sd": 0.018313216940193125
+    }
+   },
+   "n_pa": 382364,
+   "n_batters": 767
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-01",
+   "partial_season": 2022,
+   "elapsed_s": 53.4,
+   "diagnostics": {
+    "max_rhat": 1.020005417545729,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 211.640685963504,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5949635198886508,
+     0.6991504377617617
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 384660,
+   "n_batters": 770
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-01",
+   "partial_season": 2022,
+   "elapsed_s": 78.6,
+   "diagnostics": {
+    "max_rhat": 1.0248310177816868,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 235.6758695292672,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6174357715377129,
+     0.7007531296052977
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15274803159579,
+     "sd": 0.018171752634413257
+    }
+   },
+   "n_pa": 384660,
+   "n_batters": 770
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-13",
+   "partial_season": 2022,
+   "elapsed_s": 59.8,
+   "diagnostics": {
+    "max_rhat": 1.022054610919099,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 279.0236479103713,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6832927100145867,
+     0.6232246786170513
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 396057,
+   "n_batters": 777
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-13",
+   "partial_season": 2022,
+   "elapsed_s": 109.7,
+   "diagnostics": {
+    "max_rhat": 1.0235866960861801,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 221.06967544423674,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6005529785101553,
+     0.7380608908561914
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1509324569087085,
+     "sd": 0.016812399987694526
+    }
+   },
+   "n_pa": 396057,
+   "n_batters": 777
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-27",
+   "partial_season": 2022,
+   "elapsed_s": 79.0,
+   "diagnostics": {
+    "max_rhat": 1.021797947120374,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 277.91964625727303,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6299829416027356,
+     0.6830643944466824
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410853,
+   "n_batters": 791
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-27",
+   "partial_season": 2022,
+   "elapsed_s": 129.5,
+   "diagnostics": {
+    "max_rhat": 1.0352649884421472,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 217.7948141345324,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.672840980256961,
+     0.7331021118539163
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13924082154873635,
+     "sd": 0.01695194114550154
+    }
+   },
+   "n_pa": 410853,
+   "n_batters": 791
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-06-10",
+   "partial_season": 2022,
+   "elapsed_s": 62.3,
+   "diagnostics": {
+    "max_rhat": 1.023302450557391,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 211.82357451360525,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5755441135671145,
+     0.6891341355196716
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 425475,
+   "n_batters": 803
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-06-10",
+   "partial_season": 2022,
+   "elapsed_s": 89.2,
+   "diagnostics": {
+    "max_rhat": 1.0274563162562658,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 193.59296780003044,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6415669498110039,
+     0.7104608480770145
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1361979249041554,
+     "sd": 0.016326801521918233
+    }
+   },
+   "n_pa": 425475,
+   "n_batters": 803
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-06-24",
+   "partial_season": 2022,
+   "elapsed_s": 62.5,
+   "diagnostics": {
+    "max_rhat": 1.0210660921071095,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 211.10086502024504,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6300086671706178,
+     0.756354173682608
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 439854,
+   "n_batters": 807
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-06-24",
+   "partial_season": 2022,
+   "elapsed_s": 95.6,
+   "diagnostics": {
+    "max_rhat": 1.0263259408084993,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 185.52511190672223,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7329974503549036,
+     0.6904509967391677
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13301414915085744,
+     "sd": 0.014848818599779982
+    }
+   },
+   "n_pa": 439854,
+   "n_batters": 807
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-01",
+   "partial_season": 2022,
+   "elapsed_s": 64.3,
+   "diagnostics": {
+    "max_rhat": 1.0154336787108167,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 190.62156436508502,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6278214600949494,
+     0.7647217725269227
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 446614,
+   "n_batters": 809
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-01",
+   "partial_season": 2022,
+   "elapsed_s": 96.3,
+   "diagnostics": {
+    "max_rhat": 1.0220093587397763,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 248.27223803578906,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6964533756547447,
+     0.750682519777514
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1343733640995613,
+     "sd": 0.014314944419215495
+    }
+   },
+   "n_pa": 446614,
+   "n_batters": 809
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-08",
+   "partial_season": 2022,
+   "elapsed_s": 56.0,
+   "diagnostics": {
+    "max_rhat": 1.0247314316993819,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 196.55821149610173,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5612187269947605,
+     0.7705103287740299
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 454262,
+   "n_batters": 815
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-08",
+   "partial_season": 2022,
+   "elapsed_s": 85.0,
+   "diagnostics": {
+    "max_rhat": 1.0220572908451648,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 152.46614502755202,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6689129561734344,
+     0.7043459150624256
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1345645850037663,
+     "sd": 0.01473624058575328
+    }
+   },
+   "n_pa": 454262,
+   "n_batters": 815
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-22",
+   "partial_season": 2022,
+   "elapsed_s": 54.8,
+   "diagnostics": {
+    "max_rhat": 1.0193554357646553,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 187.31685913619958,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6087190398836662,
+     0.7514466725081852
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 465287,
+   "n_batters": 821
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-22",
+   "partial_season": 2022,
+   "elapsed_s": 86.7,
+   "diagnostics": {
+    "max_rhat": 1.0218902169838293,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 204.8415296059027,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6589907046562375,
+     0.721143218673716
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13894077024254267,
+     "sd": 0.014439199976091055
+    }
+   },
+   "n_pa": 465287,
+   "n_batters": 821
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-08-01",
+   "partial_season": 2022,
+   "elapsed_s": 57.5,
+   "diagnostics": {
+    "max_rhat": 1.0161766013043803,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 222.6229639456643,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6350026886411845,
+     0.7448567568918624
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 475787,
+   "n_batters": 825
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-08-01",
+   "partial_season": 2022,
+   "elapsed_s": 86.7,
+   "diagnostics": {
+    "max_rhat": 1.0282758901002342,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 219.10977956648006,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6813676458748147,
+     0.7655501146057334
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13672315501257415,
+     "sd": 0.013894115213035078
+    }
+   },
+   "n_pa": 475787,
+   "n_batters": 825
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-08-05",
+   "partial_season": 2022,
+   "elapsed_s": 57.3,
+   "diagnostics": {
+    "max_rhat": 1.0208279880680966,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 261.7142491134477,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5758798938187432,
+     0.7382390802661706
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 479666,
+   "n_batters": 828
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-08-05",
+   "partial_season": 2022,
+   "elapsed_s": 83.9,
+   "diagnostics": {
+    "max_rhat": 1.023679664690699,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 141.44554691965712,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6419665390251803,
+     0.7179134274103812
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13785483475060142,
+     "sd": 0.013278085433525346
+    }
+   },
+   "n_pa": 479666,
+   "n_batters": 828
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-04-15",
+   "partial_season": 2022,
+   "elapsed_s": 47.7,
+   "diagnostics": {
+    "max_rhat": 1.0200351832277588,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 236.99397035471503,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6521097111690968,
+     0.6168396464104926
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 368652,
+   "n_batters": 758
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-04-15",
+   "partial_season": 2022,
+   "elapsed_s": 59.6,
+   "diagnostics": {
+    "max_rhat": 1.0236073625378268,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 179.92902852160788,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.749229093146655,
+     0.7400614469948056
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.24354574133199366,
+     "sd": 0.027389102327147734
+    }
+   },
+   "n_pa": 368652,
+   "n_batters": 758
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-04-29",
+   "partial_season": 2022,
+   "elapsed_s": 36.7,
+   "diagnostics": {
+    "max_rhat": 1.031560926984009,
+    "max_rhat_var": "sigma_ability",
+    "min_ess_bulk": 196.4652809129682,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6412698840012615,
+     0.6324250697532915
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 382364,
+   "n_batters": 767
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-04-29",
+   "partial_season": 2022,
+   "elapsed_s": 57.7,
+   "diagnostics": {
+    "max_rhat": 1.0200740534698627,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 177.18397779326028,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7276013645902444,
+     0.7717819791650803
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.22562508317142357,
+     "sd": 0.02724037945480491
+    }
+   },
+   "n_pa": 382364,
+   "n_batters": 767
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-01",
+   "partial_season": 2022,
+   "elapsed_s": 43.8,
+   "diagnostics": {
+    "max_rhat": 1.0199316853939389,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 267.95940855909197,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.689304240030203,
+     0.6313821128856362
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 384660,
+   "n_batters": 770
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-01",
+   "partial_season": 2022,
+   "elapsed_s": 65.0,
+   "diagnostics": {
+    "max_rhat": 1.023708754366148,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 202.6118135826135,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6875151091753308,
+     0.7631530716851738
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.22798488647240187,
+     "sd": 0.02805117862978978
+    }
+   },
+   "n_pa": 384660,
+   "n_batters": 770
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-13",
+   "partial_season": 2022,
+   "elapsed_s": 41.3,
+   "diagnostics": {
+    "max_rhat": 1.0279825383079193,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 178.90464570366666,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.680921219340649,
+     0.6355218872051241
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 396057,
+   "n_batters": 777
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-13",
+   "partial_season": 2022,
+   "elapsed_s": 68.4,
+   "diagnostics": {
+    "max_rhat": 1.038207392081253,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 160.0301653469359,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6520607006809241,
+     0.7297053003027856
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.2213342286604166,
+     "sd": 0.028876150811586586
+    }
+   },
+   "n_pa": 396057,
+   "n_batters": 777
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-05-27",
+   "partial_season": 2022,
+   "elapsed_s": 47.6,
+   "diagnostics": {
+    "max_rhat": 1.0196547843633468,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 248.90591723028555,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6330454114641271,
+     0.5921670839520101
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410853,
+   "n_batters": 791
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-05-27",
+   "partial_season": 2022,
+   "elapsed_s": 65.2,
+   "diagnostics": {
+    "max_rhat": 1.0250785906649793,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 119.7248847434,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7819834232272672,
+     0.6869698540938547
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.22253676266188308,
+     "sd": 0.02734155271089215
+    }
+   },
+   "n_pa": 410853,
+   "n_batters": 791
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-06-10",
+   "partial_season": 2022,
+   "elapsed_s": 49.1,
+   "diagnostics": {
+    "max_rhat": 1.0258046105307437,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 161.47100611415016,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6018397922140847,
+     0.6060539445579061
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 425475,
+   "n_batters": 803
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-06-10",
+   "partial_season": 2022,
+   "elapsed_s": 75.9,
+   "diagnostics": {
+    "max_rhat": 1.0240575346806347,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 152.6948950153285,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6564872073703831,
+     0.7006870569049105
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.22220057865020218,
+     "sd": 0.023653917065963495
+    }
+   },
+   "n_pa": 425475,
+   "n_batters": 803
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-06-24",
+   "partial_season": 2022,
+   "elapsed_s": 57.1,
+   "diagnostics": {
+    "max_rhat": 1.026154867143356,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 208.27275979094767,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6083427666852042,
+     0.6631614905782918
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 439854,
+   "n_batters": 807
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-06-24",
+   "partial_season": 2022,
+   "elapsed_s": 78.5,
+   "diagnostics": {
+    "max_rhat": 1.0289682451213313,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 220.36251093474928,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6847972039521776,
+     0.7293313852691506
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.2195899732734476,
+     "sd": 0.0234005124640313
+    }
+   },
+   "n_pa": 439854,
+   "n_batters": 807
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-01",
+   "partial_season": 2022,
+   "elapsed_s": 48.7,
+   "diagnostics": {
+    "max_rhat": 1.0184893823018937,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 139.13732852877826,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6471176729376735,
+     0.6228615336796521
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 446614,
+   "n_batters": 809
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-01",
+   "partial_season": 2022,
+   "elapsed_s": 78.8,
+   "diagnostics": {
+    "max_rhat": 1.024124369764101,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 271.2703483778741,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6969419666692981,
+     0.7808525367537787
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.2196334404246134,
+     "sd": 0.02158418170989566
+    }
+   },
+   "n_pa": 446614,
+   "n_batters": 809
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-08",
+   "partial_season": 2022,
+   "elapsed_s": 46.9,
+   "diagnostics": {
+    "max_rhat": 1.022918805960697,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 136.21536186881997,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6151411499119355,
+     0.6064777863610619
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 454262,
+   "n_batters": 815
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-08",
+   "partial_season": 2022,
+   "elapsed_s": 77.3,
+   "diagnostics": {
+    "max_rhat": 1.0267429806599333,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 156.93129223970925,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6610629792277481,
+     0.7790400659117966
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.219037629035497,
+     "sd": 0.022426430713696165
+    }
+   },
+   "n_pa": 454262,
+   "n_batters": 815
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-07-22",
+   "partial_season": 2022,
+   "elapsed_s": 50.2,
+   "diagnostics": {
+    "max_rhat": 1.020541701641409,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 195.5205573072332,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6503223390599081,
+     0.5941315494421612
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 465287,
+   "n_batters": 821
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-07-22",
+   "partial_season": 2022,
+   "elapsed_s": 75.3,
+   "diagnostics": {
+    "max_rhat": 1.0238211427940154,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 141.01182927854276,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5780828684222338,
+     0.6130961545971605
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.2140387095273665,
+     "sd": 0.02301774779203898
+    }
+   },
+   "n_pa": 465287,
+   "n_batters": 821
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-08-01",
+   "partial_season": 2022,
+   "elapsed_s": 50.8,
+   "diagnostics": {
+    "max_rhat": 1.0236245014016614,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 220.48846472893652,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5483066370350171,
+     0.6210402680714886
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 475787,
+   "n_batters": 825
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-08-01",
+   "partial_season": 2022,
+   "elapsed_s": 74.6,
+   "diagnostics": {
+    "max_rhat": 1.0233300465152022,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 240.41457069260719,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7114107699965746,
+     0.6775463667062027
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.2197434220676342,
+     "sd": 0.021408328871927063
+    }
+   },
+   "n_pa": 475787,
+   "n_batters": 825
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2022-08-05",
+   "partial_season": 2022,
+   "elapsed_s": 50.1,
+   "diagnostics": {
+    "max_rhat": 1.023806517660768,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 359.5288616868001,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5781350199163652,
+     0.6720966582570599
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 479666,
+   "n_batters": 828
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2022-08-05",
+   "partial_season": 2022,
+   "elapsed_s": 77.6,
+   "diagnostics": {
+    "max_rhat": 1.0263958679897387,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 264.66908870589344,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.601181294664975,
+     0.7468033636142296
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.22036402710579786,
+     "sd": 0.020995957450596407
+    }
+   },
+   "n_pa": 479666,
+   "n_batters": 828
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-04-15",
+   "partial_season": 2024,
+   "elapsed_s": 52.6,
+   "diagnostics": {
+    "max_rhat": 1.0234937548594985,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 318.98619383963126,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6242743654264259,
+     0.7544813167738004
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 381056,
+   "n_batters": 687
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-04-15",
+   "partial_season": 2024,
+   "elapsed_s": 68.9,
+   "diagnostics": {
+    "max_rhat": 1.0218731647670174,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 92.07503365013628,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6958397796328762,
+     0.7440303474885072
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10200062213419869,
+     "sd": 0.02402377322415433
+    }
+   },
+   "n_pa": 381056,
+   "n_batters": 687
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-04-29",
+   "partial_season": 2024,
+   "elapsed_s": 47.7,
+   "diagnostics": {
+    "max_rhat": 1.0219475922280576,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 298.3951471624499,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.6414665382835355,
+     0.7092743402807418
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 395091,
+   "n_batters": 692
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-04-29",
+   "partial_season": 2024,
+   "elapsed_s": 71.1,
+   "diagnostics": {
+    "max_rhat": 1.026217394829846,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 73.44141934562553,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7011249455763038,
+     0.7416748122269502
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10542219461064507,
+     "sd": 0.01909986038154733
+    }
+   },
+   "n_pa": 395091,
+   "n_batters": 692
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-01",
+   "partial_season": 2024,
+   "elapsed_s": 49.1,
+   "diagnostics": {
+    "max_rhat": 1.0244942937635964,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 285.9638069248485,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6750347329519472,
+     0.7097778577172076
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 397115,
+   "n_batters": 694
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-01",
+   "partial_season": 2024,
+   "elapsed_s": 74.8,
+   "diagnostics": {
+    "max_rhat": 1.0278725102283957,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 135.84276214115704,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6920133452941297,
+     0.6536988019531905
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10917983348812367,
+     "sd": 0.019132648140106696
+    }
+   },
+   "n_pa": 397115,
+   "n_batters": 694
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-13",
+   "partial_season": 2024,
+   "elapsed_s": 42.8,
+   "diagnostics": {
+    "max_rhat": 1.02381085540835,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 301.50649146273383,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6047332164278151,
+     0.7235923323252444
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 408950,
+   "n_batters": 702
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-13",
+   "partial_season": 2024,
+   "elapsed_s": 65.9,
+   "diagnostics": {
+    "max_rhat": 1.0202707425732924,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 137.13096332907642,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5630145826223809,
+     0.7652036764973325
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1144474587730354,
+     "sd": 0.018363989866833248
+    }
+   },
+   "n_pa": 408950,
+   "n_batters": 702
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-27",
+   "partial_season": 2024,
+   "elapsed_s": 49.6,
+   "diagnostics": {
+    "max_rhat": 1.0178317354579673,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 231.9600664751098,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6448451538782988,
+     0.7178404544455412
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 423026,
+   "n_batters": 707
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-27",
+   "partial_season": 2024,
+   "elapsed_s": 74.2,
+   "diagnostics": {
+    "max_rhat": 1.023742368659164,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 264.518585626621,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.610701119440466,
+     0.763647054653932
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12607501448438316,
+     "sd": 0.01484971403846996
+    }
+   },
+   "n_pa": 423026,
+   "n_batters": 707
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-06-10",
+   "partial_season": 2024,
+   "elapsed_s": 52.9,
+   "diagnostics": {
+    "max_rhat": 1.036572813952449,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 74.69966245072443,
+    "min_ess_var": "park_effect",
+    "divergences": 0,
+    "bfmi": [
+     0.6106155537153338,
+     0.7915644450075205
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 436836,
+   "n_batters": 711
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-06-10",
+   "partial_season": 2024,
+   "elapsed_s": 78.6,
+   "diagnostics": {
+    "max_rhat": 1.0177926484919337,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 202.8007258051375,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6824724955302288,
+     0.777482492088847
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12362866095500204,
+     "sd": 0.014373225001241009
+    }
+   },
+   "n_pa": 436836,
+   "n_batters": 711
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-06-24",
+   "partial_season": 2024,
+   "elapsed_s": 59.5,
+   "diagnostics": {
+    "max_rhat": 1.0223142951492663,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 200.75322417128507,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6338284519111286,
+     0.7312416593518212
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 450509,
+   "n_batters": 718
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-06-24",
+   "partial_season": 2024,
+   "elapsed_s": 76.5,
+   "diagnostics": {
+    "max_rhat": 1.0242119118878408,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 217.80630773066736,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7050923867532646,
+     0.769258905048377
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12161394582673203,
+     "sd": 0.013180734409572247
+    }
+   },
+   "n_pa": 450509,
+   "n_batters": 718
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-01",
+   "partial_season": 2024,
+   "elapsed_s": 46.9,
+   "diagnostics": {
+    "max_rhat": 1.0198231948436514,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 214.31365097314855,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6462676424127882,
+     0.7483105556603932
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 457630,
+   "n_batters": 720
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-01",
+   "partial_season": 2024,
+   "elapsed_s": 69.2,
+   "diagnostics": {
+    "max_rhat": 1.0201603771199619,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 134.10545020381787,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6786313901313554,
+     0.7856266336170904
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12209847051567223,
+     "sd": 0.014289258928293644
+    }
+   },
+   "n_pa": 457630,
+   "n_batters": 720
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-08",
+   "partial_season": 2024,
+   "elapsed_s": 55.3,
+   "diagnostics": {
+    "max_rhat": 1.0223303080314812,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 255.15509342224345,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.57329362565881,
+     0.7845196117759375
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 464615,
+   "n_batters": 722
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-08",
+   "partial_season": 2024,
+   "elapsed_s": 78.8,
+   "diagnostics": {
+    "max_rhat": 1.017269697127088,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 185.89620404374227,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6820562593391047,
+     0.7633433238972329
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1211328417536867,
+     "sd": 0.013527200098301672
+    }
+   },
+   "n_pa": 464615,
+   "n_batters": 722
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-22",
+   "partial_season": 2024,
+   "elapsed_s": 54.6,
+   "diagnostics": {
+    "max_rhat": 1.0188603790847424,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 211.56994902212676,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5954064648789408,
+     0.7906160759674045
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 474937,
+   "n_batters": 726
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-22",
+   "partial_season": 2024,
+   "elapsed_s": 78.2,
+   "diagnostics": {
+    "max_rhat": 1.0235175895740705,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 130.55511681037834,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6108439143266693,
+     0.7438423459096272
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12613304550782212,
+     "sd": 0.013579944491535925
+    }
+   },
+   "n_pa": 474937,
+   "n_batters": 726
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-08-01",
+   "partial_season": 2024,
+   "elapsed_s": 55.8,
+   "diagnostics": {
+    "max_rhat": 1.0170759830192055,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 229.6474010397503,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.6081077891432174,
+     0.7601307659740272
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 485250,
+   "n_batters": 729
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-08-01",
+   "partial_season": 2024,
+   "elapsed_s": 83.4,
+   "diagnostics": {
+    "max_rhat": 1.0170762077178792,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 186.19951006582227,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6929935677354067,
+     0.7011110376567924
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12402784098361759,
+     "sd": 0.013023298284462324
+    }
+   },
+   "n_pa": 485250,
+   "n_batters": 729
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-08-05",
+   "partial_season": 2024,
+   "elapsed_s": 58.7,
+   "diagnostics": {
+    "max_rhat": 1.0195454191277094,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 270.791474188296,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6085128154848987,
+     0.7876260645246939
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 489172,
+   "n_batters": 734
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-08-05",
+   "partial_season": 2024,
+   "elapsed_s": 82.0,
+   "diagnostics": {
+    "max_rhat": 1.0208568370890054,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 218.2692665373466,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6829581644294702,
+     0.6905664258339343
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12337537870102182,
+     "sd": 0.013116721422962538
+    }
+   },
+   "n_pa": 489172,
+   "n_batters": 734
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-04-15",
+   "partial_season": 2024,
+   "elapsed_s": 42.9,
+   "diagnostics": {
+    "max_rhat": 1.0187335592457722,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 305.71604715878243,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.710671015390354,
+     0.6442702306488789
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 381056,
+   "n_batters": 687
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-04-15",
+   "partial_season": 2024,
+   "elapsed_s": 56.5,
+   "diagnostics": {
+    "max_rhat": 1.0191979900496193,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 105.3430074643016,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7780322922896988,
+     0.7430828438127214
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15899830415168878,
+     "sd": 0.039708146808960953
+    }
+   },
+   "n_pa": 381056,
+   "n_batters": 687
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-04-29",
+   "partial_season": 2024,
+   "elapsed_s": 37.1,
+   "diagnostics": {
+    "max_rhat": 1.0234495097975154,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 201.89050925981903,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.657794265202718,
+     0.6139136880972333
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 395091,
+   "n_batters": 692
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-04-29",
+   "partial_season": 2024,
+   "elapsed_s": 65.0,
+   "diagnostics": {
+    "max_rhat": 1.024160748609222,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 161.16845023281988,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7082061302268436,
+     0.730212422959503
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1598032518763143,
+     "sd": 0.034327287036045796
+    }
+   },
+   "n_pa": 395091,
+   "n_batters": 692
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-01",
+   "partial_season": 2024,
+   "elapsed_s": 37.3,
+   "diagnostics": {
+    "max_rhat": 1.0234899216783753,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 243.37889973531165,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6272698309670997,
+     0.6312241870863163
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 397115,
+   "n_batters": 694
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-01",
+   "partial_season": 2024,
+   "elapsed_s": 66.0,
+   "diagnostics": {
+    "max_rhat": 1.0257249014091987,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 166.32020382104827,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6888378243560923,
+     0.7447518105616548
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1566023883825196,
+     "sd": 0.03392108726279741
+    }
+   },
+   "n_pa": 397115,
+   "n_batters": 694
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-13",
+   "partial_season": 2024,
+   "elapsed_s": 35.1,
+   "diagnostics": {
+    "max_rhat": 1.0229288371319003,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 253.91069754991094,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.657806217730887,
+     0.6655104042281912
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 408950,
+   "n_batters": 702
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-13",
+   "partial_season": 2024,
+   "elapsed_s": 62.0,
+   "diagnostics": {
+    "max_rhat": 1.0218493397748984,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 73.71079023920458,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6459290476457737,
+     0.7146729452213811
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1525694792463533,
+     "sd": 0.03388406390138505
+    }
+   },
+   "n_pa": 408950,
+   "n_batters": 702
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-05-27",
+   "partial_season": 2024,
+   "elapsed_s": 45.5,
+   "diagnostics": {
+    "max_rhat": 1.0203356352096455,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 256.0822932687918,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6629097814345701,
+     0.655174110671545
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 423026,
+   "n_batters": 707
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-05-27",
+   "partial_season": 2024,
+   "elapsed_s": 65.0,
+   "diagnostics": {
+    "max_rhat": 1.0685868301218353,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 34.2058615496598,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6894968366758217,
+     0.6954547894674181
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1354291127417258,
+     "sd": 0.035577299333717054
+    }
+   },
+   "n_pa": 423026,
+   "n_batters": 707
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-06-10",
+   "partial_season": 2024,
+   "elapsed_s": 44.2,
+   "diagnostics": {
+    "max_rhat": 1.01697374761151,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 284.53510439302585,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6993832118837011,
+     0.6603421087955598
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 436836,
+   "n_batters": 711
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-06-10",
+   "partial_season": 2024,
+   "elapsed_s": 73.0,
+   "diagnostics": {
+    "max_rhat": 1.0299807965986518,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 151.21959189664426,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7753483212774741,
+     0.679701445716632
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13617467278845777,
+     "sd": 0.031271655209506845
+    }
+   },
+   "n_pa": 436836,
+   "n_batters": 711
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-06-24",
+   "partial_season": 2024,
+   "elapsed_s": 42.5,
+   "diagnostics": {
+    "max_rhat": 1.0180264649693098,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 251.37334625514202,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.6265592687079702,
+     0.6878581458721543
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 450509,
+   "n_batters": 718
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-06-24",
+   "partial_season": 2024,
+   "elapsed_s": 61.4,
+   "diagnostics": {
+    "max_rhat": 1.0323053291104491,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 40.18265532286389,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6089883325451041,
+     0.7528796719918024
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14799077673990074,
+     "sd": 0.031084274360391972
+    }
+   },
+   "n_pa": 450509,
+   "n_batters": 718
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-01",
+   "partial_season": 2024,
+   "elapsed_s": 42.4,
+   "diagnostics": {
+    "max_rhat": 1.0227703925514184,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 328.95073232452637,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.608411547440091,
+     0.6022092879847089
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 457630,
+   "n_batters": 720
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-01",
+   "partial_season": 2024,
+   "elapsed_s": 65.8,
+   "diagnostics": {
+    "max_rhat": 1.0270772161447037,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 112.21538233048429,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6153628816723424,
+     0.6282465851835788
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13918419303052698,
+     "sd": 0.0321042278355767
+    }
+   },
+   "n_pa": 457630,
+   "n_batters": 720
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-08",
+   "partial_season": 2024,
+   "elapsed_s": 41.3,
+   "diagnostics": {
+    "max_rhat": 1.029924122863303,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 210.0703858540125,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5726464787053701,
+     0.6628055736223704
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 464615,
+   "n_batters": 722
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-08",
+   "partial_season": 2024,
+   "elapsed_s": 69.6,
+   "diagnostics": {
+    "max_rhat": 1.0275259800533052,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 116.32721192939266,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6143813869279766,
+     0.682910987426169
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13322172808302613,
+     "sd": 0.02827786081901623
+    }
+   },
+   "n_pa": 464615,
+   "n_batters": 722
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-07-22",
+   "partial_season": 2024,
+   "elapsed_s": 48.3,
+   "diagnostics": {
+    "max_rhat": 1.0219280035154212,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 188.78965159384708,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.546372785882986,
+     0.5985668512857044
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 474937,
+   "n_batters": 726
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-07-22",
+   "partial_season": 2024,
+   "elapsed_s": 61.3,
+   "diagnostics": {
+    "max_rhat": 1.1288340238135204,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 12.869325302900847,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6331925562449376,
+     0.6077366461869204
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13795208488344662,
+     "sd": 0.03374495183657727
+    }
+   },
+   "n_pa": 474937,
+   "n_batters": 726
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-08-01",
+   "partial_season": 2024,
+   "elapsed_s": 48.6,
+   "diagnostics": {
+    "max_rhat": 1.0204931651751923,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 273.78633987574847,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5833986733757912,
+     0.6285278325141905
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 485250,
+   "n_batters": 729
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-08-01",
+   "partial_season": 2024,
+   "elapsed_s": 81.2,
+   "diagnostics": {
+    "max_rhat": 1.0244005441603177,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 115.37167446637783,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6082686697696014,
+     0.6427715717800355
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12529137164001644,
+     "sd": 0.03294113747320023
+    }
+   },
+   "n_pa": 485250,
+   "n_batters": 729
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2024-08-05",
+   "partial_season": 2024,
+   "elapsed_s": 56.9,
+   "diagnostics": {
+    "max_rhat": 1.023802053369419,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 331.57066145421703,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.6438558196385155,
+     0.6520595139520805
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 489172,
+   "n_batters": 734
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2024-08-05",
+   "partial_season": 2024,
+   "elapsed_s": 78.6,
+   "diagnostics": {
+    "max_rhat": 1.0413675717317308,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 101.43155904907401,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6730907919974685,
+     0.7093021820891534
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13345082388756502,
+     "sd": 0.027959977758392433
+    }
+   },
+   "n_pa": 489172,
+   "n_batters": 734
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-04-15",
+   "partial_season": 2025,
+   "elapsed_s": 55.9,
+   "diagnostics": {
+    "max_rhat": 1.0257465688965575,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 264.87445771608895,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6271559319071855,
+     0.7271566766300787
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 381694,
+   "n_batters": 673
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-04-15",
+   "partial_season": 2025,
+   "elapsed_s": 73.2,
+   "diagnostics": {
+    "max_rhat": 1.0246818879836355,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 118.9402460176635,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6914923994965485,
+     0.8268487506091245
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.09833405004915116,
+     "sd": 0.022290879356363587
+    }
+   },
+   "n_pa": 381694,
+   "n_batters": 673
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-04-29",
+   "partial_season": 2025,
+   "elapsed_s": 77.9,
+   "diagnostics": {
+    "max_rhat": 1.019865925645142,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 237.4583025138557,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6404116794364358,
+     0.7365676009148702
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 395512,
+   "n_batters": 682
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-04-29",
+   "partial_season": 2025,
+   "elapsed_s": 86.9,
+   "diagnostics": {
+    "max_rhat": 1.02514287698472,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 99.11955097169731,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.652532900610716,
+     0.6595535632979249
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10775840639717982,
+     "sd": 0.020904017863597888
+    }
+   },
+   "n_pa": 395512,
+   "n_batters": 682
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-01",
+   "partial_season": 2025,
+   "elapsed_s": 51.3,
+   "diagnostics": {
+    "max_rhat": 1.0175433351501224,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 242.6335012219313,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6989044446362498,
+     0.7015577079123644
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 397803,
+   "n_batters": 684
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-01",
+   "partial_season": 2025,
+   "elapsed_s": 88.3,
+   "diagnostics": {
+    "max_rhat": 1.0248474505591842,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 184.13611615505616,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6744367404107947,
+     0.7552091549363228
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11487921785419529,
+     "sd": 0.018792115386720157
+    }
+   },
+   "n_pa": 397803,
+   "n_batters": 684
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-13",
+   "partial_season": 2025,
+   "elapsed_s": 61.1,
+   "diagnostics": {
+    "max_rhat": 1.0207944998727998,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 236.8226800697736,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6049912902725819,
+     0.7490106404858563
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410026,
+   "n_batters": 693
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-13",
+   "partial_season": 2025,
+   "elapsed_s": 83.7,
+   "diagnostics": {
+    "max_rhat": 1.0215709817005487,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 146.98713879000044,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6528272802692647,
+     0.7612324825800855
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11438826006421582,
+     "sd": 0.016437768577911467
+    }
+   },
+   "n_pa": 410026,
+   "n_batters": 693
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-27",
+   "partial_season": 2025,
+   "elapsed_s": 59.0,
+   "diagnostics": {
+    "max_rhat": 1.0200509487416887,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 266.0336750055137,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6079071917654485,
+     0.7106955221657242
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 424021,
+   "n_batters": 698
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-27",
+   "partial_season": 2025,
+   "elapsed_s": 79.3,
+   "diagnostics": {
+    "max_rhat": 1.0249293174348533,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 94.96070722097446,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6126738537615039,
+     0.7194869801086919
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10418816524067241,
+     "sd": 0.018126060514092664
+    }
+   },
+   "n_pa": 424021,
+   "n_batters": 698
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-06-10",
+   "partial_season": 2025,
+   "elapsed_s": 68.8,
+   "diagnostics": {
+    "max_rhat": 1.017144579698828,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 235.92524707974607,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.597938690271128,
+     0.6769772137797749
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 437708,
+   "n_batters": 708
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-06-10",
+   "partial_season": 2025,
+   "elapsed_s": 93.0,
+   "diagnostics": {
+    "max_rhat": 1.0206639578747099,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 169.48433584504042,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6262837090407822,
+     0.7660530360998071
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11600402426109145,
+     "sd": 0.016205346985506165
+    }
+   },
+   "n_pa": 437708,
+   "n_batters": 708
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-06-24",
+   "partial_season": 2025,
+   "elapsed_s": 61.4,
+   "diagnostics": {
+    "max_rhat": 1.0185806809770697,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 240.40660807913352,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.568865354867797,
+     0.7788982784393513
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 451774,
+   "n_batters": 717
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-06-24",
+   "partial_season": 2025,
+   "elapsed_s": 88.3,
+   "diagnostics": {
+    "max_rhat": 1.0220226076737313,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 141.3861409526349,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6960776837017548,
+     0.7155391583291179
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1053245441295012,
+     "sd": 0.015589972832421172
+    }
+   },
+   "n_pa": 451774,
+   "n_batters": 717
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-01",
+   "partial_season": 2025,
+   "elapsed_s": 67.7,
+   "diagnostics": {
+    "max_rhat": 1.017944759100829,
+    "max_rhat_var": "league_innovations",
+    "min_ess_bulk": 252.85612853706004,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.7057181003171302,
+     0.7091478426878227
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 459042,
+   "n_batters": 725
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-01",
+   "partial_season": 2025,
+   "elapsed_s": 101.3,
+   "diagnostics": {
+    "max_rhat": 1.0298581121667472,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 117.27550614646151,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6569229448050784,
+     0.7986048384306319
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10283943453626987,
+     "sd": 0.01739307782201048
+    }
+   },
+   "n_pa": 459042,
+   "n_batters": 725
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-04-15",
+   "partial_season": 2025,
+   "elapsed_s": 47.4,
+   "diagnostics": {
+    "max_rhat": 1.02743264625004,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 281.3938810768743,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6963964667570214,
+     0.610836196297994
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 381694,
+   "n_batters": 673
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-04-15",
+   "partial_season": 2025,
+   "elapsed_s": 76.8,
+   "diagnostics": {
+    "max_rhat": 1.035016381934162,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 39.74840729784552,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7029847422361137,
+     0.732964759495588
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13734968974158374,
+     "sd": 0.04437168849141385
+    }
+   },
+   "n_pa": 381694,
+   "n_batters": 673
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-04-29",
+   "partial_season": 2025,
+   "elapsed_s": 49.1,
+   "diagnostics": {
+    "max_rhat": 1.0238631148227129,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 243.08382772314303,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.7133930895950555,
+     0.6192218236551746
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 395512,
+   "n_batters": 682
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-04-29",
+   "partial_season": 2025,
+   "elapsed_s": 71.8,
+   "diagnostics": {
+    "max_rhat": 1.0266703055488424,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 90.30889749288971,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6914343679108474,
+     0.6738480409267882
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.16908581689987812,
+     "sd": 0.03362450875122033
+    }
+   },
+   "n_pa": 395512,
+   "n_batters": 682
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-01",
+   "partial_season": 2025,
+   "elapsed_s": 45.1,
+   "diagnostics": {
+    "max_rhat": 1.0277420862198978,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 242.95592679082247,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.620405457071547,
+     0.6301498187200831
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 397803,
+   "n_batters": 684
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-01",
+   "partial_season": 2025,
+   "elapsed_s": 82.6,
+   "diagnostics": {
+    "max_rhat": 1.0232906436752642,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 169.00022971692147,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7599505859710532,
+     0.7032859126264538
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1672425793719135,
+     "sd": 0.030835230996790416
+    }
+   },
+   "n_pa": 397803,
+   "n_batters": 684
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-13",
+   "partial_season": 2025,
+   "elapsed_s": 52.2,
+   "diagnostics": {
+    "max_rhat": 1.0228236244924491,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 174.65971325262598,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6406348331563668,
+     0.6221493182265923
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410026,
+   "n_batters": 693
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-13",
+   "partial_season": 2025,
+   "elapsed_s": 74.7,
+   "diagnostics": {
+    "max_rhat": 1.0400006473454557,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 115.84743622185891,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5871022192400769,
+     0.6858054202992214
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17843546156332524,
+     "sd": 0.03110991363485528
+    }
+   },
+   "n_pa": 410026,
+   "n_batters": 693
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-05-27",
+   "partial_season": 2025,
+   "elapsed_s": 50.7,
+   "diagnostics": {
+    "max_rhat": 1.019661426897435,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 278.09521134630376,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.7160227388978964,
+     0.640357271357087
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 424021,
+   "n_batters": 698
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-05-27",
+   "partial_season": 2025,
+   "elapsed_s": 72.4,
+   "diagnostics": {
+    "max_rhat": 1.0215635876008347,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 97.44150183471505,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6314242535134245,
+     0.7002233605831697
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.16522927830911088,
+     "sd": 0.030156804278955552
+    }
+   },
+   "n_pa": 424021,
+   "n_batters": 698
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-06-10",
+   "partial_season": 2025,
+   "elapsed_s": 43.2,
+   "diagnostics": {
+    "max_rhat": 1.0210877255851958,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 251.49579013818612,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6733674333425211,
+     0.6131270592193113
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 437708,
+   "n_batters": 708
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-06-10",
+   "partial_season": 2025,
+   "elapsed_s": 77.1,
+   "diagnostics": {
+    "max_rhat": 1.0266352804534957,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 172.90822232536718,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.642604560734017,
+     0.6970269207405014
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1627813122689617,
+     "sd": 0.027189472042175762
+    }
+   },
+   "n_pa": 437708,
+   "n_batters": 708
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-06-24",
+   "partial_season": 2025,
+   "elapsed_s": 49.5,
+   "diagnostics": {
+    "max_rhat": 1.0210282426674855,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 251.44581929921065,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6133845800446958,
+     0.5707678533293006
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 451774,
+   "n_batters": 717
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-06-24",
+   "partial_season": 2025,
+   "elapsed_s": 80.2,
+   "diagnostics": {
+    "max_rhat": 1.0241508726535882,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 154.12557857803716,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6394856169154016,
+     0.7214491900604203
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17479301662808722,
+     "sd": 0.02512122363120831
+    }
+   },
+   "n_pa": 451774,
+   "n_batters": 717
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-01",
+   "partial_season": 2025,
+   "elapsed_s": 59.8,
+   "diagnostics": {
+    "max_rhat": 1.0200481891690711,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 264.71269795582344,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5892415402043713,
+     0.6282632594737114
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 459042,
+   "n_batters": 725
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-01",
+   "partial_season": 2025,
+   "elapsed_s": 76.3,
+   "diagnostics": {
+    "max_rhat": 1.0282791748318394,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 143.9016860484844,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6911021168347072,
+     0.6522156275969418
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17225517331242207,
+     "sd": 0.025431850831983953
+    }
+   },
+   "n_pa": 459042,
+   "n_batters": 725
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-08",
+   "partial_season": 2025,
+   "elapsed_s": 59.5,
+   "diagnostics": {
+    "max_rhat": 1.0212406941802465,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 326.2512706626271,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6737428285178221,
+     0.6197388193035722
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 466218,
+   "n_batters": 727
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-08",
+   "partial_season": 2025,
+   "elapsed_s": 88.3,
+   "diagnostics": {
+    "max_rhat": 1.035801688904264,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 203.3903458093288,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6673760491492143,
+     0.7350355109639473
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17677204020845508,
+     "sd": 0.024975313188089106
+    }
+   },
+   "n_pa": 466218,
+   "n_batters": 727
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-22",
+   "partial_season": 2025,
+   "elapsed_s": 50.1,
+   "diagnostics": {
+    "max_rhat": 1.0221604453894007,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 386.248365406045,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6243919315563773,
+     0.6759896853681944
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 476991,
+   "n_batters": 728
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-22",
+   "partial_season": 2025,
+   "elapsed_s": 80.9,
+   "diagnostics": {
+    "max_rhat": 1.0320990995902848,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 217.69324819629813,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6585641535322346,
+     0.6994361683404422
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.18463264951996605,
+     "sd": 0.02302949768500487
+    }
+   },
+   "n_pa": 476991,
+   "n_batters": 728
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-08-01",
+   "partial_season": 2025,
+   "elapsed_s": 59.4,
+   "diagnostics": {
+    "max_rhat": 1.0248201809224713,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 303.43951252043945,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.7145942002815185,
+     0.6273793891136604
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 486597,
+   "n_batters": 729
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-08-01",
+   "partial_season": 2025,
+   "elapsed_s": 92.7,
+   "diagnostics": {
+    "max_rhat": 1.02235587877549,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 239.61772056499788,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6497727924588809,
+     0.6872801878651543
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17814902044172112,
+     "sd": 0.02270858060551716
+    }
+   },
+   "n_pa": 486597,
+   "n_batters": 729
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-08-05",
+   "partial_season": 2025,
+   "elapsed_s": 63.3,
+   "diagnostics": {
+    "max_rhat": 1.0293507616146147,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 328.44743889291846,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6272472950713095,
+     0.5952961874442539
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 490884,
+   "n_batters": 731
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-08-05",
+   "partial_season": 2025,
+   "elapsed_s": 90.0,
+   "diagnostics": {
+    "max_rhat": 1.0222307990193475,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 119.70329361183843,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7165728850340537,
+     0.6843951099808369
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.17298430788966482,
+     "sd": 0.023560631411337987
+    }
+   },
+   "n_pa": 490884,
+   "n_batters": 731
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-04-15",
+   "partial_season": 2026,
+   "elapsed_s": 71.8,
+   "diagnostics": {
+    "max_rhat": 1.0189191320055433,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 327.1280621289669,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6717716345608417,
+     0.785502449248116
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 382215,
+   "n_batters": 676
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-04-15",
+   "partial_season": 2026,
+   "elapsed_s": 101.4,
+   "diagnostics": {
+    "max_rhat": 1.0194967182165189,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 140.78507348203166,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6493691987687562,
+     0.7043136559217564
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14423373945086648,
+     "sd": 0.019014243981532102
+    }
+   },
+   "n_pa": 382215,
+   "n_batters": 676
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-04-29",
+   "partial_season": 2026,
+   "elapsed_s": 65.6,
+   "diagnostics": {
+    "max_rhat": 1.0181732260048253,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 264.3318033487049,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.7013187058075222,
+     0.7391499418945411
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 396407,
+   "n_batters": 679
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-04-29",
+   "partial_season": 2026,
+   "elapsed_s": 95.5,
+   "diagnostics": {
+    "max_rhat": 1.0176300589729368,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 176.63602991965664,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.678517415200986,
+     0.7113406320094129
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14859728862518784,
+     "sd": 0.016977242136869596
+    }
+   },
+   "n_pa": 396407,
+   "n_batters": 679
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-01",
+   "partial_season": 2026,
+   "elapsed_s": 67.6,
+   "diagnostics": {
+    "max_rhat": 1.0257188716758583,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 300.11544363117605,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6625000527513528,
+     0.8095489601006971
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 398229,
+   "n_batters": 679
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-01",
+   "partial_season": 2026,
+   "elapsed_s": 93.8,
+   "diagnostics": {
+    "max_rhat": 1.0190802252787152,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 192.23376923332316,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6498886715660371,
+     0.6692007057032765
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1487437980156661,
+     "sd": 0.017037315843885275
+    }
+   },
+   "n_pa": 398229,
+   "n_batters": 679
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-13",
+   "partial_season": 2026,
+   "elapsed_s": 64.2,
+   "diagnostics": {
+    "max_rhat": 1.0180227748213992,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 222.85034851465417,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.614791134767929,
+     0.812580372200345
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410243,
+   "n_batters": 686
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-13",
+   "partial_season": 2026,
+   "elapsed_s": 105.3,
+   "diagnostics": {
+    "max_rhat": 1.0271842979078547,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 148.65560316847348,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6024876964315532,
+     0.7706304118030072
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.16057178475433273,
+     "sd": 0.016226410680012213
+    }
+   },
+   "n_pa": 410243,
+   "n_batters": 686
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-27",
+   "partial_season": 2026,
+   "elapsed_s": 73.2,
+   "diagnostics": {
+    "max_rhat": 1.0225811729787524,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 248.58547404557183,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6589900964476588,
+     0.8011849260644879
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 424535,
+   "n_batters": 692
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-27",
+   "partial_season": 2026,
+   "elapsed_s": 89.3,
+   "diagnostics": {
+    "max_rhat": 1.0211752882000602,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 275.4419662047712,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.647814665015673,
+     0.7455969551282472
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15489565319757506,
+     "sd": 0.014567573302270476
+    }
+   },
+   "n_pa": 424535,
+   "n_batters": 692
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-06-10",
+   "partial_season": 2026,
+   "elapsed_s": 72.3,
+   "diagnostics": {
+    "max_rhat": 1.021334397510509,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 179.3703832073422,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.6121280956526296,
+     0.7589321426607752
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 438338,
+   "n_batters": 702
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-06-10",
+   "partial_season": 2026,
+   "elapsed_s": 90.8,
+   "diagnostics": {
+    "max_rhat": 1.0196900120028065,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 234.37826958544966,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5939392514133213,
+     0.7054450288776535
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15553266658705378,
+     "sd": 0.01483175015628047
+    }
+   },
+   "n_pa": 438338,
+   "n_batters": 702
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-06-24",
+   "partial_season": 2026,
+   "elapsed_s": 67.9,
+   "diagnostics": {
+    "max_rhat": 1.022896572608635,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 240.67517731287975,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.5920583244933224,
+     0.7808304847692923
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 452046,
+   "n_batters": 713
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-06-24",
+   "partial_season": 2026,
+   "elapsed_s": 103.4,
+   "diagnostics": {
+    "max_rhat": 1.0323251769207678,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 227.13391450072953,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6540549517224837,
+     0.6522639643236341
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14756282101008752,
+     "sd": 0.014421165854980659
+    }
+   },
+   "n_pa": 452046,
+   "n_batters": 713
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-01",
+   "partial_season": 2026,
+   "elapsed_s": 72.1,
+   "diagnostics": {
+    "max_rhat": 1.025006383079966,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 263.6120647233551,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6113823920362995,
+     0.6492648187811206
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 459421,
+   "n_batters": 719
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-01",
+   "partial_season": 2026,
+   "elapsed_s": 107.1,
+   "diagnostics": {
+    "max_rhat": 1.0363164566703917,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 222.08023724548562,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7069401445073255,
+     0.6943034105576231
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1469256432492742,
+     "sd": 0.013823059553909802
+    }
+   },
+   "n_pa": 459421,
+   "n_batters": 719
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-08",
+   "partial_season": 2026,
+   "elapsed_s": 73.0,
+   "diagnostics": {
+    "max_rhat": 1.02128233250511,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 232.3341568693674,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5649318906216391,
+     0.6711384195900877
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 466344,
+   "n_batters": 723
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-08",
+   "partial_season": 2026,
+   "elapsed_s": 98.6,
+   "diagnostics": {
+    "max_rhat": 1.0232477969600964,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 212.0686839370906,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.625344175581334,
+     0.6647107231428606
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1488595962721701,
+     "sd": 0.013308909602895594
+    }
+   },
+   "n_pa": 466344,
+   "n_batters": 723
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-22",
+   "partial_season": 2026,
+   "elapsed_s": 70.6,
+   "diagnostics": {
+    "max_rhat": 1.0201160179732944,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 249.2020665811609,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5984009788416017,
+     0.6718674598401984
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 477247,
+   "n_batters": 727
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-22",
+   "partial_season": 2026,
+   "elapsed_s": 101.5,
+   "diagnostics": {
+    "max_rhat": 1.0275617338413112,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 283.30974749205427,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6787143436453422,
+     0.7315708727029386
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.150202780535439,
+     "sd": 0.012850094624551885
+    }
+   },
+   "n_pa": 477247,
+   "n_batters": 727
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-08-01",
+   "partial_season": 2026,
+   "elapsed_s": 71.3,
+   "diagnostics": {
+    "max_rhat": 1.0181295326513826,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 188.58338874844176,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5718088742207883,
+     0.6234552388889218
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 487422,
+   "n_batters": 732
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-08-01",
+   "partial_season": 2026,
+   "elapsed_s": 101.7,
+   "diagnostics": {
+    "max_rhat": 1.0199563184027312,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 162.05593825503342,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7621172812584571,
+     0.681788793241286
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1521327644667603,
+     "sd": 0.012979139983361572
+    }
+   },
+   "n_pa": 487422,
+   "n_batters": 732
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-08-05",
+   "partial_season": 2026,
+   "elapsed_s": 72.5,
+   "diagnostics": {
+    "max_rhat": 1.0161538621057522,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 231.74843235178932,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6014822662811582,
+     0.6415738564068038
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 491380,
+   "n_batters": 734
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-08-05",
+   "partial_season": 2026,
+   "elapsed_s": 100.6,
+   "diagnostics": {
+    "max_rhat": 1.0197191545778808,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 190.1197620075035,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7153709435480861,
+     0.6999865590870784
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14828938190807844,
+     "sd": 0.013157769625064854
+    }
+   },
+   "n_pa": 491380,
+   "n_batters": 734
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-04-15",
+   "partial_season": 2026,
+   "elapsed_s": 60.7,
+   "diagnostics": {
+    "max_rhat": 1.0221360581836423,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 279.39058340282355,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5644296740579762,
+     0.6600884632033442
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 382215,
+   "n_batters": 676
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-04-15",
+   "partial_season": 2026,
+   "elapsed_s": 85.2,
+   "diagnostics": {
+    "max_rhat": 1.0301150267365904,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 45.441887634068564,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6474313729193722,
+     0.6845964465076836
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12653974025602338,
+     "sd": 0.04659562990591791
+    }
+   },
+   "n_pa": 382215,
+   "n_batters": 676
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-04-29",
+   "partial_season": 2026,
+   "elapsed_s": 43.8,
+   "diagnostics": {
+    "max_rhat": 1.016094057368066,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 239.4342500195618,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5750500013267691,
+     0.6076722927129121
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 396407,
+   "n_batters": 679
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-04-29",
+   "partial_season": 2026,
+   "elapsed_s": 85.9,
+   "diagnostics": {
+    "max_rhat": 1.0306469658778286,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 101.60191586779156,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6567296457237518,
+     0.7035838002461055
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15274047576381003,
+     "sd": 0.036957384691134916
+    }
+   },
+   "n_pa": 396407,
+   "n_batters": 679
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-01",
+   "partial_season": 2026,
+   "elapsed_s": 43.5,
+   "diagnostics": {
+    "max_rhat": 1.0206856137574873,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 249.35499417912206,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5728413009245444,
+     0.6161352498679452
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 398229,
+   "n_batters": 679
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-01",
+   "partial_season": 2026,
+   "elapsed_s": 72.6,
+   "diagnostics": {
+    "max_rhat": 1.0184851088563713,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 124.45994450492341,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6775180370852285,
+     0.7305550290172302
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15762938446726155,
+     "sd": 0.032771318393206926
+    }
+   },
+   "n_pa": 398229,
+   "n_batters": 679
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-13",
+   "partial_season": 2026,
+   "elapsed_s": 51.2,
+   "diagnostics": {
+    "max_rhat": 1.022923365835337,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 100.53099404160861,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.539044792406356,
+     0.6337777853555369
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 410243,
+   "n_batters": 686
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-13",
+   "partial_season": 2026,
+   "elapsed_s": 77.4,
+   "diagnostics": {
+    "max_rhat": 1.0281497747279944,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 104.91848552369281,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6927310051783445,
+     0.6761355031816814
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15476236115403172,
+     "sd": 0.03135977818924554
+    }
+   },
+   "n_pa": 410243,
+   "n_batters": 686
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-05-27",
+   "partial_season": 2026,
+   "elapsed_s": 49.4,
+   "diagnostics": {
+    "max_rhat": 1.019570116928019,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 189.50022123799732,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6155472359855392,
+     0.6440951217150365
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 424535,
+   "n_batters": 692
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-05-27",
+   "partial_season": 2026,
+   "elapsed_s": 83.1,
+   "diagnostics": {
+    "max_rhat": 1.026514156552525,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 131.1830553322801,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6176334301823978,
+     0.7009406331034185
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.15149705430240767,
+     "sd": 0.032519671323482754
+    }
+   },
+   "n_pa": 424535,
+   "n_batters": 692
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-06-10",
+   "partial_season": 2026,
+   "elapsed_s": 50.3,
+   "diagnostics": {
+    "max_rhat": 1.0177254639977762,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 263.7577418015224,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6339165427139541,
+     0.6484217267019995
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 438338,
+   "n_batters": 702
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-06-10",
+   "partial_season": 2026,
+   "elapsed_s": 83.9,
+   "diagnostics": {
+    "max_rhat": 1.0231274305407623,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 121.65752375167645,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6811687855325527,
+     0.7909864659895729
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.14988090603265905,
+     "sd": 0.030535342013019395
+    }
+   },
+   "n_pa": 438338,
+   "n_batters": 702
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-06-24",
+   "partial_season": 2026,
+   "elapsed_s": 52.1,
+   "diagnostics": {
+    "max_rhat": 1.0168625605612542,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 219.179283381427,
+    "min_ess_var": "beta_age",
+    "divergences": 0,
+    "bfmi": [
+     0.7011277104884998,
+     0.6321490168540643
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 452046,
+   "n_batters": 713
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-06-24",
+   "partial_season": 2026,
+   "elapsed_s": 76.6,
+   "diagnostics": {
+    "max_rhat": 1.0237584412845302,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 76.39388615106337,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.715303603665904,
+     0.6941360533582234
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13349690044603982,
+     "sd": 0.03550449546789451
+    }
+   },
+   "n_pa": 452046,
+   "n_batters": 713
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-01",
+   "partial_season": 2026,
+   "elapsed_s": 48.7,
+   "diagnostics": {
+    "max_rhat": 1.0219502352196592,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 112.87298138798229,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6120923236370538,
+     0.6798005821757295
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 459421,
+   "n_batters": 719
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-01",
+   "partial_season": 2026,
+   "elapsed_s": 84.3,
+   "diagnostics": {
+    "max_rhat": 1.0745105811523692,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 65.39998188665088,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7301906001394025,
+     0.7437134417012538
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13898657229577033,
+     "sd": 0.02952718855941757
+    }
+   },
+   "n_pa": 459421,
+   "n_batters": 719
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-08",
+   "partial_season": 2026,
+   "elapsed_s": 65.4,
+   "diagnostics": {
+    "max_rhat": 1.0221265530806802,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 314.5422551698382,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6041245261139361,
+     0.6769778623466777
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 466344,
+   "n_batters": 723
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-08",
+   "partial_season": 2026,
+   "elapsed_s": 85.3,
+   "diagnostics": {
+    "max_rhat": 1.0272840742506066,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 94.64756293010467,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6564344726774063,
+     0.6781778646344914
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.13567989605638206,
+     "sd": 0.029305134849098587
+    }
+   },
+   "n_pa": 466344,
+   "n_batters": 723
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-07-22",
+   "partial_season": 2026,
+   "elapsed_s": 61.7,
+   "diagnostics": {
+    "max_rhat": 1.0208396598617508,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 212.42703689092914,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6092920398699037,
+     0.7168424681280435
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 477247,
+   "n_batters": 727
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-07-22",
+   "partial_season": 2026,
+   "elapsed_s": 80.4,
+   "diagnostics": {
+    "max_rhat": 1.022306352551474,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 82.24021145171491,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6532139528660429,
+     0.6569838264899263
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.12820276193770236,
+     "sd": 0.030810383142085344
+    }
+   },
+   "n_pa": 477247,
+   "n_batters": 727
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-08-01",
+   "partial_season": 2026,
+   "elapsed_s": 63.1,
+   "diagnostics": {
+    "max_rhat": 1.019891192929625,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 274.2727597792423,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.5811623196591555,
+     0.7428909357977788
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 487422,
+   "n_batters": 732
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-08-01",
+   "partial_season": 2026,
+   "elapsed_s": 90.8,
+   "diagnostics": {
+    "max_rhat": 1.0269689288425765,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 179.32558752145636,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.621771725995928,
+     0.6229234666156259
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1400255032933355,
+     "sd": 0.027288412666896803
+    }
+   },
+   "n_pa": 487422,
+   "n_batters": 732
+  },
+  {
+   "component": "hr_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2026-08-05",
+   "partial_season": 2026,
+   "elapsed_s": 64.0,
+   "diagnostics": {
+    "max_rhat": 1.0227198756778868,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 227.28469056014168,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6237890297792683,
+     0.7502340724192093
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 491380,
+   "n_batters": 734
+  },
+  {
+   "component": "hr_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2026-08-05",
+   "partial_season": 2026,
+   "elapsed_s": 86.1,
+   "diagnostics": {
+    "max_rhat": 1.0286257710177849,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 79.5646154120966,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5105067220521377,
+     0.7128758472636709
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.1335890944559018,
+     "sd": 0.029164102470979527
+    }
+   },
+   "n_pa": 491380,
+   "n_batters": 734
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-08",
+   "partial_season": 2025,
+   "elapsed_s": 78.5,
+   "diagnostics": {
+    "max_rhat": 1.0170243653629354,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 229.68263520449548,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6263941318476749,
+     0.7330901088751494
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 466218,
+   "n_batters": 727
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-08",
+   "partial_season": 2025,
+   "elapsed_s": 95.4,
+   "diagnostics": {
+    "max_rhat": 1.0209264543838157,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 139.46422025589655,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5981305792545833,
+     0.7434881651505125
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.10725149956675693,
+     "sd": 0.014809714692138275
+    }
+   },
+   "n_pa": 466218,
+   "n_batters": 727
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-07-22",
+   "partial_season": 2025,
+   "elapsed_s": 60.1,
+   "diagnostics": {
+    "max_rhat": 1.0163220846043959,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 151.24197026784384,
+    "min_ess_var": "beta_hand",
+    "divergences": 0,
+    "bfmi": [
+     0.607361101811384,
+     0.6906491587820001
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 476991,
+   "n_batters": 728
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-07-22",
+   "partial_season": 2025,
+   "elapsed_s": 86.1,
+   "diagnostics": {
+    "max_rhat": 1.0229571294327378,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 190.08027651197312,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6100229819446527,
+     0.7021465294729456
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11191873644070671,
+     "sd": 0.013867564772864277
+    }
+   },
+   "n_pa": 476991,
+   "n_batters": 728
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-08-01",
+   "partial_season": 2025,
+   "elapsed_s": 71.6,
+   "diagnostics": {
+    "max_rhat": 1.0228048089244353,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 249.89735636557538,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6080683818430896,
+     0.7338935749853094
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 486597,
+   "n_batters": 729
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-08-01",
+   "partial_season": 2025,
+   "elapsed_s": 102.6,
+   "diagnostics": {
+    "max_rhat": 1.022822097649199,
+    "max_rhat_var": "park_effect",
+    "min_ess_bulk": 101.95849214412846,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5619585759187965,
+     0.7042205287310506
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11220348005145893,
+     "sd": 0.014597891919518075
+    }
+   },
+   "n_pa": 486597,
+   "n_batters": 729
+  },
+  {
+   "component": "bb_rate",
+   "variant": "flat",
+   "arm": "bayes_flat",
+   "cutoff": "2025-08-05",
+   "partial_season": 2025,
+   "elapsed_s": 55.9,
+   "diagnostics": {
+    "max_rhat": 1.015908760841302,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 193.8673647903073,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6107185645132205,
+     0.68144994270575
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {},
+   "n_pa": 490884,
+   "n_batters": 731
+  },
+  {
+   "component": "bb_rate",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "cutoff": "2025-08-05",
+   "partial_season": 2025,
+   "elapsed_s": 80.6,
+   "diagnostics": {
+    "max_rhat": 1.0285582513222544,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 175.87900821732362,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6880865965481828,
+     0.7590490073878684
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "variant_params": {
+    "sigma_step": {
+     "mean": 0.11245057899259564,
+     "sd": 0.013463239803665018
+    }
+   },
+   "n_pa": 490884,
+   "n_batters": 731
+  }
+ ]
+}
