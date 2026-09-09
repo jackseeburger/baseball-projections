@@ -60,10 +60,18 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
 
 ## The plan from here, in order
 
-1. **BAS-83** — decide whether the hierarchical model, fed the
-   measurements, is the layer-2 engine. On outcomes alone it is a draw on
-   every component (BAS-69, BAS-73); the covariates are its remaining
-   case.
+1. **The layer-2 model track.** On outcomes alone the hierarchical model
+   is a draw on every component (BAS-69, BAS-73), and that is what the
+   math says it should be: a single-component random-effects model *is*
+   Marcel with a learned ballast. The model wins only by carrying
+   structure Marcel cannot express, so the track is three structural
+   models in order, each pre-registered and each kept whatever the
+   verdict: the covariates inside the likelihood (BAS-83, in flight), the
+   joint multi-component model with correlated player effects (BAS-84,
+   `docs/bayes-joint.md`), and the measurement model where Statcast is a
+   second observation of the same latent talent rather than a regressor
+   (BAS-85, `docs/bayes-measurement.md`). After those: time and age as a
+   process, and the posterior width scored at layer 7.
 2. **BAS-74**, the pitcher hierarchical model with stuff inside it; a
    command *level* aggregate (BAS-76's follow-up) once pre-registered.
 3. **ISO and BABIP** hierarchical models (their own denominators), after 1.
