@@ -2,7 +2,7 @@
 
 Tracked as BAS-70. Follow-on from [bayes-variants.md](bayes-variants.md).
 
-**Status: pre-registered, not yet run.** Predictions below were written into
+**Status: complete. Scored below; two of three predictions fail.** Predictions below were written into
 the commit that added them, before any arm was priced. Results get appended,
 including the ones that go against the predictions.
 
@@ -143,3 +143,119 @@ hierarchical model's wider posterior (drift, population) is the one to test.
   what the Beta measures — the losses come from *model* error, not
   *estimation* error, and a wider posterior (the hierarchical one) is the
   next test, not a different selection rule.
+
+## Results
+
+`scripts/props_exam.py --matchup on --posterior`, the served configuration,
+on the committed archive: **61,738 settled contracts, 455 games,
+2026-07-31 → 09-02**. Brier paired per contract with the standard error
+clustered by game; money on the second half by date (30,423 contracts) with
+τ chosen on the first.
+
+### Vacuity check: passes
+
+Median posterior sd of `P(over)` is **0.0149** on the full archive (hits
+0.014, HR 0.017, TB 0.013, strikeouts 0.039), three times the 0.005 line;
+19% of contracts fall below it. So what follows are real results, not
+artifacts of a posterior too tight to matter.
+
+### Prediction 1: sign holds, size and location fail
+
+> Beta-binomial improves paired Brier by 0.0002–0.0010, clustered \|t\| > 2,
+> concentrated at lines with over-rate below .15.
+
+| | n | Brier(marginal) − Brier(point) | t (game) | mean price shift |
+| --- | --- | --- | --- | --- |
+| all | 61,738 | **−0.00003** | −6.16 | +0.00002 |
+| tail lines (< .15) | 26,492 | −0.00001 | −2.91 | **+0.00026** |
+| other lines | 35,246 | −0.00005 | −5.69 | −0.00015 |
+
+The marginal price is better, and it is better with a t of six — but by
+**0.00003 of Brier, an order of magnitude below the predicted range**, and the
+improvement is *larger off the tail than on it*. The convexity mechanism is
+real: at tail lines the marginal sits 0.00026 *above* the point price, as
+predicted, and the point price was indeed too thin there. It is just tiny.
+Off the tail the marginal sits below the point price, and that correction —
+the point price being slightly too *high* where the count distribution is
+concave in the rate — turns out to be worth more. Per stat the gain lives
+almost entirely in total bases (t −7.1) and strikeouts (t −3.7); hits and
+home runs are indistinguishable (t −1.6, −0.4).
+
+Scored as written: the direction survives, the magnitude and the
+localisation do not. A price that is better by 0.00003 is not a different
+price.
+
+### Prediction 2: fails
+
+> Selecting on `P(edge > 0)` beats the threshold rule by 1–3 points of
+> fee-waived ROI at a matched number of bets.
+
+| rule, second half | bets | ROI fee-waived | ROI as quoted |
+| --- | --- | --- | --- |
+| threshold @ 2 pts (current) | 16,756 | +0.7% (−2.8, +4.0) | −4.0% |
+| **posterior @ τ = 0.65** | 23,912 | **+2.5%** (−1.0, +6.2) | −2.7% |
+| threshold @ matched count (0.42 pts) | 23,912 | **+2.3%** (−1.2, +5.8) | −2.8% |
+
+Against the current rule the posterior rule looks like a 1.8-point gain.
+Against a threshold rule *forced to take the same number of bets*, the gain
+is **0.2 points**, inside any interval. The posterior rule at τ = 0.65 is,
+almost exactly, "bet whenever the mean edge exceeds 0.4 points" — the
+matched threshold that reproduces its bet count. The τ grid says the same
+thing from the other side: fee-waived ROI is flat within ±0.2 points from
+τ = 0.55 to 0.80 and only falls beyond, so there is no interior optimum,
+only a looser filter.
+
+Why: the vacuity check asked whether the Beta was *wide enough*, and it was.
+It did not ask whether the width **varies across contracts enough to
+reorder them**, and it does not. With `p_over_sd` sitting in a band of
+roughly 0.008–0.023 for three of four stats, `P(edge > 0)` is a monotone
+function of the mean edge to a very good approximation, and a monotone
+re-labelling of the same ranking selects the same bets. The one stat where
+the width does vary — strikeouts, whose Beta is the approximation flagged
+above — is also the one where every rule loses 10–15%.
+
+This is the failure condition the pre-registration named: *the edge's noise
+is not what the Beta measures*. Marcel's sampling uncertainty is nearly the
+same for every regular, so it cannot tell a real 3-point edge from a
+spurious one. Whatever separates them is model error, and a wider, more
+player-specific posterior — the hierarchical model's, with its drift term
+and population uncertainty — is the next thing to test here, not a
+different selection rule on the same Beta.
+
+### Prediction 3: holds
+
+> Neither turns the props strategy profitable after the Kalshi taker fee.
+
+As quoted, every pooled rule is negative: −4.0%, −2.7%, −2.8%. The fee
+remains the whole loss.
+
+### Not pre-registered, and reported as such
+
+**Hits.** Every rule, both halves, fee-waived: +9.5% at the 2-point
+threshold, +12.1% under the posterior rule, +11.4% matched — intervals
+that exclude zero on the second half (+5.8% to +19.1% for the posterior
+rule). As quoted: +4.3% to +5.5%, intervals that do not exclude zero. A
+stat-level split of a pooled pre-registered test is exploratory, and the
+hits number was not predicted, so it is a lead and not a result. It is the
+first time anything on the props exam has been positive after the fee at
+the point estimate, and it is worth its own pre-registration on the June
+and July contracts the archive has not yet fetched.
+
+**Strikeouts** lose 10–16% under every rule, which is the same finding as
+the original props exam and is consistent with the pitcher-K Beta being an
+approximation stacked on a rate the market prices well.
+
+## What ships, and what does not
+
+Nothing. The marginal price is better by an amount that changes no decision;
+the posterior selection rule is a looser threshold wearing a distribution.
+`marcel_partial + matchup` at the 2-point threshold remains the props
+model, and it remains a model that loses after the fee.
+
+What the exercise bought is sharper than a shipped feature. The roadmap's
+Kelly claim is retracted by proof; the posterior's first consumer is
+scored and the reason it failed — width that does not vary — points
+directly at the next test; and the hits line is the first positive
+after-fee number on the board, flagged as exploratory so nobody quotes it
+as more.
+
