@@ -160,7 +160,7 @@ def test_explicit_since_skips_r2_resume(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "process_year", fake_process_year)
 
     argv = ["ingest_statcast.py", "--season", "2026", "--since", "2026-08-01",
-            "--work-dir", str(tmp_path), "--no-upload"]
+            "--work-dir", str(tmp_path), "--pa-dir", str(tmp_path / "pa"), "--no-upload"]
     monkeypatch.setattr(sys, "argv", argv)
 
     ingest.main()
@@ -191,7 +191,7 @@ def test_full_flag_skips_r2_resume(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "process_year", fake_process_year)
 
     argv = ["ingest_statcast.py", "--season", "2026", "--full",
-            "--work-dir", str(tmp_path), "--no-upload"]
+            "--work-dir", str(tmp_path), "--pa-dir", str(tmp_path / "pa"), "--no-upload"]
     monkeypatch.setattr(sys, "argv", argv)
 
     ingest.main()
@@ -232,7 +232,7 @@ def test_default_mode_resumes_and_merges(monkeypatch, tmp_path):
     monkeypatch.setattr(ingest, "merge_with_existing", fake_merge)
     monkeypatch.setattr(ingest, "process_year", fake_process_year)
 
-    argv = ["ingest_statcast.py", "--season", "2026", "--work-dir", str(tmp_path), "--no-upload"]
+    argv = ["ingest_statcast.py", "--season", "2026", "--work-dir", str(tmp_path), "--pa-dir", str(tmp_path / "pa"), "--no-upload"]
     monkeypatch.setattr(sys, "argv", argv)
 
     ingest.main()
