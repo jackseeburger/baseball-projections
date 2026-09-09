@@ -134,6 +134,40 @@ def test_a_scalar_ballast_applies_to_every_component():
             (num + 100 * LEAGUE[f"rate_{c}"]) / (den + 100))
 
 
+def test_alpha_beta_reproduce_the_rate_exactly():
+    """The Beta pseudo-counts `marcel_rates` exposes must mean exactly `rate_c`.
+
+    BAS-70 (docs/posterior-props.md): the Beta was implicit in the ballast
+    arithmetic all along, so `alpha/(alpha+beta)` has to equal the existing
+    `rate_c` to numerical precision, not just approximately.
+    """
+    row = counts(1, 2026, 300, k=30, bb=28, hr=15, h=90, doubles=20)
+    rates = lu.marcel_rates(frame([row]), 2026, LEAGUE)
+    for c in lu.COMPONENTS:
+        alpha, beta = rates.loc[1, f"alpha_{c}"], rates.loc[1, f"beta_{c}"]
+        assert alpha / (alpha + beta) == pytest.approx(rates.loc[1, f"rate_{c}"], abs=1e-12)
+
+
+def test_alpha_beta_present_with_no_history():
+    """A batter with no rows still gets a Beta — pure ballast at the league rate."""
+    rates = lu.marcel_rates(frame([counts(1, 2026, 0, k=0, bb=0, hr=0, h=0)]),
+                            2026, LEAGUE)
+    for c in lu.COMPONENTS:
+        alpha, beta = rates.loc[1, f"alpha_{c}"], rates.loc[1, f"beta_{c}"]
+        assert alpha / (alpha + beta) == pytest.approx(LEAGUE[f"rate_{c}"], abs=1e-12)
+        assert alpha == pytest.approx(lu.BALLAST[c] * LEAGUE[f"rate_{c}"])
+
+
+def test_existing_columns_are_unchanged_by_the_beta_columns():
+    """Adding alpha/beta must not perturb pa_weighted or any rate_c column."""
+    row = counts(1, 2026, 300, k=30, bb=28, hr=15, h=90, doubles=20)
+    rates = lu.marcel_rates(frame([row]), 2026, LEAGUE)
+    for c in ("pa_weighted", *lu.RATE_COLS):
+        assert c in rates.columns
+    for c in lu.COMPONENTS:
+        assert f"alpha_{c}" in rates.columns and f"beta_{c}" in rates.columns
+
+
 def test_zero_plate_appearances_gives_exactly_league_average():
     rates = lu.marcel_rates(frame([counts(1, 2026, 0, k=0, bb=0, hr=0, h=0)]),
                             2026, LEAGUE)

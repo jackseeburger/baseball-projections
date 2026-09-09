@@ -209,15 +209,27 @@ def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
     (or at-bats, or balls in play). `ballast` is either one number for every
     component or a {component: sample} mapping (the default, `BALLAST`).
 
-    Returns a frame indexed by batter with the five rate columns and
-    `pa_weighted` (the effective sample). A batter with no history is simply
-    absent — `batter_runs_lookup` gives those league average.
+    Returns a frame indexed by batter with the five rate columns, `pa_weighted`
+    (the effective sample), and `alpha_<c>` / `beta_<c>` for each component —
+    the pseudo-counts of the Beta posterior the rate is the mean of:
+
+        alpha_c = num_w + ballast_c * lg_c
+        beta_c  = (den_w - num_w) + ballast_c * (1 - lg_c)
+
+    so `alpha_c / (alpha_c + beta_c) == rate_c` exactly (pinned in
+    `tests/test_sim/test_lineups.py`). `src/market/props.py` draws from these
+    to price the marginal `P(over)` instead of the point rate (BAS-70,
+    docs/posterior-props.md) — the Beta was already implicit in the ballast
+    arithmetic above, this just returns the two numbers that define it instead
+    of collapsing them into their ratio.
     """
     w = {as_of_season - i: weights[i] / weights[0] for i in range(len(weights))}
     used = counts[counts["season"].isin(w)].copy()
     num_den = sorted(set(RATE_NUM.values()) | set(RATE_DEN.values()))
     if used.empty:
-        return pd.DataFrame(columns=["pa_weighted", *RATE_COLS],
+        cols = ["pa_weighted", *RATE_COLS,
+                *[f"alpha_{c}" for c in COMPONENTS], *[f"beta_{c}" for c in COMPONENTS]]
+        return pd.DataFrame(columns=cols,
                             index=pd.Index([], name="batter", dtype="int64"))
     ws = used["season"].map(w).astype(float)
     for col in num_den:
@@ -228,7 +240,10 @@ def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
     out["pa_weighted"] = agg["pa"]
     for c in COMPONENTS:
         num, den = agg[RATE_NUM[c]], agg[RATE_DEN[c]]
-        out[f"rate_{c}"] = ((num + bal[c] * lg[f"rate_{c}"]) / (den + bal[c]))
+        lgc = lg[f"rate_{c}"]
+        out[f"rate_{c}"] = (num + bal[c] * lgc) / (den + bal[c])
+        out[f"alpha_{c}"] = num + bal[c] * lgc
+        out[f"beta_{c}"] = (den - num) + bal[c] * (1.0 - lgc)
     return out
 
 

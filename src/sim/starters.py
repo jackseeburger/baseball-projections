@@ -248,11 +248,23 @@ def _marcel_rates_legacy(counts: pd.DataFrame, as_of_season: int, lg: dict,
                          weights: tuple = MARCEL_WEIGHTS,
                          ballast=BALLAST_BF) -> pd.DataFrame:
     """The pre-provider arithmetic, kept as the reference the provider is
-    pinned against. Nothing in production calls it."""
+    pinned against. Nothing in production calls it for the point price.
+
+    Also the only place a pitcher's rate has an explicit Beta behind it: the
+    production path (`legacy=False`) runs the count through `marcel_tuned`'s
+    age curve, which is not a ballast-on-a-count formula and has no pseudo-
+    counts to expose. `alpha_<c>`/`beta_<c>` here reproduce *this* function's
+    own `rate_<c>` exactly, same as `lineups.marcel_rates`; `src/market/props.py`
+    uses their total (alpha+beta, the raw ballasted sample size) rescaled onto
+    the tuned mean as an approximate posterior for pitcher strikeouts, and
+    says so where it does it.
+    """
     w = {as_of_season - i: weights[i] / weights[0] for i in range(len(weights))}
     used = counts[counts["season"].isin(w)].copy()
     if used.empty:
-        return pd.DataFrame(columns=["bf_weighted", *RATE_COLS],
+        cols = ["bf_weighted", *RATE_COLS,
+                *[f"alpha_{c}" for c in COMPONENTS], *[f"beta_{c}" for c in COMPONENTS]]
+        return pd.DataFrame(columns=cols,
                             index=pd.Index([], name="pitcher", dtype="int64"))
     ws = used["season"].map(w).astype(float)
     for col in ("bf", *COMPONENTS):
@@ -262,8 +274,10 @@ def _marcel_rates_legacy(counts: pd.DataFrame, as_of_season: int, lg: dict,
     out = pd.DataFrame(index=agg.index)
     out["bf_weighted"] = agg["bf"]
     for c in COMPONENTS:
-        out[f"rate_{c}"] = ((agg[c] + bal[c] * lg[f"rate_{c}"])
-                            / (agg["bf"] + bal[c]))
+        lgc = lg[f"rate_{c}"]
+        out[f"rate_{c}"] = (agg[c] + bal[c] * lgc) / (agg["bf"] + bal[c])
+        out[f"alpha_{c}"] = agg[c] + bal[c] * lgc
+        out[f"beta_{c}"] = (agg["bf"] - agg[c]) + bal[c] * (1.0 - lgc)
     return out
 
 

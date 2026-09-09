@@ -10,6 +10,7 @@ import sys
 from math import comb, exp
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import pytest
 
@@ -244,6 +245,135 @@ def test_a_better_hitter_prices_higher_at_the_same_line():
     # A higher line is always less likely.
     assert props.batter_prop_prob("hits", 1.5, good, 4.6) < \
         props.batter_prop_prob("hits", 0.5, good, 4.6)
+
+
+# ───────────────────────── the Beta-binomial marginal (BAS-70) ─────────────
+
+MC_LG = {"rate_k": 0.22, "rate_bbhbp": 0.09, "rate_hr": 0.032, "rate_iso": 0.16,
+        "rate_babip": 0.295, "nonab_share": 0.02, "sf_share": 0.005,
+        "triple_share": 0.08}
+
+
+def _rates_row(rate_k, rate_bbhbp, rate_hr, rate_iso, rate_babip, total):
+    """A `lineups.marcel_rates` row with pseudo-counts at a given total sample.
+
+    `total` is `alpha_c + beta_c` for every component, held equal across
+    components for a clean single knob on "how much sample backs this rate" —
+    real rows have a different total per component (BABIP's ballast alone is
+    820 PA), but the mock doesn't need that to exercise the marginal.
+    """
+    rates = {"rate_k": rate_k, "rate_bbhbp": rate_bbhbp, "rate_hr": rate_hr,
+             "rate_iso": rate_iso, "rate_babip": rate_babip}
+    row = dict(rates)
+    for c, r in rates.items():
+        comp = c.split("_", 1)[1]
+        row[f"alpha_{comp}"] = total * r
+        row[f"beta_{comp}"] = total * (1.0 - r)
+    return pd.Series(row)
+
+
+def test_alpha_beta_reproduce_the_point_rate_in_a_prop_context():
+    row = _rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=500.0)
+    for c in props.lu_model.COMPONENTS:
+        a, b = row[f"alpha_{c}"], row[f"beta_{c}"]
+        assert a / (a + b) == pytest.approx(row[f"rate_{c}"], abs=1e-12)
+
+
+def test_marginal_equals_point_price_when_the_beta_is_degenerate():
+    """A near-infinite pseudo-count sample: the Beta collapses onto its mean,
+    so the marginal must equal the point price to within Monte Carlo error."""
+    row = _rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=1e9)
+    per_pa = props.pa_outcome_probs(row, MC_LG)
+    pa = 4.3
+    rng = np.random.default_rng(0)
+    draws = props._component_draws(row, rng, n=props.MC_DRAWS)
+    per_pa_draws = props._per_pa_draws(draws, MC_LG)
+    for stat, line in (("hits", 0.5), ("hr", 0.5), ("tb", 1.5)):
+        point = props.batter_prop_prob(stat, line, per_pa, pa)
+        mean, sd = props._batter_mc_price(stat, line, per_pa_draws, pa)
+        assert mean == pytest.approx(point, abs=0.005)
+        assert sd == pytest.approx(0.0, abs=1e-3)
+
+
+def test_marginal_exceeds_point_price_at_a_tail_line_with_a_wide_beta():
+    """The convexity claim in docs/posterior-props.md: at a low-probability
+    tail line (2+ HR at a low HR rate) with real uncertainty in the rate, the
+    marginal over the Beta prices *higher* than the point estimate — the
+    point price is a plug-in at the mean of a convex function."""
+    row = _rates_row(0.24, 0.08, 0.02, 0.12, 0.28, total=40.0)  # thin sample
+    per_pa = props.pa_outcome_probs(row, MC_LG)
+    pa = 4.3
+    rng = np.random.default_rng(1)
+    draws = props._component_draws(row, rng, n=props.MC_DRAWS)
+    per_pa_draws = props._per_pa_draws(draws, MC_LG)
+    point = props.batter_prop_prob("hr", 1.5, per_pa, pa)   # 2+ HR
+    mean, sd = props._batter_mc_price("hr", 1.5, per_pa_draws, pa)
+    assert mean > point
+    assert sd > 0.0
+
+
+def test_p_over_sd_is_zero_only_when_the_beta_is_degenerate():
+    tight = _rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=1e9)
+    loose = _rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=200.0)
+    rng = np.random.default_rng(2)
+    for row, expect_zero in ((tight, True), (loose, False)):
+        draws = props._component_draws(row, rng, n=props.MC_DRAWS)
+        per_pa_draws = props._per_pa_draws(draws, MC_LG)
+        _, sd = props._batter_mc_price("hits", 0.5, per_pa_draws, 4.3)
+        if expect_zero:
+            assert sd == pytest.approx(0.0, abs=1e-3)
+        else:
+            assert sd > 0.001
+
+
+def test_pitcher_marginal_behaves_the_same_way():
+    rng = np.random.default_rng(3)
+    tight_draws = rng.beta(0.22 * 1e9, 0.78 * 1e9, size=props.MC_DRAWS)
+    loose_draws = rng.beta(0.22 * 60.0, 0.78 * 60.0, size=props.MC_DRAWS)
+    pa = 23.0
+    point = props.pitcher_prop_prob("k", 7.5, 0.22, pa)
+    mean_tight, sd_tight = props._pitcher_mc_price(7.5, tight_draws, pa)
+    mean_loose, sd_loose = props._pitcher_mc_price(7.5, loose_draws, pa)
+    assert mean_tight == pytest.approx(point, abs=0.005)
+    assert sd_tight == pytest.approx(0.0, abs=1e-3)
+    assert sd_loose > 0.0
+
+
+def test_monte_carlo_error_is_small_at_the_production_draw_count():
+    """Two independent seeds at MC_DRAWS should agree well inside the 0.005
+    posterior-sd threshold docs/posterior-props.md's vacuity check uses —
+    otherwise the draw count is too small to trust the reported p_over_sd."""
+    row = _rates_row(0.24, 0.08, 0.02, 0.12, 0.28, total=40.0)
+    per_pa_a = props._per_pa_draws(
+        props._component_draws(row, np.random.default_rng(10), n=props.MC_DRAWS), MC_LG)
+    per_pa_b = props._per_pa_draws(
+        props._component_draws(row, np.random.default_rng(11), n=props.MC_DRAWS), MC_LG)
+    mean_a, _ = props._batter_mc_price("hr", 1.5, per_pa_a, 4.3)
+    mean_b, _ = props._batter_mc_price("hr", 1.5, per_pa_b, 4.3)
+    assert abs(mean_a - mean_b) < 0.001
+
+
+def test_price_frame_carries_the_marginal_columns_without_disturbing_the_rest():
+    ctx = _batter_ctx()
+    pitchers = {"season": 2026, "league": {"rate_k": 0.22},
+                "prior_counts": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                      "bbhbp", "hr", "outs"]),
+                "game_logs": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                   "bbhbp", "hr", "outs", "date"])}
+    closes = pd.DataFrame([
+        {"game_pk": 700001, "game_date": "2026-08-15", "player_id": 2,
+         "prop_stat": "hr", "prop_line": 0.5, "p_over_close": 0.12, "over_hit": True},
+    ])
+    slots = {(700001, 2): 3}
+    before = props.price(closes, ctx, pitchers, slots, stats=("hr",))
+    # p_model must still be exactly what `batter_prop_prob` gives directly off
+    # `batter_rates` — the point price is untouched by adding the marginal.
+    per_pa_cache_check = props.pa_outcome_probs(
+        props.batter_rates(ctx, "2026-08-15").loc[2], ctx["league"])
+    direct = props.batter_prop_prob("hr", 0.5, per_pa_cache_check, props.SLOT_PA[3])
+    assert before.loc[0, "p_model"] == pytest.approx(direct)
+    assert "p_over_bb" in before.columns and "p_over_sd" in before.columns
+    assert before.loc[0, "p_over_sd"] >= 0.0
 
 
 def test_unpriceable_stats_raise_rather_than_guess():

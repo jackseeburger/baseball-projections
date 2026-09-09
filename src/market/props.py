@@ -140,6 +140,40 @@ def threshold(line: float) -> int:
     return int(np.floor(float(line)) + 1)
 
 
+def _binom_at_least_vec(k: int, n: float, p) -> np.ndarray:
+    """`binom_at_least`, vectorised over an array of `p` — one call per draw.
+
+    Same fractional-`n` mixture as the scalar version, so a Monte Carlo mean
+    of this at one draw per weight is the same number `binom_at_least` would
+    give at that draw's `p`; the two prices stay comparable by construction.
+    """
+    p = np.clip(np.asarray(p, dtype=float), 0.0, 1.0)
+    if k <= 0:
+        return np.ones_like(p)
+    lo = int(np.floor(n))
+    w = float(n) - lo
+    out = np.zeros_like(p)
+    for trials, weight in ((lo, 1.0 - w), (lo + 1, w)):
+        if weight <= 0 or trials < 0 or k > trials:
+            continue
+        below = np.zeros_like(p)
+        for i in range(k):
+            below += comb(trials, i) * p ** i * (1.0 - p) ** (trials - i)
+        out += weight * (1.0 - below)
+    return np.clip(out, 0.0, 1.0)
+
+
+def _poisson_at_least_vec(k: int, mean) -> np.ndarray:
+    """`poisson_at_least`, vectorised over an array of means."""
+    m = np.clip(np.asarray(mean, dtype=float), 0.0, None)
+    if k <= 0:
+        return np.ones_like(m)
+    below = np.zeros_like(m)
+    for i in range(k):
+        below += np.exp(-m) * m ** i / factorial(i)
+    return np.clip(1.0 - below, 0.0, 1.0)
+
+
 # ───────────────────────────── the rate → prop step ─────────────────────────
 
 def pa_outcome_probs(rates, lg: dict) -> dict:
@@ -177,6 +211,97 @@ def pitcher_prop_prob(stat: str, line: float, rate_k: float,
     if stat != "k":
         raise ValueError(f"{stat} is not a pitcher prop this module prices")
     return binom_at_least(threshold(line), bf, rate_k)
+
+
+# ─────────────────── the marginal price (BAS-70, docs/posterior-props.md) ────
+#
+# `p_model` above is Binomial/Poisson on the *point* rate `lineups.marcel_rates`
+# returns. That rate is the mean of an explicit Beta posterior (the ballast
+# arithmetic already computes its pseudo-counts; `alpha_<c>`/`beta_<c>` just
+# expose them instead of collapsing them). `P(count >= line)` is convex in the
+# rate at the lines that matter, so the marginal over that Beta — `p_over_bb`
+# ("bb" for beta-binomial, the pricing this section adds) — is a genuinely
+# different, fatter-tailed number, and the gap is the thing docs/posterior-
+# props.md predicts and the vacuity check below measures.
+#
+# A hits or HR price is a function of all five component rates through
+# `event_rates`, not of one Beta, so there is no closed-form marginal here —
+# the honest construction is Monte Carlo: draw each of the five rates from its
+# own Beta *independently* (this is an approximation flagged once here rather
+# than at every call site: the components are not independent — a hitter's K%
+# and BABIP both move with the same plate appearances — and drawing them
+# independently overstates how much the joint spreads relative to a model that
+# knew the covariance; nothing in the estimator gives us that covariance to
+# draw from), push each draw through the same `event_rates` step the point
+# price uses, price each draw with the same binomial/Poisson machinery
+# (`_binom_at_least_vec` / `_poisson_at_least_vec` mirror the scalar fractional-
+# `n` interpolation exactly), and average. Total bases reuses the same draws —
+# it is a rate-mixture on the same five components, not a separate model.
+MC_DRAWS = 2000
+# Fixed so a rerun on the same inputs reproduces the same price and the same
+# measured Monte Carlo error; advances per (player, as-of-date) in the order
+# `price()` visits them, not reseeded per contract, so contracts sharing a
+# player+date (three lines on the same 1+/2+/3+ hits market) share draws
+# rather than independently resampling the same posterior.
+MC_SEED = 20260909
+
+
+def _component_draws(rates_row, rng: np.random.Generator,
+                     n: int = MC_DRAWS) -> pd.DataFrame:
+    """`n` draws of the five component rates from their per-component Betas."""
+    return pd.DataFrame({f"rate_{c}": rng.beta(float(rates_row[f"alpha_{c}"]),
+                                                float(rates_row[f"beta_{c}"]), size=n)
+                         for c in lu_model.COMPONENTS})
+
+
+def _per_pa_draws(draws: pd.DataFrame, lg: dict) -> dict:
+    """`_component_draws` output -> per-draw arrays of hit / HR / TB per PA.
+
+    Vectorised twin of `pa_outcome_probs`: `event_rates` already accepts a
+    DataFrame of rates and returns a DataFrame of event probabilities, so this
+    is the same arithmetic run once over `n` draws instead of once over a
+    point estimate.
+    """
+    ev = lu_model.event_rates(draws, lg)
+    ts = float(lg["triple_share"])
+    return {"hit": (ev["b1"] + ev["d23"] + ev["hr"]).to_numpy(),
+            "hr": ev["hr"].to_numpy(),
+            "tb": (ev["b1"] + (2.0 + ts) * ev["d23"] + 4.0 * ev["hr"]).to_numpy()}
+
+
+def _apply_matchup_draws(draws: pd.DataFrame, factors: dict, weight: float) -> pd.DataFrame:
+    """The matchup factor applied to every draw of every component.
+
+    `matchup.apply_factor` is already vectorised (`np.asarray` under the
+    hood), so this is `matchup.matchup_rates` run over an array of draws
+    instead of one point rate per component.
+    """
+    from src.market import matchup as mu
+    out = pd.DataFrame(index=draws.index)
+    for c in lu_model.COMPONENTS:
+        out[f"rate_{c}"] = mu.apply_factor(draws[f"rate_{c}"].to_numpy(),
+                                           factors.get(c, 1.0), weight)
+    return out
+
+
+def _batter_mc_price(stat: str, line: float, per_pa_draws: dict, pa: float) -> tuple:
+    """Mean and standard deviation of `P(over)` across the component draws."""
+    k = threshold(line)
+    if stat == "hits":
+        d = _binom_at_least_vec(k, pa, per_pa_draws["hit"])
+    elif stat == "hr":
+        d = _binom_at_least_vec(k, pa, per_pa_draws["hr"])
+    elif stat == "tb":
+        d = _poisson_at_least_vec(k, pa * per_pa_draws["tb"])
+    else:
+        raise ValueError(f"{stat} is not a batter prop this module prices")
+    return float(d.mean()), float(d.std(ddof=0))
+
+
+def _pitcher_mc_price(line: float, rate_draws, pa: float) -> tuple:
+    """Mean and standard deviation of `P(over)` across draws of `rate_k`."""
+    d = _binom_at_least_vec(threshold(line), pa, rate_draws)
+    return float(d.mean()), float(d.std(ddof=0))
 
 
 # ───────────────────────── as-of-date assembly ─────────────────────────
@@ -218,11 +343,39 @@ def batter_rates(inputs: dict, as_of: str, ballast=lu_model.BALLAST) -> pd.DataF
 
 def pitcher_rates(inputs: dict, as_of: str,
                   ballast=sp_model.BALLAST_BF) -> pd.DataFrame:
-    """The same, per batter faced, for pitchers."""
+    """The same, per batter faced, for pitchers — plus an approximate Beta.
+
+    The point rate is `starters.marcel_rates`'s production path: a tuned,
+    age-curve-adjusted Marcel, not a ballast-on-a-count formula, so unlike the
+    hitter side it has no pseudo-counts to expose exactly. What it has instead:
+    the *legacy* path (`legacy=True`, `starters._marcel_rates_legacy`) runs the
+    same counts through the raw ballast formula and does have an exact Beta.
+    `alpha_k`/`beta_k` here take that Beta's total (alpha+beta — the raw
+    ballasted sample size, i.e. how much the ballast plus the observed batters
+    faced constrain the rate) and recentre it on the *tuned* `rate_k`, so the
+    posterior mean matches the price actually being sold while the posterior
+    width still comes from real sample size. This is named as an approximation
+    rather than hidden: it assumes the tuning (age curve, recency) changes the
+    rate's location and not its precision, which is untested.
+    """
     current = sp_model.appearances_before(inputs["game_logs"], as_of)
     counts = pd.concat([inputs["prior_counts"], current], ignore_index=True)
-    return sp_model.marcel_rates(counts, inputs["season"], inputs["league"],
-                                 ballast=ballast)
+    tuned = sp_model.marcel_rates(counts, inputs["season"], inputs["league"],
+                                  ballast=ballast)
+    if tuned.empty:
+        return tuned
+    raw = sp_model.marcel_rates(counts, inputs["season"], inputs["league"],
+                                ballast=ballast, legacy=True)
+    total_k = (raw["alpha_k"] + raw["beta_k"]).reindex(tuned.index)
+    # A pitcher the tuned provider prices but the raw ballast formula has no
+    # row for (should not happen off the same counts, but the two paths are
+    # different code) falls back to the ballast alone — still a real, if
+    # minimal, amount of precision, never a crash.
+    total_k = total_k.fillna(float(sp_model._ballast_map(ballast)["k"]))
+    tuned = tuned.copy()
+    tuned["alpha_k"] = total_k * tuned["rate_k"]
+    tuned["beta_k"] = total_k * (1.0 - tuned["rate_k"])
+    return tuned
 
 
 def starter_bf(inputs: dict, as_of: str, default: float = STARTER_BF,
@@ -315,11 +468,22 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
 
     `pitcher_bf` is "fixed" (every start faces `STARTER_BF`) or "own" (the
     pitcher's own batters faced per start to date, `starter_bf`).
+
+    Two more columns carry the Beta-binomial marginal (BAS-70,
+    docs/posterior-props.md): `p_over_bb` is the Monte Carlo mean of
+    `P(over)` over the component Betas behind `p_model` (through the same
+    matchup adjustment as `p_matchup` when `matchup_ctx` is given, so the two
+    are the like-for-like comparison the pre-registration asks for — when
+    matchup is off it is the marginal counterpart of `p_model` instead), and
+    `p_over_sd` is the posterior standard deviation of `P(over)` across those
+    same draws — the number the vacuity check and the selection rule both
+    read by that name.
     """
     wanted = closes[closes["prop_stat"].isin(list(stats))
                     & closes["player_id"].notna()].copy()
     if wanted.empty:
-        cols = {"p_model": [], "p_league": [], "p_market": [], "exp_pa": []}
+        cols = {"p_model": [], "p_league": [], "p_market": [], "exp_pa": [],
+                "p_over_bb": [], "p_over_sd": []}
         if matchup_ctx is not None:
             cols["p_matchup"] = []
         return wanted.assign(**cols)
@@ -327,6 +491,7 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
     lg_per_pa = pa_outcome_probs(
         {f"rate_{c}": lg[f"rate_{c}"] for c in lu_model.COMPONENTS}, lg)
     lg_k = pitcher_ctx["league"]["rate_k"]
+    rng = np.random.default_rng(MC_SEED)
 
     out = []
     for as_of, day in wanted.groupby("game_date", sort=True):
@@ -336,6 +501,12 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
         mday = _matchup_day(matchup_ctx, as_of)
         per_pa_cache: dict[int, dict] = {}
         matchup_cache: dict = {}
+        # Monte Carlo draws, cached per player for this date so three lines on
+        # the same hits market (1+/2+/3+) share draws rather than resampling.
+        batter_draw_cache: dict[int, pd.DataFrame] = {}
+        batter_per_pa_draws_cache: dict[int, dict] = {}
+        batter_matchup_draws_cache: dict = {}
+        pitcher_draw_cache: dict[int, np.ndarray] = {}
         for row in day.itertuples(index=False):
             pid = int(row.player_id)
             extra = {}
@@ -346,11 +517,22 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                 pa = bf_lookup.get(pid, STARTER_BF)
                 p_model = pitcher_prop_prob("k", row.prop_line, rate, pa)
                 p_league = pitcher_prop_prob("k", row.prop_line, lg_k, pa)
+                if pid not in pitcher_draw_cache:
+                    pitcher_draw_cache[pid] = rng.beta(
+                        float(p_rates.loc[pid, "alpha_k"]),
+                        float(p_rates.loc[pid, "beta_k"]), size=MC_DRAWS)
+                rate_draws = pitcher_draw_cache[pid]
                 if mday is not None:
-                    adj = _pitcher_matchup_rate(mday, row, rate, b_rates, lg,
-                                                matchup_cache)
-                    extra["p_matchup"] = pitcher_prop_prob("k", row.prop_line,
-                                                           adj, pa)
+                    extra["p_matchup"] = _pitcher_matchup_rate(
+                        mday, row, rate, b_rates, lg, matchup_cache)
+                    extra["p_matchup"] = pitcher_prop_prob(
+                        "k", row.prop_line, extra["p_matchup"], pa)
+                    factor = _pitcher_matchup_factor(mday, row, b_rates, lg,
+                                                     matchup_cache)
+                    from src.market import matchup as mu
+                    rate_draws = mu.apply_factor(rate_draws, factor, mday["weight"])
+                extra["p_over_bb"], extra["p_over_sd"] = _pitcher_mc_price(
+                    row.prop_line, rate_draws, pa)
             else:
                 slot = slots.get((int(row.game_pk), pid))
                 if slot is None:            # not in the posted lineup
@@ -363,11 +545,39 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                                            per_pa_cache[pid], pa)
                 p_league = batter_prop_prob(row.prop_stat, row.prop_line,
                                             lg_per_pa, pa)
+                has_draws = pid in b_rates.index
+                if has_draws and pid not in batter_draw_cache:
+                    batter_draw_cache[pid] = _component_draws(b_rates.loc[pid], rng)
+                    batter_per_pa_draws_cache[pid] = _per_pa_draws(
+                        batter_draw_cache[pid], lg)
                 if mday is not None:
                     per_pa = _batter_matchup_per_pa(mday, row, pid, b_rates, lg,
                                                     matchup_cache)
                     extra["p_matchup"] = batter_prop_prob(
                         row.prop_stat, row.prop_line, per_pa, pa)
+                    if has_draws:
+                        side = mday["sides"].get((int(row.game_pk), pid))
+                        opp = {"home": "away", "away": "home"}.get(side)
+                        factors = _hitter_matchup_factors(mday, row, pid, matchup_cache)
+                        mkey = (pid, opp)
+                        if mkey not in batter_matchup_draws_cache:
+                            adj_draws = _apply_matchup_draws(
+                                batter_draw_cache[pid], factors, mday["weight"])
+                            batter_matchup_draws_cache[mkey] = _per_pa_draws(
+                                adj_draws, lg)
+                        per_pa_draws = batter_matchup_draws_cache[mkey]
+                    else:
+                        per_pa_draws = None
+                else:
+                    per_pa_draws = batter_per_pa_draws_cache.get(pid)
+                if per_pa_draws is not None:
+                    extra["p_over_bb"], extra["p_over_sd"] = _batter_mc_price(
+                        row.prop_stat, row.prop_line, per_pa_draws, pa)
+                else:
+                    # No player-specific rates (league fallback): no Beta to
+                    # marginalise over, so the marginal collapses onto the
+                    # point price with zero posterior width, honestly.
+                    extra["p_over_bb"], extra["p_over_sd"] = p_model, 0.0
             if mday is not None and "p_matchup" not in extra:
                 extra["p_matchup"] = p_model
             out.append({**row._asdict(), "exp_pa": pa,
@@ -401,9 +611,14 @@ def _matchup_day(matchup_ctx: dict | None, as_of: str) -> dict | None:
     return day
 
 
-def _batter_matchup_per_pa(mday: dict, row, pid: int, b_rates, lg: dict,
-                           cache: dict) -> dict:
-    """Per-PA outcome probabilities for one hitter against tonight's pitching."""
+def _hitter_matchup_factors(mday: dict, row, pid: int, cache: dict) -> dict:
+    """{component: factor} for the pitching one hitter is about to face.
+
+    Split out of `_batter_matchup_per_pa` so the Monte Carlo marginal
+    (`_apply_matchup_draws`) can apply the identical, identically-cached
+    factors to its component draws instead of to a point rate — the "same
+    adjustment" docs/posterior-props.md asks the marginal to go through.
+    """
     from src.market import matchup as mu
     game_pk = int(row.game_pk)
     side = mday["sides"].get((game_pk, pid))
@@ -414,19 +629,27 @@ def _batter_matchup_per_pa(mday: dict, row, pid: int, b_rates, lg: dict,
         team = mday["teams"].get((game_pk, opp)) if opp else None
         cache[key] = mu.hitter_factors(mday["tables"], mday["ctx"]["league"],
                                        sp, team)
-    factors = cache[key]
+    return cache[key]
+
+
+def _batter_matchup_per_pa(mday: dict, row, pid: int, b_rates, lg: dict,
+                           cache: dict) -> dict:
+    """Per-PA outcome probabilities for one hitter against tonight's pitching."""
+    from src.market import matchup as mu
+    factors = _hitter_matchup_factors(mday, row, pid, cache)
     rates = b_rates.loc[pid] if pid in b_rates.index else \
         {f"rate_{c}": lg[f"rate_{c}"] for c in lu_model.COMPONENTS}
     return pa_outcome_probs(mu.matchup_rates(rates, factors, mday["weight"]), lg)
 
 
-def _pitcher_matchup_rate(mday: dict, row, rate_k: float, b_rates, lg: dict,
-                          cache: dict) -> float:
-    """A starter's K per batter faced against the card he is about to face.
+def _pitcher_matchup_factor(mday: dict, row, b_rates, lg: dict, cache: dict) -> float:
+    """The opposing card's strikeout factor a starter is about to face.
 
     The opposing club's posted card where one exists, its recent cards where
     it does not, and the league — a factor of exactly 1.0 — where neither
-    does, which leaves the price where the current model put it.
+    does, which leaves the price where the current model put it. Split out of
+    `_pitcher_matchup_rate` so the Monte Carlo marginal can apply the same
+    cached factor to an array of `rate_k` draws instead of one point rate.
     """
     from src.market import matchup as mu
     game_pk = int(row.game_pk)
@@ -450,7 +673,15 @@ def _pitcher_matchup_rate(mday: dict, row, rate_k: float, b_rates, lg: dict,
                                         mday["as_of"]) if opp_team else []
             f = mu.card_k_factor(recent, b_rates, lg["rate_k"]) or 1.0
         cache[key] = f
-    return float(mu.apply_factor(rate_k, cache[key], mday["weight"]))
+    return float(cache[key])
+
+
+def _pitcher_matchup_rate(mday: dict, row, rate_k: float, b_rates, lg: dict,
+                          cache: dict) -> float:
+    """A starter's K per batter faced against the card he is about to face."""
+    from src.market import matchup as mu
+    factor = _pitcher_matchup_factor(mday, row, b_rates, lg, cache)
+    return float(mu.apply_factor(rate_k, factor, mday["weight"]))
 
 
 # ───────────────────────────── scoring ─────────────────────────────
