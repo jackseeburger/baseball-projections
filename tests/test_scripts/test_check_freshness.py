@@ -61,6 +61,7 @@ ALL_FRESH = {
     "accuracy page data": 5,
     "market snapshot archive": 3,
     "market latest.json": 3,
+    "paper ledger": 3,
     "career WAR (ungated Bayesian)": 5,
 }
 
@@ -213,7 +214,7 @@ def test_report_names_the_workflow_to_go_look_at(tmp_path, capsys):
     fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()])
     out = capsys.readouterr().out
     assert "STALE" in out and "market-snapshot.yml" in out
-    assert "1 of 6 artifacts out of budget" in out
+    assert "1 of 7 artifacts out of budget" in out
 
 
 def test_naive_and_zulu_timestamps_are_read_as_utc():
