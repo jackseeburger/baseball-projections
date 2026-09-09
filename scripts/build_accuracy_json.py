@@ -48,15 +48,19 @@ from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_LIVE_ENGINE  # no
 from src.projections.ros import LIVE_ENGINE  # noqa: E402  (needs ROOT on sys.path)
 
 # (side, component) -> the engine `src/projections/ros.py` /
-# `src/projections/pitcher_ros.py` actually names for it. `ros.LIVE_ENGINE` is
-# per hitter component (BAS-72); the pitcher side has one engine for every
-# served component (`pitcher_ros.LIVE_ENGINE`), so it is broadcast across the
-# pitcher keys `section_contact_quality` tracks.
+# `src/projections/pitcher_ros.py` actually names for it. Both are per
+# component now — the hitter side since BAS-72, the pitcher side since BAS-79 —
+# and both are read from the serving modules rather than restated, so this
+# page cannot mark an engine live that the site does not run. A pitcher
+# component the served module never projects (`p_bbhbp_rate`, which feeds the
+# odds but is not a site column) is on the tuned pitcher Marcel wherever it is
+# scored.
 LIVE_ENGINE_BY_SIDE_COMPONENT = {("hitter", c): engine
                                  for c, engine in LIVE_ENGINE.items()}
 LIVE_ENGINE_BY_SIDE_COMPONENT.update(
-    {("pitcher", c): PITCHER_LIVE_ENGINE for c in
-     ("p_hr_rate", "p_bb_rate", "p_bbhbp_rate", "p_babip", "p_k_rate")})
+    {("pitcher", c): PITCHER_LIVE_ENGINE.get(c, "marcel_pitcher_tuned")
+     for c in ("p_hr_rate", "p_bb_rate", "p_bbhbp_rate", "p_babip",
+               "p_k_rate")})
 
 OUT_DIR = ROOT / "public/data/accuracy"
 ACCURACY_MD = ROOT / "docs/accuracy-2026.md"
@@ -145,9 +149,19 @@ PITCHER_COMPONENT_LABELS = {
     "p_k_rate": "K% MAE", "p_bb_rate": "BB% MAE", "p_hr_rate": "HR/BF MAE",
     "p_babip": "BABIP MAE", "p_bbhbp_rate": "(BB+HBP)% MAE",
 }
-# Read from the module that serves it, so the page cannot mark an arm live
-# that src/projections/pitcher_ros.py is not running.
-PITCHER_ROS_LIVE_ARM = PITCHER_LIVE_ENGINE
+# This table only ever scores Marcel-family arms (`run_pitcher_backtest.py`
+# does not run the stuff arm), so — exactly as `ROS_LIVE_ARM` does on the
+# hitter side — it marks the Marcel the served engine is built on. Since
+# BAS-79 two components are served as `stuff_additive`, whose base is
+# `marcel_pitcher_tuned` bit for bit (`pitcher_ros.stuff_engine_provider`);
+# which components those are is what `LIVE_ENGINE_BY_SIDE_COMPONENT` answers,
+# and this row is "which Marcel is under it", not "what is live".
+PITCHER_ROS_LIVE_ARM = "marcel_pitcher_tuned"
+assert set(PITCHER_LIVE_ENGINE.values()) <= {"marcel_pitcher_tuned",
+                                             "stuff_additive"}, (
+    "PITCHER_ROS_LIVE_ARM assumes every served pitcher component is either "
+    "`marcel_pitcher_tuned` or `stuff_additive` on top of it; a third engine "
+    "needs this table's assumption revisited")
 PITCHER_ROS_BASELINES = ("league_average", "previous_season", "season_to_date")
 
 # Station B-P — projected batters faced (and innings), scored walk-forward on

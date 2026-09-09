@@ -347,6 +347,34 @@ def save_monthly(df: pd.DataFrame, path: str | Path = DEFAULT_PATH) -> Path:
     return path
 
 
+def meta_path(path: str | Path = DEFAULT_PATH) -> Path:
+    """The JSON sidecar next to the parquet: `<name>.meta.json`.
+
+    `scripts/check_freshness.py` reads a build timestamp out of it rather than
+    out of the parquet itself — that script is stdlib-only on purpose, and
+    parsing parquet needs pandas/pyarrow. Same shape and same reasoning as the
+    contact-quality sidecar (`src.data.contact_quality.meta_path`).
+    """
+    path = Path(path)
+    return path.with_suffix("").with_suffix(".meta.json")
+
+
+def write_meta(path: str | Path = DEFAULT_PATH, *, built_at: str | None = None,
+               seasons_built: list[int] | None = None) -> Path:
+    """Stamp the sidecar with when this build ran and which seasons it touched."""
+    import json
+    from datetime import datetime, timezone
+
+    stamp = built_at or datetime.now(timezone.utc).isoformat()
+    out = meta_path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps({
+        "built_at": stamp,
+        "seasons_built": sorted(seasons_built) if seasons_built else None,
+    }, indent=1) + "\n")
+    return out
+
+
 def load_monthly(path: str | Path = DEFAULT_PATH) -> pd.DataFrame:
     """Read the artifact back with float counts (the feature code sums them)."""
     df = pd.read_parquet(path)
@@ -362,5 +390,6 @@ __all__ = [
     "PITCH_TYPE_FEATURES", "STATCAST_COLUMNS", "STUFF_FEATURES",
     "SWING_DESCRIPTIONS", "WHIFF_DESCRIPTIONS", "build_year",
     "competitive_pitches", "fastball_reference", "load_monthly",
-    "monthly_buckets", "pitch_features", "save_monthly",
+    "meta_path", "monthly_buckets", "pitch_features", "save_monthly",
+    "write_meta",
 ]

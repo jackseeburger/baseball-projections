@@ -8,10 +8,16 @@ pitcher per calendar month.
     python scripts/build_pitching_stuff.py --download
     python scripts/build_pitching_stuff.py --seasons 2015 2026
     python scripts/build_pitching_stuff.py --seasons 2022 2026 --metrics-out m.csv
+    python scripts/build_pitching_stuff.py --download --update-season 2026
 
 The output is `data/features/pitching_stuff_monthly.parquet`, and it is
 committed precisely so the 1.6 GB download and the hour of model fitting never
-have to happen twice.
+have to happen twice. `--update-season <year>` rebuilds that one season's rows
+in place and leaves every other season alone — the nightly refresh, so the
+`stuff_additive` pitcher rates the site serves (BAS-79) read this season's
+pitches instead of stopping wherever the committed artifact stopped. Both
+paths stamp a `pitching_stuff_monthly.meta.json` sidecar with `built_at` and
+the seasons touched, which is what `scripts/check_freshness.py` watches.
 
 **The monthly grain, and what a caller may do with it.** Every column in a
 bucket is a sum over the pitches thrown in that calendar month, so any window
@@ -49,7 +55,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import pandas as pd
 
-from src.data.pitching_stuff import DEFAULT_PATH, build_year, monthly_buckets, save_monthly
+from src.data.pitching_stuff import (
+    DEFAULT_PATH,
+    build_year,
+    monthly_buckets,
+    save_monthly,
+    write_meta,
+)
 from src.models.stuff import fit_stuff_model, walk_forward
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -59,6 +71,12 @@ ROOT = Path(__file__).resolve().parent.parent
 # Two prior seasons is the minimum a walk-forward fold is allowed, so 2017 is
 # the first strictly-scored season.
 MIN_TRAIN_SEASONS = 2
+# How far back `--update-season` reaches for its training seasons. The full
+# build trains a season on every season before it; a nightly refresh that did
+# the same would download the whole archive every night for a model whose fit
+# is capped at 1.5M sampled rows anyway. Three seasons is the same window the
+# stage-2 recency grid spans, and the fit stays strictly walk-forward.
+MAX_TRAIN_SEASONS = 3
 
 
 def download_archive(years: list[int], raw_dir: Path) -> None:
@@ -92,6 +110,57 @@ def seed_scores(seasons: dict, seed_years: list[int], first_scored: int,
     return out
 
 
+def update_season(year: int, raw_dir: Path, out: Path, **kwargs) -> Path:
+    """Rebuild one season's buckets in `out`, leaving every other season alone.
+
+    What the nightly refresh runs (BAS-79), so the `stuff_additive` components
+    of the served pitcher projection see this season's pitches rather than a
+    committed artifact that stops in August. Re-aggregating twelve seasons and
+    refitting every stage-1 arm nightly would cost the 1.6 GB download and an
+    hour of fitting for rows that cannot change.
+
+    The season is scored **walk-forward exactly as the committed artifact
+    scores it**: the model is fitted on the seasons strictly before it that are
+    present in `raw_dir`, and `src.models.stuff.assert_no_leak` (inside
+    `fit_stuff_model`) re-checks the training frame rather than trusting the
+    filter. Fewer prior seasons than the full build had is a weaker model, not
+    a leaky one; `MIN_TRAIN_SEASONS` is still the floor and below it this
+    refuses rather than scoring a season in sample.
+    """
+    train_years = sorted(
+        y for y in range(year - MAX_TRAIN_SEASONS, year)
+        if (raw_dir / f"statcast_{y}.parquet").exists())
+    if len(train_years) < MIN_TRAIN_SEASONS:
+        raise SystemExit(
+            f"--update-season {year} needs at least {MIN_TRAIN_SEASONS} prior "
+            f"seasons in {raw_dir} to fit walk-forward; found {train_years}. "
+            f"Pass --download, or run the full build.")
+    logger.info("fitting the %d models on %s", year, train_years)
+    train = pd.concat([build_year(y, raw_dir) for y in train_years],
+                      ignore_index=True)
+    held = build_year(year, raw_dir)
+    scores = {t: fit_stuff_model(train, t, "stuff", year, **kwargs).predict(held)
+              for t in ("whiff", "csw")}
+    del train
+    fresh = monthly_buckets(held.assign(p_whiff=scores["whiff"],
+                                        p_csw=scores["csw"]))
+    logger.info("%d: %d buckets over %d pitchers", year, len(fresh),
+                fresh["pitcher"].nunique())
+
+    if out.exists():
+        existing = pd.read_parquet(out)
+        combined = pd.concat([existing[existing["season"] != year], fresh],
+                             ignore_index=True)
+    else:
+        combined = fresh
+    path = save_monthly(combined, out)
+    meta = write_meta(out, seasons_built=[year])
+    logger.info("wrote %s (%d rows total, %d for %d, %.2f MB); %s", path,
+                len(combined), len(fresh), year, path.stat().st_size / 1e6,
+                meta)
+    return path
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -109,15 +178,31 @@ def main() -> None:
                     default=ROOT / "data/eval/pitching_stuff_stage1.json",
                     help="per-season out-of-sample log-loss and AUC")
     ap.add_argument("--max-train-rows", type=int, default=None)
+    ap.add_argument(
+        "--update-season", type=int, default=None,
+        help="rebuild only this season's rows in --out and leave every other "
+             "season's rows untouched (BAS-79: the nightly refresh of the "
+             "current season, so the served pitcher rates read this season's "
+             "pitches, rather than re-aggregating and re-fitting twelve "
+             "seasons every night). Still walk-forward: the model is fitted "
+             "on seasons strictly before it.")
     args = ap.parse_args()
+
+    kwargs = ({"max_rows": args.max_train_rows} if args.max_train_rows else {})
+    if args.update_season is not None:
+        year = args.update_season
+        if args.download:
+            download_archive(
+                [y for y in range(year - MAX_TRAIN_SEASONS, year + 1)],
+                args.raw_dir)
+        update_season(year, args.raw_dir, args.out, **kwargs)
+        return
 
     years = list(range(args.seasons[0], args.seasons[1] + 1))
     if args.download:
         download_archive(years, args.raw_dir)
 
     seasons = {y: build_year(y, args.raw_dir) for y in years}
-    kwargs = ({"max_rows": args.max_train_rows} if args.max_train_rows
-              else {})
 
     score_years = [y for y in years
                    if sum(1 for x in years if x < y) >= MIN_TRAIN_SEASONS]
@@ -144,8 +229,9 @@ def main() -> None:
 
     out = pd.concat(frames, ignore_index=True)
     path = save_monthly(out, args.out)
-    logger.info("wrote %s (%d rows, %.2f MB)", path, len(out),
-                path.stat().st_size / 1e6)
+    meta = write_meta(args.out, seasons_built=years)
+    logger.info("wrote %s (%d rows, %.2f MB); %s", path, len(out),
+                path.stat().st_size / 1e6, meta)
 
     if not metrics.empty:
         print("\n=== stage 1: out-of-sample by season ===")
