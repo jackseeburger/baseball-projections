@@ -196,6 +196,21 @@ class TestJointGraph:
             np.testing.assert_array_equal(
                 model.rvs_to_values[rv].data, joint_data.k[:, j])
 
+    def test_the_correlation_matrix_does_not_repeat_a_dimension_name(self, joint_data):
+        """xarray cannot broadcast a variable whose two dims share a name: it
+        warns at construction and then fails on the first `.sel`, which is
+        how the first smoke run lost a whole cell (`broadcasting cannot
+        handle duplicate dimensions`) after a clean 208s fit. The square
+        correlation matrix is the only variable here with two component
+        axes, so its second axis gets its own coordinate over the same
+        labels."""
+        from src.models.pa_joint import build_joint_model
+
+        model = build_joint_model(joint_data)
+        dims = model.named_vars_to_dims["ability_corr"]
+        assert len(set(dims)) == len(dims) == 2
+        assert list(model.coords["component_2"]) == list(model.coords["component"])
+
     def test_the_correlation_prior_and_its_pairwise_readouts_exist(self, joint_data):
         from src.models.pa_joint import build_joint_model, corr_name
 

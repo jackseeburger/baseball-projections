@@ -295,6 +295,11 @@ def build_joint_model(data: JointData,
     n_seasons = shared["n_seasons"]
     coords = {
         "component": comps,
+        # The correlation matrix is square over components, and xarray refuses
+        # to work with a variable whose two dims share a name (it warns and
+        # then fails silently on most operations), so the second axis gets its
+        # own coordinate over the same labels.
+        "component_2": comps,
         "batter": shared["batters"],
         "season": shared["seasons"],
         "team": shared["teams"],
@@ -334,7 +339,8 @@ def build_joint_model(data: JointData,
         # season-0 ability, which is what `_project_unseen` draws an unseen
         # batter's ability from.
         sigma_ability = pm.Deterministic("sigma_ability", stds, dims="component")
-        pm.Deterministic("ability_corr", corr, dims=("component", "component"))
+        pm.Deterministic("ability_corr", corr,
+                         dims=("component", "component_2"))
         for i, j in corr_pairs(comps):
             pm.Deterministic(corr_name(i, j),
                              corr[comps.index(i), comps.index(j)])
