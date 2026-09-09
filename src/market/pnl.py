@@ -72,6 +72,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 
 KALSHI_TAKER_RATE = 0.07        # round_up_to_cent(0.07 · C · P · (1-P))
 KALSHI_MAKER_RATE = 0.0175      # a quarter of the taker rate; 0.44¢ max, at 50¢
@@ -168,6 +169,49 @@ def decide(p_model, bid, ask, threshold: float = 0.0) -> pd.DataFrame:
     return pd.DataFrame({"side": side, "cost": cost, "edge": taken})
 
 
+def decide_posterior(p_model, p_sd, bid, ask, tau: float) -> pd.DataFrame:
+    """Which side to take when the posterior *probability the edge is real*
+    clears `tau`, rather than when the *mean* edge clears a fixed margin.
+
+    `decide` treats a 3-point mean edge the same whether the estimate is
+    pinned to ±1 point or loose at ±6 — exactly the selection docs/
+    posterior-props.md's correction says the fee is really punishing:
+    an estimate large enough to clear the threshold is disproportionately
+    large *because of* noise, and thresholding the mean cannot tell a real
+    edge from a winner's-curse one. This rule can, by asking a different
+    question of the same estimate. Approximating the posterior on the true
+    probability as Normal(`p_model`, `p_sd`),
+
+        P(p_true > ask) = 1 − Φ((ask − p_model) / p_sd)   [``norm.sf``]
+        P(p_true < bid) = Φ((bid − p_model) / p_sd)       [``norm.cdf``]
+
+    and a side is taken when that posterior probability exceeds `tau`. A
+    contract with `p_sd = 0` has a point posterior, so both tail
+    probabilities collapse to 0/1 indicators and, for any `tau` strictly
+    between 0 and 1, this rule reduces exactly to `decide` at
+    `threshold=0`. For `tau >= 0.5` (the only region this repo's `TAU_GRID`
+    uses) a bet still requires `p_model` to be on the far side of the quote
+    it takes — `P(p_true > ask) > 0.5` iff `p_model > ask` — so, like
+    `decide`, this never trades inside the spread.
+    """
+    p = np.asarray(p_model, dtype=float)
+    sd = np.asarray(p_sd, dtype=float)
+    bid = np.asarray(bid, dtype=float)
+    ask = np.asarray(ask, dtype=float)
+    degenerate = ~(sd > 0)
+    with np.errstate(divide="ignore", invalid="ignore"):
+        p_above_ask = norm.sf((ask - p) / sd)
+        p_below_bid = norm.cdf((bid - p) / sd)
+    p_above_ask = np.where(degenerate, (p > ask).astype(float), p_above_ask)
+    p_below_bid = np.where(degenerate, (p < bid).astype(float), p_below_bid)
+    yes = p_above_ask > tau
+    no = p_below_bid > tau
+    side = np.where(yes, "yes", np.where(no, "no", NO_BET))
+    cost = np.where(yes, ask, np.where(no, 1.0 - bid, np.nan))
+    taken = np.where(yes, p - ask, np.where(no, bid - p, np.nan))
+    return pd.DataFrame({"side": side, "cost": cost, "edge": taken})
+
+
 # ───────────────────────────── stakes ─────────────────────────────
 
 def kelly_stake(p_win, cost, fraction: float = DEFAULT_KELLY_FRACTION,
@@ -178,6 +222,18 @@ def kelly_stake(p_win, cost, fraction: float = DEFAULT_KELLY_FRACTION,
     ``(p_win − cost) / (1 − cost)``. We take `fraction` of it and cap the
     result. Fees are not in the Kelly arithmetic — including them would shrink
     the stake, so leaving them out is the less flattering choice.
+
+    **This is also the right stake under a posterior, not just a point
+    estimate.** For a one-shot binary contract, expected log growth
+    ``p·log(1 + f(1−c)/c) + (1−p)·log(1−f)`` is linear in `p`, so its
+    expectation over any posterior `q(p)` — however wide — is the same
+    expression evaluated at `E_q[p]`. The stake that maximises
+    posterior-expected log growth is therefore exactly this function called
+    at the posterior mean; there is no separate "shade down under
+    uncertainty" correction to make for a prop. See
+    docs/posterior-props.md and `tests/test_market/test_posterior_kelly.py`,
+    which pins this numerically against a direct optimum over `f` for a
+    range of Beta posteriors.
     """
     p = np.asarray(p_win, dtype=float)
     c = np.asarray(cost, dtype=float)
@@ -355,10 +411,27 @@ def add_controls(df: pd.DataFrame, seed: int = 0,
 
 def bet_frame(df: pd.DataFrame, model: str, venue: Venue, threshold: float = 0.0,
               staking: str = "flat", fraction: float = DEFAULT_KELLY_FRACTION,
-              cap: float = DEFAULT_KELLY_CAP, bankroll: float = BANKROLL) -> pd.DataFrame:
-    """One row per bet actually placed, priced, staked and settled."""
+              cap: float = DEFAULT_KELLY_CAP, bankroll: float = BANKROLL,
+              rule: str = "threshold", tau: float | None = None,
+              sd_col: str | None = None) -> pd.DataFrame:
+    """One row per bet actually placed, priced, staked and settled.
+
+    `rule="threshold"` (the default, unchanged) is `decide` at `threshold`.
+    `rule="posterior"` is `decide_posterior` at `tau`, reading the per-row
+    posterior standard deviation from `df[sd_col]` — `threshold` is then
+    ignored. Every existing caller passes neither and gets exactly the old
+    behaviour.
+    """
     bid, ask = quotes(df, venue)
-    d = decide(df[model].to_numpy(dtype=float), bid, ask, threshold)
+    if rule == "threshold":
+        d = decide(df[model].to_numpy(dtype=float), bid, ask, threshold)
+    elif rule == "posterior":
+        if sd_col is None or tau is None:
+            raise ValueError("rule='posterior' needs both sd_col and tau")
+        p_sd = df[sd_col].to_numpy(dtype=float)
+        d = decide_posterior(df[model].to_numpy(dtype=float), p_sd, bid, ask, tau)
+    else:
+        raise ValueError(f"unknown rule {rule!r}")
     take = (d["side"] != NO_BET).to_numpy()
     if not take.any():
         return pd.DataFrame(columns=["date", "game_pk", "side", "cost", "edge",
@@ -384,11 +457,17 @@ def bet_frame(df: pd.DataFrame, model: str, venue: Venue, threshold: float = 0.0
 def evaluate(df: pd.DataFrame, model: str, venue: Venue, threshold: float = 0.0,
              staking: str = "flat", fraction: float = DEFAULT_KELLY_FRACTION,
              cap: float = DEFAULT_KELLY_CAP, draws: int = BOOTSTRAP_DRAWS,
-             seed: int = 0, group_col: str | None = None) -> dict:
-    """Metrics for one (model, venue, threshold, staking) cell."""
-    bets = bet_frame(df, model, venue, threshold, staking, fraction, cap)
+             seed: int = 0, group_col: str | None = None,
+             rule: str = "threshold", tau: float | None = None,
+             sd_col: str | None = None) -> dict:
+    """Metrics for one (model, venue, threshold, staking) cell.
+
+    `rule`/`tau`/`sd_col` pass straight through to `bet_frame`; see there.
+    """
+    bets = bet_frame(df, model, venue, threshold, staking, fraction, cap,
+                     rule=rule, tau=tau, sd_col=sd_col)
     row = {"venue": venue.name, "model": model, "threshold": threshold,
-           "staking": staking, "n_games": int(len(df))}
+           "staking": staking, "n_games": int(len(df)), "rule": rule, "tau": tau}
     row.update(summarize(bets, draws=draws, seed=seed, group_col=group_col))
     return row
 
