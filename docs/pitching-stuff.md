@@ -203,6 +203,31 @@ reasoning under-rated how much movement says about a home run.
 ### What ships
 
 Nothing in this pass. The gate is cleared on four pitcher components; the
-serving path (an additive engine on `marcel_pitcher_tuned`, month-lagged,
-walk-forward, with the same fallback as the hitter side) is BAS-79, the
-pitcher mirror of BAS-72.
+serving path is BAS-79, the pitcher mirror of BAS-72.
+
+## Serving — pre-registered before BAS-79 runs (2026-09-09)
+
+The arm to serve is **additive**: baseline coefficient pinned at 1, the
+stuff aggregate added as a correction to `marcel_pitcher_tuned`. Same call
+as contact-quality §8, for the same reason, and here the control makes it
+sharper — the free fit's walk-rate gains are mostly a rescaling of the
+pitcher Marcel, which is a claim about the pitcher Marcel's ballasts and
+belongs in its own ticket.
+
+Predictions, additive arm vs `marcel_pitcher_tuned`, same cells, same
+clustering:
+
+1. **K/BF clears** at 1.5–3.0% of MAE (60–90% of the free fit's −3.20%,
+   the share the hitter side kept), clustered |t| > 2.5.
+2. **HR/BF clears** at 1.5–2.5% (it was all covariate in the free fit, so
+   pinning the baseline should cost little).
+3. **BB/BF and (BB+HBP)/BF do not clear** on the additive arm alone: under
+   1% and |t| < 2 for (BB+HBP)/BF. They are **withheld** whatever the
+   number says if |t| < 2.5; served only if they clear.
+4. Features are read as of the last month boundary on or before the as-of
+   date and the fit uses seasons strictly before the predict year; a
+   component whose fit cannot be built falls back to `marcel_pitcher_tuned`
+   for that build alone.
+
+Vacuity: if the additive K/BF gain is under 1% the serving arm is not worth
+the moving parts; report it and leave the pitcher side on Marcel.
