@@ -47,6 +47,17 @@ sys.path.insert(0, str(ROOT))
 from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_LIVE_ENGINE  # noqa: E402
 from src.projections.ros import LIVE_ENGINE  # noqa: E402  (needs ROOT on sys.path)
 
+# (side, component) -> the engine `src/projections/ros.py` /
+# `src/projections/pitcher_ros.py` actually names for it. `ros.LIVE_ENGINE` is
+# per hitter component (BAS-72); the pitcher side has one engine for every
+# served component (`pitcher_ros.LIVE_ENGINE`), so it is broadcast across the
+# pitcher keys `section_contact_quality` tracks.
+LIVE_ENGINE_BY_SIDE_COMPONENT = {("hitter", c): engine
+                                 for c, engine in LIVE_ENGINE.items()}
+LIVE_ENGINE_BY_SIDE_COMPONENT.update(
+    {("pitcher", c): PITCHER_LIVE_ENGINE for c in
+     ("p_hr_rate", "p_bb_rate", "p_bbhbp_rate", "p_babip", "p_k_rate")})
+
 OUT_DIR = ROOT / "public/data/accuracy"
 ACCURACY_MD = ROOT / "docs/accuracy-2026.md"
 VALIDATION_MD = ROOT / "docs/playoff-odds-validation.md"
@@ -89,9 +100,21 @@ ROS_ARM_LABELS = {
     "bayes_preseason": "Bayes, 2026 withheld (ours)",
     "season_to_date": "2026 rate, regressed",
 }
-# Read from the module that serves the projection, so the page can never mark
-# an arm as live that src/projections/ros.py is not actually running.
-ROS_LIVE_ARM = LIVE_ENGINE
+# This table only ever scores Marcel-family arms (`run_intraseason_backtest.py`
+# does not run the contact arm), so it marks the Marcel arm the site's contact
+# engine is itself built on — every LIVE_ENGINE value is "contact_additive" as
+# of BAS-72 (docs/contact-quality.md §8: the baseline pinned at 1, contact
+# quality added as a pure correction), and its base is `marcel_tuned` bit for
+# bit (`src/projections/ros.py`'s `contact_engine_provider`). Whether
+# `contact_additive` itself is what actually reaches the served board, per
+# component, is what `section_contact_quality`'s `is_production` /
+# `production_components` answer — this table is "which Marcel is under it",
+# not "what is live".
+ROS_LIVE_ARM = "marcel_tuned"
+assert set(LIVE_ENGINE.values()) == {"contact_additive"}, (
+    "ROS_LIVE_ARM assumes every hitter component's engine is `contact_additive` "
+    "on top of `marcel_tuned`; a component that fell back needs this table's "
+    "assumption revisited")
 # The control the "is in-season data worth anything?" line is measured against.
 ROS_CONTROL_ARM = "marcel_tuned_preseason"
 # Arms that never see a plate appearance from the season they are scored in.
@@ -175,11 +198,14 @@ CONTACT_COMPONENT_LABELS = {
     "p_hr_rate": "HR/BF MAE (pitcher)", "p_babip": "BABIP MAE (pitcher)",
     "p_k_rate": "K% MAE (pitcher)",
 }
-CONTACT_MODEL_ORDER = ("marcel_tuned", "contact_recal", "contact", "contact_hsgp")
+CONTACT_MODEL_ORDER = ("marcel_tuned", "contact_recal", "contact",
+                       "contact_additive", "contact_hsgp")
 CONTACT_MODEL_LABELS = {
     "marcel_tuned": "Marcel (tuned) — the served baseline",
     "contact_recal": "Marcel refit only, contact covariates removed (control)",
-    "contact": "Marcel + six Statcast contact aggregates (gated, not wired)",
+    "contact": "Marcel + six Statcast contact aggregates (free fit, gated)",
+    "contact_additive": "Marcel + six Statcast contact aggregates, baseline "
+                        "pinned at 1 (BAS-72 §8 — this is what is served)",
     "contact_hsgp": "Marcel + one learned contact-value surface (stage 2, rejected)",
 }
 
@@ -396,16 +422,27 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "model": model,
             "label": CONTACT_MODEL_LABELS.get(model, model),
             "is_baseline": model == "marcel_tuned",
-            "is_ours": model in ("contact", "contact_hsgp"),
+            "is_ours": model in ("contact", "contact_additive", "contact_hsgp"),
             # `contact_recal` is the ablation control that isolates a fitted
             # recalibration of Marcel from the covariate itself — a real
             # statistical control, unlike `contact_hsgp`, which is a losing
             # candidate rather than a control condition.
             "is_control": model == "contact_recal",
             "is_market": False,
-            # Gated, not wired: no row here is the live projection.
-            "is_production": False,
+            # BAS-72: wired per component, per `ros.LIVE_ENGINE` /
+            # `pitcher_ros.LIVE_ENGINE` — `contact` is production on every
+            # hitter component here (the gate cleared on all five) and on
+            # none of the pitcher ones (the pitcher walk rates' gain is pure
+            # recalibration and pitcher K% does not clear at all; see
+            # docs/contact-quality.md §4), so this checks the served engine
+            # per column rather than asserting one answer for the row.
+            "is_production": any(
+                model == LIVE_ENGINE_BY_SIDE_COMPONENT.get((side, c))
+                for side, c in components),
             "metrics": {c: mae[model].get(c) for _, c in components},
+            "production_components": [
+                f"{side}:{c}" for side, c in components
+                if LIVE_ENGINE_BY_SIDE_COMPONENT.get((side, c)) == model],
         })
 
     # `contact` vs `marcel_tuned` is the gate. Negative diff means contact wins.
@@ -431,6 +468,25 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "It misses on " + ", ".join(
                 f"{l} ({pct:+.1f}% of MAE, t {t:+.2f})" for l, d, t, pct in missed
                 if t is not None and pct is not None) + ".")
+    # The served shape is `contact_additive`, not the free fit `contact` the
+    # gate table above is about (docs/contact-quality.md §8) — pinning the
+    # baseline's coefficient at 1 rather than also rescaling it. It clears the
+    # same gate on its own numbers, which is worth stating next to the free
+    # fit's rather than only in the row label.
+    additive_cleared = [
+        c for _, c in components
+        if (p := paired.get(("contact_additive", "marcel_tuned", c)))
+        and p.get("diff") is not None and p["diff"] < 0]
+    additive_n = sum(
+        1 for _, c in components
+        if paired.get(("contact_additive", "marcel_tuned", c),
+                      {}).get("diff") is not None)
+    if additive_n:
+        parts.append(
+            f"`contact_additive` — the baseline pinned at 1, contact quality "
+            f"added as a correction — clears the same gate on "
+            f"{len(additive_cleared)} of {additive_n} components tracked "
+            f"here, and is the shape actually served.")
     hsgp_diffs = [paired.get(("contact_hsgp", "contact", c)) for _, c in components]
     hsgp_diffs = [p for p in hsgp_diffs if p and p.get("diff") is not None]
     if hsgp_diffs and all(p["diff"] > 0 for p in hsgp_diffs):
@@ -439,13 +495,21 @@ def section_contact_quality(hitter: dict, pitcher: dict) -> dict:
             "one learned surface standing in for the six hand-chosen "
             "aggregates — loses to them on every one of these components and "
             "is not the shape shown as `contact` above.")
-    parts.append(
-        "This is gated but NOT YET WIRED to the served board: the live "
-        "projection runs on an arbitrary date, this artifact is monthly and "
-        "refuses any cutoff that is not the 1st of a month rather than "
-        "rounding one forward, and shipping it needs a partial-month top-up "
-        "computed from the daily Statcast ingest, which has no walk-forward "
-        "score of its own yet.")
+    wired = [CONTACT_COMPONENT_LABELS[c].replace(" MAE", "")
+            for side, c in components
+            if LIVE_ENGINE_BY_SIDE_COMPONENT.get((side, c)) == "contact_additive"]
+    if wired:
+        parts.append(
+            "BAS-72: wired to the served board on " + ", ".join(wired) + ". "
+            "The live build runs on an arbitrary date, so the served "
+            "features lag the as-of date by up to a month — they are read as "
+            "of the last contact-quality month boundary on or before the "
+            "as-of date, never a partial month, and the served document "
+            "stamps `contact_features_through` with the date they actually "
+            "cover.")
+    else:
+        parts.append(
+            "This is gated but NOT YET WIRED to the served board.")
     framing = " ".join(parts)
 
     notes = [

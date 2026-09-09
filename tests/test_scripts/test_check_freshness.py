@@ -59,6 +59,7 @@ ALL_FRESH = {
     "playoff odds board": 5,
     "rest-of-season projections": 5,
     "accuracy page data": 5,
+    "contact-quality monthly (current season)": 5,
     "market snapshot archive": 3,
     "market latest.json": 3,
     # Written by the same market-snapshot.yml run as the two above, so it is
@@ -94,6 +95,20 @@ def test_missed_day_of_nightly_odds_is_stale(tmp_path):
     results = fresh.check_all(tmp_path, NOW)
     assert status_by_name(results)["playoff odds board"] == "STALE"
     assert [r.artifact.name for r in results if r.failed] == ["playoff odds board"]
+    assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 1
+
+
+def test_missed_day_of_contact_quality_is_stale(tmp_path):
+    """Same shape as the other nightly-odds.yml artifacts: a dropped nightly
+    run leaves the contact-quality monthly artifact's `built_at` sidecar
+    ~48h old, which the 36h budget must catch."""
+    write_tree(tmp_path, {**ALL_FRESH,
+                          "contact-quality monthly (current season)": 48})
+    results = fresh.check_all(tmp_path, NOW)
+    assert (status_by_name(results)["contact-quality monthly (current season)"]
+           == "STALE")
+    assert [r.artifact.name for r in results if r.failed] == [
+        "contact-quality monthly (current season)"]
     assert fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()]) == 1
 
 
@@ -216,7 +231,7 @@ def test_report_names_the_workflow_to_go_look_at(tmp_path, capsys):
     fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()])
     out = capsys.readouterr().out
     assert "STALE" in out and "market-snapshot.yml" in out
-    assert "1 of 7 artifacts out of budget" in out
+    assert "1 of 8 artifacts out of budget" in out
 
 
 def test_naive_and_zulu_timestamps_are_read_as_utc():

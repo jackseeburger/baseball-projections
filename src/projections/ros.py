@@ -72,6 +72,7 @@ import numpy as np
 import pandas as pd
 
 from src.eval import baselines
+from src.eval import contact as contact_eval
 from src.eval.backtest import COMPONENTS
 from src.eval.intraseason import aggregate_pa, build_training_frame, split_at_cutoff
 
@@ -89,12 +90,38 @@ COMPONENT_ORDER = ("k_rate", "bb_rate", "hr_rate", "babip", "iso")
 ARMS = ("marcel", "marcel_preseason", "bayes")
 MARCEL_ARMS = {"marcel": "marcel", "marcel_preseason": "marcel_preseason"}
 
-# The engine, named once. Everything downstream reads it from here rather than
-# hard-coding a string: `scripts/build_ros_projections.py` stamps it into the
-# document as `engine`, and `scripts/build_accuracy_json.py` uses it to pick
-# the arm the accuracy page marks as live — so the scoreboard cannot end up
-# scoring a model the site does not serve.
-LIVE_ENGINE = "marcel_tuned"
+# The engine, named once — but per component, not once for the whole station.
+# BAS-72 re-ran the contact-quality gate (docs/contact-quality.md §4) on the
+# committed harness and it clears on all five hitter components (−1.6% to
+# −4.8% of MAE, clustered |t| 2.55-4.68), so every component here reads
+# "contact_additive" rather than "marcel_tuned". A component that stopped
+# clearing would fall back to "marcel_tuned" on its own — the gate rule
+# (architecture.md §3) is enforced per component, because the harness scores
+# it per component.
+#
+# The shape shipped is `contact_additive`, not the free-fit `contact` arm the
+# gate table above is stated for: docs/contact-quality.md §8 made that call on
+# the record before this was wired — the baseline's coefficient is pinned at
+# exactly 1 and contact quality is a pure correction on top of `marcel_tuned`,
+# rather than a fit that also rescales the baseline. `contact_additive` clears
+# the same gate (see `contact.fit_live_contact`'s docstring for its own
+# numbers) and gives up roughly a third of the free fit's gain in exchange for
+# not smuggling in a claim about Marcel's own ballasts under a Statcast
+# change.
+#
+# `scripts/build_ros_projections.py` stamps this dict into the document as
+# `engine`, and `scripts/build_accuracy_json.py` uses it, per component, to
+# pick the arm the accuracy page marks as live — so the scoreboard cannot end
+# up scoring a model the site does not serve.
+MARCEL_ENGINE = "marcel_tuned"
+CONTACT_ENGINE = "contact_additive"
+LIVE_ENGINE = {
+    "k_rate": CONTACT_ENGINE,
+    "bb_rate": CONTACT_ENGINE,
+    "hr_rate": CONTACT_ENGINE,
+    "babip": CONTACT_ENGINE,
+    "iso": CONTACT_ENGINE,
+}
 LIVE_PROVIDERS = {
     "marcel": baselines.marcel_tuned,
     "marcel_preseason": baselines.marcel_tuned_preseason,
@@ -124,6 +151,106 @@ OUTPUT_COLUMNS = (
 
 def _as_date(value) -> pd.Timestamp:
     return pd.Timestamp(value).normalize()
+
+
+# --- the contact-quality engine -----------------------------------------
+
+def contact_cutoff(as_of) -> pd.Timestamp:
+    """The last contact-quality month boundary on or before `as_of`.
+
+    The nightly build runs daily; the contact-quality artifact is monthly
+    (docs/contact-quality.md §2) and `contact.assert_month_boundary` refuses
+    anything but the first of a month rather than rounding one forward, since
+    rounding forward is leakage. So a build made on, say, Sept 9 cannot ask for
+    September's contact buckets — it asks for the buckets through the *last*
+    month boundary, Sept 1, which sums everything strictly before September,
+    i.e. through Aug 31. The contact features therefore lag the as-of date by
+    up to a month while the Marcel rates that share the same row do not: a
+    build on Sept 30 gets the same August-end contact features as one on
+    Sept 1. `contact_features_through` (the day before this cutoff) is what
+    the served document stamps so that lag is visible rather than implicit.
+    """
+    as_of = _as_date(as_of)
+    return pd.Timestamp(year=as_of.year, month=as_of.month, day=1)
+
+
+def contact_features_through(as_of) -> pd.Timestamp:
+    """The last day contact-quality features actually cover, for provenance."""
+    return contact_cutoff(as_of) - pd.Timedelta(days=1)
+
+
+def contact_engine_provider(
+    component: str,
+    seasons_table: pd.DataFrame,
+    monthly: pd.DataFrame,
+    pa_dir,
+    as_of,
+    predict_year: int = SEASON,
+):
+    """A `LIVE_PROVIDERS`-shaped provider for the `contact_additive` engine
+    (docs/contact-quality.md §8: the baseline's coefficient pinned at 1,
+    contact quality added as a pure correction).
+
+    Fits `(a, g)` walk-forward on cell seasons strictly before `predict_year`
+    (`contact_eval.fit_live_contact`, `fixed_base=True` by default — never on
+    the season being served, exactly as the harness that cleared the gate
+    did) and builds the covariates as of the last month boundary on or before
+    `as_of` (`contact_cutoff`), never a partial month. The baseline underneath
+    it is the same `marcel_tuned` the gate compared it against, left
+    untouched — `contact_additive` only adds to it.
+    """
+    fit = contact_eval.fit_live_contact(
+        component, seasons_table, monthly, pa_dir, predict_year)
+    config = contact_eval.ContactProviderConfig(
+        monthly=monthly,
+        cutoff=contact_cutoff(as_of),
+        predict_year=predict_year,
+        fit=fit,
+        base_provider=baselines.marcel_tuned,
+        side="hitter",
+    )
+    return contact_eval.contact_provider(config)
+
+
+def engine_providers(
+    seasons_table: pd.DataFrame | None = None,
+    monthly: pd.DataFrame | None = None,
+    pa_dir=None,
+    as_of=None,
+    predict_year: int = SEASON,
+    components=COMPONENT_ORDER,
+) -> tuple[dict[str, object], dict[str, str]]:
+    """(component -> provider, component -> engine actually used) for the
+    `marcel` (live) arm, per `LIVE_ENGINE`.
+
+    A component whose engine is `contact_additive` but is missing what the
+    contact engine needs (the monthly artifact, the PA outcomes directory, the as-of
+    date, or a walk-forward fit that raises — e.g. no training cells before an
+    early season) falls back to `marcel_tuned` for that component alone,
+    rather than failing the whole build: the honest fallback
+    `scripts/build_ros_projections.py`'s module docstring already promises for
+    every other missing input. `engine_used` is what
+    `scripts/build_ros_projections.py` actually stamps into the document,
+    which can therefore differ from `LIVE_ENGINE` on a bad night without ever
+    claiming a model that did not run.
+    """
+    have_contact_inputs = (seasons_table is not None and monthly is not None
+                           and pa_dir is not None and as_of is not None)
+    providers, engine_used = {}, {}
+    for component in components:
+        engine = LIVE_ENGINE.get(component, MARCEL_ENGINE)
+        if engine == CONTACT_ENGINE and have_contact_inputs:
+            try:
+                providers[component] = contact_engine_provider(
+                    component, seasons_table, monthly, pa_dir, as_of,
+                    predict_year)
+                engine_used[component] = CONTACT_ENGINE
+                continue
+            except Exception:                                   # noqa: BLE001
+                pass
+        providers[component] = baselines.marcel_tuned
+        engine_used[component] = MARCEL_ENGINE
+    return providers, engine_used
 
 
 # --- the partial season ------------------------------------------------
@@ -178,6 +305,10 @@ def marcel_rates(
     partial: pd.DataFrame,
     predict_year: int = SEASON,
     components=COMPONENT_ORDER,
+    *,
+    contact_monthly: pd.DataFrame | None = None,
+    contact_pa_dir=None,
+    as_of=None,
 ) -> pd.DataFrame:
     """The live Marcel arm and its preseason control, one row per batter.
 
@@ -202,11 +333,19 @@ def marcel_rates(
                          "partial season are empty")
     has_prior = not baselines.full_seasons(train).empty
 
+    # The `marcel` (live) arm's provider is per-component, since the engine
+    # is (`LIVE_ENGINE`). `marcel_preseason` is always plain `marcel_tuned`
+    # with the season withheld — it exists to isolate in-season information
+    # with the model held fixed, so it does not move with the live engine.
+    live_providers, engine_used = engine_providers(
+        seasons_table, contact_monthly, contact_pa_dir, as_of, predict_year,
+        components)
+
     out = pd.DataFrame({"batter": pd.unique(train["batter"])})
     for component in components:
         spec = COMPONENTS[component]
         prefix = COMPONENT_PREFIX[component]
-        for arm, provider in LIVE_PROVIDERS.items():
+        for arm in LIVE_PROVIDERS:
             column = f"{prefix}_rate_{arm}"
             if arm == "marcel_preseason" and not has_prior:
                 # No completed season to look back on — the control arm has
@@ -214,10 +353,20 @@ def marcel_rates(
                 # it as a real preseason projection.
                 out[column] = np.nan
                 continue
+            provider = (live_providers[component] if arm == "marcel"
+                       else LIVE_PROVIDERS[arm])
             pred = provider(train, spec, predict_year)
             out = out.merge(
                 pred.rename(columns={"predicted": column})[["batter", column]],
                 on="batter", how="left")
+    # `DataFrame.attrs` rides along with the frame rather than a second return
+    # value, so `build_ros_projections` (which already returns one frame) can
+    # read what engine each component actually used without a signature change
+    # of its own.
+    out.attrs["engine_used"] = engine_used
+    if as_of is not None:
+        out.attrs["contact_features_through"] = (
+            contact_features_through(as_of).date().isoformat())
     return out
 
 
@@ -318,6 +467,8 @@ def build_ros_projections(
     names: pd.Series | dict | None = None,
     teams: pd.DataFrame | None = None,
     season: int = SEASON,
+    contact_monthly: pd.DataFrame | None = None,
+    contact_pa_dir=None,
 ) -> pd.DataFrame:
     """The live rest-of-season projection, one row per projected hitter.
 
@@ -340,8 +491,19 @@ def build_ros_projections(
             comparison column. Optional.
         names: batter → display name.
         teams: team_id → abbrev frame (columns `team_id`, `abbrev`).
+        contact_monthly: `data/features/contact_quality_monthly.parquet`,
+            loaded (`src.data.contact_quality.load_monthly`). Required for any
+            component whose `LIVE_ENGINE` is `contact_additive`; a component missing it
+            falls back to `marcel_tuned` for that build (`engine_providers`).
+        contact_pa_dir: the PA-outcomes directory the contact engine's
+            walk-forward fit trains on (`data/parquet/pa_outcomes` by
+            default in `scripts/build_ros_projections.py`).
 
-    Returns a frame with `OUTPUT_COLUMNS`, sorted by projected wOBA.
+    Returns a frame with `OUTPUT_COLUMNS`, sorted by projected wOBA. Two
+    provenance dicts ride along on `.attrs`: `engine_used` (component -> the
+    engine that actually filled its `marcel` column) and, when contact
+    features were used, `contact_features_through` (the last date they cover
+    — see `contact_cutoff`).
     """
     as_of = _as_date(as_of_date)
     partial = partial_season(pa_frame_2026, as_of, season)
@@ -354,7 +516,9 @@ def build_ros_projections(
     played = (played.sort_values("projected_pa_ros", ascending=False)
               .drop_duplicates(subset="batter", keep="first"))
 
-    rates = marcel_rates(seasons_table, partial, season)
+    rates = marcel_rates(seasons_table, partial, season,
+                        contact_monthly=contact_monthly,
+                        contact_pa_dir=contact_pa_dir, as_of=as_of)
     bayes = bayes_rates(bayes_frames, season)
 
     out = played[["batter", "team_id", "projected_pa_ros"]].rename(
@@ -397,6 +561,8 @@ def build_ros_projections(
     for column in OUTPUT_COLUMNS:
         if column not in out.columns:
             out[column] = np.nan
-    return (out.loc[:, OUTPUT_COLUMNS]
-            .sort_values("woba_ros", ascending=False, na_position="last")
-            .reset_index(drop=True))
+    result = (out.loc[:, OUTPUT_COLUMNS]
+              .sort_values("woba_ros", ascending=False, na_position="last")
+              .reset_index(drop=True))
+    result.attrs.update(rates.attrs)
+    return result

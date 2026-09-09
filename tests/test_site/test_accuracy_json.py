@@ -213,13 +213,17 @@ def test_ros_section_ranks_the_live_arm_ahead_of_our_preseason_model(doc):
 
 
 def test_ros_section_scores_the_arm_the_site_serves(doc):
-    """The table has to be about the model in production, not the one it
-    replaced. `src/projections/ros.py` serves `marcel_tuned`, so the live row
-    is that arm and stock Marcel is present beside it as the arm it beat."""
+    """This table only scores Marcel-family arms, so it marks the Marcel arm
+    the site's contact engine is itself built on (BAS-72: every hitter
+    component's `LIVE_ENGINE` is `contact_additive`, and its base is
+    `marcel_tuned`, untouched — docs/contact-quality.md §8) — whether
+    `contact_additive` reaches the board per component is the
+    `contact_quality` section's `is_production`, not this table's."""
     from src.projections import ros
 
     section = doc["sections"]["ros_backtest"]
-    assert section["live_arm"] == ros.LIVE_ENGINE
+    assert set(ros.LIVE_ENGINE.values()) == {"contact_additive"}
+    assert section["live_arm"] == "marcel_tuned"
     models = {r["model"] for r in section["rows"]}
     assert {"marcel_tuned", "marcel"} <= models
     live_rows = [r for r in section["rows"] if r["is_production"]]
@@ -452,10 +456,29 @@ def test_contact_quality_shows_contact_vs_marcel_tuned(doc):
     assert by_model["contact"]["metrics"]["iso"] < by_model["marcel_tuned"]["metrics"]["iso"]
 
 
-def test_contact_quality_is_never_marked_as_the_live_projection(doc):
-    """Gated, not wired: no row here may claim to be what the site serves."""
+def test_contact_quality_marks_the_wired_hitter_components_as_live(doc):
+    """BAS-72: `contact_additive` (docs/contact-quality.md §8 -- the baseline
+    pinned at 1) is what LIVE_ENGINE is wired to on all five hitter
+    components, so that row -- not the free-fit `contact` row -- claims
+    exactly the hitter columns it actually serves, and nothing on the pitcher
+    side, where the gain was pure recalibration or (K%) no gain at all."""
+    from src.projections import ros
+
     section = doc["sections"]["contact_quality"]
-    assert not any(r["is_production"] for r in section["rows"])
+    by_model = {r["model"]: r for r in section["rows"]}
+    additive = by_model["contact_additive"]
+    assert additive["is_production"] is True
+    hitter_components = set(ros.LIVE_ENGINE)
+    served = {c.split(":", 1)[1] for c in additive["production_components"]
+             if c.startswith("hitter:")}
+    assert served == hitter_components
+    assert not any(c.startswith("pitcher:")
+                  for c in additive["production_components"])
+    # Every other row -- the baseline, the free fit, the recalibration
+    # control, the losing HSGP surface -- must not claim to be live.
+    for model, row in by_model.items():
+        if model != "contact_additive":
+            assert row["is_production"] is False, model
 
 
 def test_contact_quality_framing_states_the_gate_count_and_the_miss(doc):
@@ -474,12 +497,17 @@ def test_contact_quality_framing_states_the_gate_count_and_the_miss(doc):
     assert "misses on" in section["framing"]
 
 
-def test_contact_quality_states_it_is_gated_but_not_wired(doc):
-    """The judgement call is spelled out in the framing, not left implicit."""
+def test_contact_quality_states_it_is_wired_and_the_lag_it_carries(doc):
+    """BAS-72: the framing has to say it is wired now, and spell out the lag
+    the monthly artifact forces on a daily build rather than leaving it
+    implicit."""
     section = doc["sections"]["contact_quality"]
-    assert "NOT YET WIRED" in section["framing"]
-    assert "arbitrary date" in section["framing"]
-    assert "1st of a month" in section["framing"]
+    assert "BAS-72" in section["framing"]
+    assert "wired to the served board" in section["framing"]
+    assert "lag the as-of date by up to a month" in section["framing"]
+    assert "contact_features_through" in section["framing"]
+    assert "contact_additive" in section["framing"]
+    assert "is the shape actually served" in section["framing"]
 
 
 def test_contact_quality_states_the_hsgp_surface_lost(doc):
