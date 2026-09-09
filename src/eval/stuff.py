@@ -72,8 +72,25 @@ STUFF_WEIGHT_GRID = [
 # magnitude higher than contact quality's.
 STUFF_BALLAST_GRID = [10.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2500.0]
 
-DEFAULT_WINDOW_WEIGHTS = (1.0, 0.6, 0.35)
-DEFAULT_BALLAST = 250.0
+# What `scripts/run_stuff_backtest.py --tune` chose on the tuning seasons
+# (2019 and 2021), by pooled trials-weighted MAE of the stuff arm over K/BF and
+# HR/BF, with every later season untouched. Both land on the **corner** of the
+# grid — the current season alone, and the smallest ballast offered — and that
+# is worth reading rather than papering over.
+#
+# The ballast corner is not a failure to bracket the optimum, it is the
+# quantity being different from contact quality's. A pitcher's covariate is
+# already an average over 1,500-3,000 model predictions, each of which is
+# itself a shrunk estimate; there is very little sampling noise left for a
+# ballast to remove, so the grid slides to the bottom and the whole ballast
+# sweep at fixed weights moves MAE by 1.1% (.020896 to .021126 at 1,000).
+# The recency corner is a larger effect and a real claim: over the grid, MAE
+# runs .020896 for the current season alone to .021629 for a flat three-season
+# window, 3.5%. Stuff moves — a pitcher who added two miles an hour is a
+# different pitcher — and averaging in two-year-old pitches makes the
+# measurement worse. That is the same statement prediction 3 makes.
+DEFAULT_WINDOW_WEIGHTS = (1.0, 0.0, 0.0)
+DEFAULT_BALLAST = 10.0
 
 
 # --- window sums -------------------------------------------------------------
