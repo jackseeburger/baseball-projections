@@ -231,7 +231,7 @@ def test_report_names_the_workflow_to_go_look_at(tmp_path, capsys):
     fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()])
     out = capsys.readouterr().out
     assert "STALE" in out and "market-snapshot.yml" in out
-    assert "1 of 7 artifacts out of budget" in out
+    assert "1 of 8 artifacts out of budget" in out
 
 
 def test_naive_and_zulu_timestamps_are_read_as_utc():
