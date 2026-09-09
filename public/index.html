@@ -22,6 +22,7 @@
       <li><a href="#" data-page="comparison">System Comparison</a></li>
       <li><a href="#" data-page="aging">Aging Curves</a></li>
       <li><a href="#" data-page="leaderboard">Leaderboards</a></li>
+      <li><a href="#" data-page="paper">Paper Ledger</a></li>
     </ul>
     <div class="sidebar-footer">
       <h4>Model Architecture</h4>
@@ -75,6 +76,31 @@
     </section>
 
     <!-- Overview Page -->
+    <section id="page-paper" class="page">
+      <h1>Paper Ledger</h1>
+      <p class="subtitle" id="paper-subtitle"></p>
+      <div class="card">
+        <h3>Framing</h3>
+        <p class="method-note" id="paper-framing"></p>
+      </div>
+      <div class="metrics-row" id="paper-metrics"></div>
+      <div class="card">
+        <h3>Bankroll</h3>
+        <div id="paper-curve"></div>
+        <p class="method-note" id="paper-curve-note"></p>
+      </div>
+      <div class="card">
+        <h3>Stage 1 gate</h3>
+        <div class="table-scroll" id="paper-gate"></div>
+        <p class="method-note" id="paper-gate-note"></p>
+      </div>
+      <div class="card">
+        <h3>ROI after fees, by prop</h3>
+        <div class="table-scroll" id="paper-roi"></div>
+        <p class="method-note" id="paper-roi-note"></p>
+      </div>
+    </section>
+
     <section id="page-overview" class="page">
       <h1>2026 Bayesian Baseball Projections</h1>
       <p class="subtitle">Hierarchical Bayesian component models (K%, BB%, HR rate, ISO, BABIP) with HSGP aging curves — compared against <strong>Steamer</strong>, <strong>ZiPS</strong>, and <strong>Depth Charts</strong>.</p>

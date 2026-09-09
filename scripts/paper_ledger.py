@@ -90,9 +90,9 @@ def load_snapshots(paths: list[Path]) -> dict:
     return out
 
 
-def load_ledger() -> pd.DataFrame:
-    if LEDGER_PATH.exists():
-        led = pd.read_parquet(LEDGER_PATH)
+def load_ledger(path: Path = LEDGER_PATH) -> pd.DataFrame:
+    if Path(path).exists():
+        led = pd.read_parquet(path)
         for c in paper.LEDGER_COLUMNS:
             if c not in led.columns:
                 led[c] = np.nan
@@ -397,9 +397,7 @@ def main() -> None:
     if not paths:
         raise SystemExit(f"no snapshots under {args.snapshot_dir}")
     snapshots = load_snapshots(paths)
-    global LEDGER_PATH
-    LEDGER_PATH = args.ledger
-    ledger = load_ledger()
+    ledger = load_ledger(args.ledger)
     check_append_only(ledger, snapshots)
 
     emit_from = snapshots

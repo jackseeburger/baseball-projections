@@ -233,9 +233,14 @@ def emit(priced: pd.DataFrame, bankroll: float, threshold: float = THRESHOLD,
     out = out[out["stake"] > 0].reset_index(drop=True)
     out.insert(0, "ticket_id", [ticket_id(r.snapshot_ts, r.venue, r.market_id, r.side)
                                 for r in out.itertuples(index=False)])
-    for c in LEDGER_COLUMNS:
-        if c not in out.columns:
-            out[c] = np.nan
+    # The settlement columns are born empty but typed: `object` for the four
+    # that will hold strings, float for the money. Left as a float NaN column,
+    # pandas refuses to write a settlement string into them later.
+    for c in ("result", "settle_ts", "settle_source", "close_reason",
+              "maker_fill_ts", "won"):
+        out[c] = pd.Series([None] * len(out), dtype=object)
+    for c in ("profit", "fee", "maker_profit"):
+        out[c] = np.nan
     out["settled"] = False
     out["maker_filled"] = False
     return out[LEDGER_COLUMNS]
@@ -459,28 +464,49 @@ GATE_DRAWDOWN_MULTIPLE = 1.5
 PRIMARY_STAT = "hits"
 
 
-def kelly_implied_drawdown(ledger: pd.DataFrame, column: str = "profit") -> float:
+DRAWDOWN_SIMS = 1000
+
+
+def kelly_implied_drawdown(ledger: pd.DataFrame, column: str = "profit",
+                           sims: int = DRAWDOWN_SIMS, seed: int = 0) -> float:
     """What quarter Kelly implies the deepest trough should be, in units.
 
-    A bettor whose per-ticket profit has mean `mu > 0` and standard deviation
-    `sigma` runs a random walk with drift, whose expected maximum drawdown is
-    ``sigma^2 / (2·mu)`` — the classical result, and accurate enough for a
-    gate that then multiplies it by 1.5. For `mu <= 0` no such bound exists:
-    the walk drifts down and the deepest trough is the whole path. So a
-    ledger with no measured edge gets its own realised drawdown as the
-    reference, which makes the drawdown condition unmeetable rather than
-    trivially met — the honest direction for a gate to fail in.
+    docs/bankroll.md asks for the drawdown implied "at the observed edge and
+    variance, computed from the same ledger", so both moments come off the
+    ledger's own per-ticket profits and the reference is the **median**
+    maximum drawdown of `sims` random walks of the same length with the same
+    mean and standard deviation.
+
+    Simulated rather than taken from the textbook ``sigma^2 / (2·mu)``,
+    because that is the *asymptotic* expected drawdown of a drifted Brownian
+    motion and badly understates a finite path: on a synthetic 1,200-ticket
+    ledger at +0.04 a ticket with a 0.15 standard deviation the formula says
+    0.28 units and the realised trough of an honest path is around 2.0. A
+    gate whose reference is 7x too tight fails ledgers that are behaving
+    exactly as quarter Kelly says they should, which is the wrong direction
+    for a gate to be wrong in — it would push toward re-tuning a working
+    rule.
+
+    For `mu <= 0` there is nothing to imply: the walk drifts down and the
+    deepest trough is the whole path, so the ledger's own realised drawdown
+    is returned and the condition is met only trivially — which is why
+    `gate_progress` also requires a positive ROI before scoring it met.
     """
     df = ledger[ledger["settled"].fillna(False).astype(bool)]
     df = df[df["result"].astype(str) != VOID]
     if df.empty:
         return 0.0
     p = pd.to_numeric(df[column], errors="coerce").fillna(0.0).to_numpy()
+    n = len(p)
     mu = float(np.mean(p))
-    sigma = float(np.std(p, ddof=1)) if len(p) > 1 else 0.0
+    sigma = float(np.std(p, ddof=1)) if n > 1 else 0.0
     if mu <= 0 or sigma <= 0:
         return float(max(pnl.max_drawdown(p), 0.0))
-    return float(sigma ** 2 / (2.0 * mu))
+    rng = np.random.default_rng(seed)
+    paths = np.cumsum(rng.normal(mu, sigma, size=(sims, n)), axis=1)
+    peak = np.maximum.accumulate(np.concatenate(
+        [np.zeros((sims, 1)), paths], axis=1), axis=1)[:, 1:]
+    return float(np.median(np.max(peak - paths, axis=1)))
 
 
 def gate_progress(ledger: pd.DataFrame, stat: str = PRIMARY_STAT,
