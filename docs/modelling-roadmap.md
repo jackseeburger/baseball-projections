@@ -212,7 +212,7 @@ Three consumers, verified in the code:
 | Consumer | What it gets now | Why that is wrong |
 |---|---|---|
 | `src/market/props.py` | Poisson on a **point estimate** of a rate | Its own docstring admits the Poisson understates the tail. Rate uncertainty is discarded on top of that, so prop prices are overconfident in a way no rate accuracy fixes. |
-| `src/market/pnl.py` | `kelly_stake(p_win, ...)` — a **scalar** | Kelly under parameter uncertainty is provably not Kelly at the mean; the correct stake shades down. We are systematically overbetting by an amount nobody has measured. |
+| `src/market/pnl.py` | `kelly_stake(p_win, ...)` — a **scalar** | ~~Kelly under parameter uncertainty is provably not Kelly at the mean; the correct stake shades down.~~ **Retracted** ([posterior-props.md](posterior-props.md)): for a one-shot binary contract expected log growth is linear in `p`, so the posterior-optimal stake *is* Kelly at the posterior mean — checked to 1e-4 and pinned by `tests/test_market/test_posterior_kelly.py`. What feels like overbetting on a prop is selection on a noisy edge, which the stake cannot fix. |
 | `src/sim/season.py` | `simulate_remaining(state, strength: pd.Series, ...)` — **one number per team** | The Monte Carlo samples game outcomes but not parameter uncertainty. Every published playoff probability is conditional on the point estimate being exactly right. |
 
 The third **has now been built and scored, and it failed.** It is left in the
@@ -245,6 +245,15 @@ matter.
 The first two are where money is the exam. If a posterior changes P&L, that is
 the strongest possible evidence for the Bayesian track — far stronger than a
 component MAE tie.
+
+**Both have now been tested ([posterior-props.md](posterior-props.md)).** The
+beta-binomial price is better by 0.00003 of Brier at t = −6 — real, and
+worth nothing. Selecting on `P(edge > 0)` reproduces a 0.4-point threshold
+rule to within 0.2 points of ROI, because Marcel's sampling uncertainty is
+nearly the same for every regular and so cannot reorder bets. The posterior
+that could is the hierarchical model's — drift and population uncertainty
+vary by player — and that is the next test, once BAS-73 gives it more than
+one component to price with.
 
 **Sequence:** posterior into the simulator (testable against a known anomaly) →
 posterior into Kelly sizing (measurable in the money exam) → posterior into prop
