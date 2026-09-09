@@ -152,3 +152,47 @@ class TestProviderFairness:
         dup = lambda train, spec, y: pd.DataFrame({"batter": [1, 1], "predicted": [0.1, 0.2]})
         with pytest.raises(ValueError, match="duplicate"):
             backtest("k_rate", 2023, seasons=seasons, providers={"dup": dup})
+
+
+class TestExtraPredictionColumns:
+    """A provider may carry per-batter columns beyond its point estimate, as
+    long as it names them `pred_*` (BAS-85, docs/bayes-measurement.md).
+
+    Prediction 4 there scores how often the 80% posterior interval covers the
+    realised rate, which needs the interval next to the realised number in
+    the cell frame. Nothing but the Bayesian arms has one, so the rule is
+    opt-in by naming: a provider with no `pred_*` column produces exactly the
+    frame it always produced.
+    """
+
+    def _with_interval(self, lo, hi):
+        def provider(train, spec, y):
+            return pd.DataFrame({"batter": [1, 2, 3],
+                                 "predicted": [0.15, 0.25, 0.35],
+                                 "pred_q10": lo, "pred_q90": hi})
+        return provider
+
+    def test_a_pred_column_rides_through_to_the_cell_frame(self, seasons):
+        results = backtest("k_rate", 2023, seasons=seasons, providers={
+            "band": self._with_interval([0.1, 0.2, 0.3], [0.2, 0.3, 0.4])})
+        assert {"pred_q10", "pred_q90"} <= set(results.columns)
+        assert results["pred_q10"].lt(results["pred_q90"]).all()
+
+    def test_an_arm_without_an_interval_is_untouched(self, seasons):
+        """The columns every existing caller reads, in the order it reads
+        them, for a provider that carries nothing extra."""
+        plain = backtest("k_rate", 2023, seasons=seasons,
+                         providers={"prev": previous_season})
+        assert list(plain.columns) == [
+            "component", "model", "batter", "predicted",
+            "realized_successes", "realized_rate", "trials"]
+
+    def test_the_column_is_null_for_the_arms_that_have_none(self, seasons):
+        """Two arms in one call, one with an interval and one without: the
+        interval is carried for the arm that has it and is missing — not
+        zero, not the other arm's — for the arm that does not."""
+        results = backtest("k_rate", 2023, seasons=seasons, providers={
+            "band": self._with_interval([0.1, 0.2, 0.3], [0.2, 0.3, 0.4]),
+            "prev": previous_season})
+        assert results[results.model == "band"]["pred_q10"].notna().all()
+        assert results[results.model == "prev"]["pred_q10"].isna().all()

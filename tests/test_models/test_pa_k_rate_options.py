@@ -344,6 +344,31 @@ class TestGenerateProjectionsFromTinyTrace:
             assert rows["projected_k_rate"].between(0, 1).all()
             assert set(proj.columns) == EXPECTED_COLUMNS
 
+    def test_extra_quantiles_add_columns_only_when_asked_for(self):
+        """The 80% posterior interval `docs/bayes-measurement.md`'s
+        prediction 4 scores coverage on (BAS-85).
+
+        The default is off and `EXPECTED_COLUMNS` above is the pin that says
+        so: every caller written before this parameter existed gets the frame
+        it always got, column for column. Asked for, the percentiles are of
+        the same posterior `p` the point estimate is the mean of, so they
+        bracket it — a projection outside its own interval would mean the two
+        were computed from different draws.
+        """
+        from src.models.pa_k_rate import ModelOptions, generate_projections
+
+        data, trace = self._fit(ModelOptions(ability_walk=True))
+        unseen = pd.DataFrame({"batter": [9999], "age": [24.0]})
+        proj = generate_projections(trace, data, projection_year=2026,
+                                    unseen=unseen, extra_quantiles=(10, 90))
+        assert set(proj.columns) == EXPECTED_COLUMNS | {"k_rate_q10", "k_rate_q90"}
+        assert (proj["k_rate_q10"] <= proj["projected_k_rate"]).all()
+        assert (proj["projected_k_rate"] <= proj["k_rate_q90"]).all()
+        # 80% is strictly inside the 90% the frame already carried.
+        assert (proj["k_rate_lower"] <= proj["k_rate_q10"]).all()
+        assert (proj["k_rate_q90"] <= proj["k_rate_upper"]).all()
+        assert proj[proj["unseen"]]["k_rate_q10"].notna().all()
+
     def test_intra_season_horizon_zero_draws_no_walk_innovation(self):
         """At `projection_year == last training season`, `years_ahead == 0`
         and the extrapolation loop in `generate_projections` never runs, so

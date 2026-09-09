@@ -828,3 +828,55 @@ class TestParkArmAnalysis:
             base.loc[1, "predicted"] * 1.30)
         assert arm.loc[2, "predicted"] == pytest.approx(
             base.loc[2, "predicted"] * 0.70)
+
+
+# --- the measurement variants (BAS-85) ---------------------------------------
+
+class TestMeasurementVariants:
+    """`--variants measurement_walk` has to reach
+    `BayesArmConfig(measurement=True, joint=True, ability_walk=True)`, get
+    its own arm name on the board, and keep the posterior interval
+    docs/bayes-measurement.md's prediction 4 is scored on.
+    """
+
+    def test_the_measurement_variants_round_trip_through_the_config(self):
+        for variant in ("measurement", "measurement+ability_walk"):
+            config = dense._variant_config(variant)
+            assert config.variant() == variant
+            assert config.measurement is True
+            # The channels read a latent the joint graph writes, so a
+            # measurement fit is a joint fit — with the two components the
+            # pre-registration names, which `joint_components` decides.
+            assert config.joint is True
+        assert dense._variant_config("measurement+ability_walk").ability_walk
+        assert not dense._variant_config("measurement").ability_walk
+
+    def test_the_doc_spelling_resolves_to_the_config_spelling(self):
+        assert dense.resolve_variant("measurement_walk") == (
+            "measurement+ability_walk")
+        assert dense.resolve_variant("measurement_flat") == "measurement"
+        assert (dense._variant_config("measurement_walk")
+                == dense._variant_config("measurement+ability_walk"))
+
+    def test_the_measurement_arms_have_their_own_names_on_the_board(self):
+        assert dense.VARIANT_ARM_NAMES["measurement+ability_walk"] == (
+            "bayes_measurement_walk")
+        assert dense.VARIANT_ARM_NAMES["measurement"] == "bayes_measurement"
+        assert dense.ARM_NAME_VARIANT["bayes_measurement_walk"] == (
+            "measurement+ability_walk")
+
+    def test_they_are_not_in_the_default_sweep(self):
+        """A command written before BAS-85 fits what it always fit."""
+        assert not any("measurement" in v for v in dense.DEFAULT_VARIANTS)
+
+    def test_the_coverage_interval_is_kept_for_exactly_two_arms(self):
+        """Prediction 4 compares `measurement`'s 80% interval against
+        `bayes_walk`'s, so those two arms carry the 10th and 90th percentiles
+        and nothing else does — an interval on every arm would change every
+        arm's projection frame for the sake of two."""
+        assert dense._variant_config("measurement_walk").extra_quantiles == (
+            dense.COVERAGE_QUANTILES)
+        assert dense._variant_config("ability_walk").extra_quantiles == (
+            dense.COVERAGE_QUANTILES)
+        assert dense._variant_config("flat").extra_quantiles == ()
+        assert dense._variant_config("joint_walk").extra_quantiles == ()
