@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import logging
+import time
 from datetime import date, timedelta
 
 import pandas as pd
@@ -23,6 +24,15 @@ CSV_URL = "https://baseballsavant.mlb.com/statcast_search/csv"
 # Savant caps an export around 25k rows; stay well under it per chunk.
 ROW_CAP = 24_000
 DEFAULT_CHUNK_DAYS = 3
+
+# Savant answers a season pull with ~70 CSV exports over fifteen minutes, and
+# on 2026-09-09 one of them came back 502 — a gateway hiccup on the 2026-07-10
+# window after 482,204 pitches had already been fetched. Without a retry the
+# whole run died and nothing reached R2. A 5xx, a dropped connection or a
+# timeout is retried on a doubling backoff (2, 4, 8, 16, 32 s); a 4xx is not,
+# because a bad request will not get better by asking again.
+RETRIES = 5
+BACKOFF_BASE_SECONDS = 2.0
 
 
 def _params(start: date, end: date, season: int) -> dict:
@@ -42,14 +52,47 @@ def _params(start: date, end: date, season: int) -> dict:
     }
 
 
+def _transient(exc: Exception) -> bool:
+    """Is this failure the kind a second try can fix?"""
+    if isinstance(exc, (requests.ConnectionError, requests.Timeout)):
+        return True
+    if isinstance(exc, requests.HTTPError):
+        resp = getattr(exc, "response", None)
+        status = getattr(resp, "status_code", None)
+        return status is not None and status >= 500
+    return False
+
+
+def _get_with_retry(sess, params: dict, timeout: float,
+                    retries: int = RETRIES, sleep=time.sleep):
+    """`sess.get` plus `raise_for_status`, retried on transient failures only."""
+    last: Exception | None = None
+    for attempt in range(retries + 1):
+        try:
+            r = sess.get(CSV_URL, params=params, timeout=timeout,
+                         headers={"User-Agent": "baseball-projections/0.1"})
+            r.raise_for_status()
+            return r
+        except Exception as exc:                      # noqa: BLE001 — classified below
+            if not _transient(exc) or attempt == retries:
+                raise
+            last = exc
+            wait = BACKOFF_BASE_SECONDS * (2 ** attempt)
+            logger.warning("%s..%s: %s — retry %d/%d in %.0fs",
+                           params.get("game_date_gt"), params.get("game_date_lt"),
+                           exc, attempt + 1, retries, wait)
+            sleep(wait)
+    raise last  # pragma: no cover — the loop either returns or raises
+
+
 def fetch_range(start: date, end: date, season: int | None = None,
-                timeout: float = 180.0, session: requests.Session | None = None) -> pd.DataFrame:
-    """One Savant CSV export. Raises on HTTP error or unparseable body."""
+                timeout: float = 180.0, session: requests.Session | None = None,
+                retries: int = RETRIES, sleep=time.sleep) -> pd.DataFrame:
+    """One Savant CSV export. Raises on a non-transient HTTP error, on a
+    transient one that outlasts `retries`, or on an unparseable body."""
     season = season or start.year
     sess = session or requests
-    r = sess.get(CSV_URL, params=_params(start, end, season), timeout=timeout,
-                 headers={"User-Agent": "baseball-projections/0.1"})
-    r.raise_for_status()
+    r = _get_with_retry(sess, _params(start, end, season), timeout, retries, sleep)
     text = r.content.decode("utf-8-sig")
     if not text.strip() or text.lstrip().startswith("<"):
         raise ValueError(f"non-CSV response for {start}..{end}")
