@@ -22,8 +22,9 @@ this file checks both:
 Everything here needs pymc/arviz, which `requirements-ci.txt` leaves out on
 purpose (MCMC runs on Modal, not in CI) — same guard as
 `tests/test_models/test_pa_k_rate_options.py`, and the whole file is skipped
-where they are not installed. The two constant-drift tests at the bottom need
-neither and are marked accordingly.
+where they are not installed. The registry and the age-direction pin at the bottom
+need neither: they read `src/models/pa_components.py`, which is why that
+module exists.
 """
 import importlib.util
 import json
@@ -105,7 +106,7 @@ def test_the_wrapper_and_the_general_module_build_the_same_k_rate_graph():
 
 class TestComponentRegistry:
     def test_the_three_pa_binomials_are_registered(self):
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         assert set(RATE_COMPONENTS) == {"k_rate", "bb_rate", "hr_rate"}
 
@@ -116,7 +117,7 @@ class TestComponentRegistry:
         model against a numerator it was never fit on, and HBP is ~1% of PA
         against BB's ~8.5% — big enough to matter, small enough to miss."""
         from src.eval.backtest import COMPONENTS
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         assert RATE_COMPONENTS["bb_rate"].numerator == "is_bb"
         assert COMPONENTS["bb_rate"].successes == "bb"
@@ -124,7 +125,7 @@ class TestComponentRegistry:
 
     def test_hr_rate_counts_home_runs_per_pa(self):
         from src.eval.backtest import COMPONENTS
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         assert RATE_COMPONENTS["hr_rate"].numerator == "is_hr"
         assert COMPONENTS["hr_rate"].trials == "pa"
@@ -132,14 +133,14 @@ class TestComponentRegistry:
     def test_babip_and_iso_are_refused_with_a_reason(self):
         """Not per-PA binomials — different denominators, out of scope until
         they get their own cells."""
-        from src.models.pa_rate import get_component
+        from src.models.pa_components import get_component
 
         for name in ("babip", "iso", "nonsense"):
             with pytest.raises(ValueError, match="unknown component"):
                 get_component(name)
 
     def test_none_is_k_rate_so_old_call_sites_keep_their_meaning(self):
-        from src.models.pa_rate import get_component
+        from src.models.pa_components import get_component
 
         assert get_component(None).name == "k_rate"
 
@@ -161,7 +162,7 @@ class TestLeagueInitPrior:
 
     @pytest.mark.parametrize("component", ["bb_rate", "hr_rate"])
     def test_derived_from_the_earliest_season(self, component):
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         pa = fixture_pa_rows()
         data = self._data(component)
@@ -223,7 +224,7 @@ class TestAgeDirectionPerComponent:
         peak_age, slope_young, slope_old = f(point)
         assert peak_age == pytest.approx(27.0, abs=1e-6)
 
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
         sign = -RATE_COMPONENTS[component].age_direction
 
         def term(age):
@@ -348,12 +349,13 @@ def test_age_direction_matches_the_tuning_module():
     notices when one copy moves, since a flipped sign here would age BB% like
     K% and still fit. Needs no pymc: both are plain dicts."""
     from src.eval import tuning
-    from src.models import pa_rate
+    from src.models import pa_components
 
-    for name, direction in pa_rate.AGE_DIRECTION.items():
+    for name, direction in pa_components.AGE_DIRECTION.items():
         assert direction == tuning.AGE_DIRECTION[name], name
 
 
+@needs_pymc
 def test_the_wrapper_still_exports_the_age_peak_window():
     """`tests/test_models/test_pa_k_rate_options.py` pins
     `pa_k_rate.AGE_PEAK_WINDOW` against `src.eval.tuning`; the wrapper has to

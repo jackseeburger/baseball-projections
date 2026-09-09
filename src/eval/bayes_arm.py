@@ -93,7 +93,7 @@ class BayesArmConfig:
         """The `RateComponent` this arm fits, validated. Raises for a
         component this model cannot serve (BABIP, ISO) rather than at the
         first missing column three function calls later."""
-        from src.models.pa_rate import get_component
+        from src.models.pa_components import get_component
 
         return get_component(self.component)
 
@@ -303,7 +303,7 @@ def bayes_k_rate_provider(
     cache: dict = {}
 
     def provider(train: pd.DataFrame, spec, year: int) -> pd.DataFrame:
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         if spec.name not in RATE_COMPONENTS:
             raise ValueError(

@@ -585,14 +585,11 @@ class TestBayesComponentsCli:
     def test_only_the_three_per_pa_binomials_are_offered(self):
         assert set(dense.BAYES_COMPONENTS) == {"k_rate", "bb_rate", "hr_rate"}
 
-    @pytest.mark.skipif(
-        importlib.util.find_spec("pymc") is None,
-        reason="src.models.pa_rate imports pymc, which CI does not install")
     def test_the_offered_set_is_exactly_what_the_model_registers(self):
         """The sweep's list and the model's registry must not drift: a
         component offered here but unknown there fails at the first fit, and
         one registered there but missing here is simply never swept."""
-        from src.models.pa_rate import RATE_COMPONENTS
+        from src.models.pa_components import RATE_COMPONENTS
 
         assert set(dense.BAYES_COMPONENTS) == set(RATE_COMPONENTS)
 
