@@ -47,6 +47,24 @@ jobs:
             BOOKS=""
           fi
           python scripts/snapshot_market.py $BOOKS
+      # BAS-77 Stage 0, docs/bankroll.md. It runs *here* rather than in
+      # nightly-odds.yml for two reasons. First, the ledger's two outputs live
+      # under data/market/ and public/data/market/, which is exactly what this
+      # job's commit step already stages — nightly-odds stages only
+      # public/data/{playoff_odds,accuracy,projections} and would leave the
+      # parquet uncommitted, which for an append-only ledger is worse than not
+      # running at all. Second, a ticket may only be priced from a snapshot
+      # taken before first pitch, so the useful moment to emit is immediately
+      # after a snapshot is written; running here gives all three slots a
+      # chance to emit and to settle, instead of one a day hours after the
+      # games have finished.
+      #
+      # No credentials: it reads the committed archive. Its own refusal — a
+      # committed ledger the snapshot archive cannot explain — exits non-zero
+      # and fails the job on purpose. That is a corrupted history, not a bad
+      # day, and it should stop the run rather than append to it.
+      - name: Emit and settle the paper ledger
+        run: python scripts/paper_ledger.py --latest
       - name: Commit snapshot
         run: |
           git config user.name "market-snapshot-bot"
@@ -55,7 +73,7 @@ jobs:
           if git diff --cached --quiet; then
             echo "no changes"
           else
-            git commit -m "data: market snapshot $(date -u +%FT%H%MZ)"
+            git commit -m "data: market snapshot + paper ledger $(date -u +%FT%H%MZ)"
             git pull --rebase origin main
             git push
           fi

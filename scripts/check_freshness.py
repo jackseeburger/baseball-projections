@@ -140,6 +140,14 @@ class Artifact:
 # actually produce output — so it is allowed to be slow, and it is not allowed
 # to cry wolf.
 #
+# paper ledger — written by the same market-snapshot.yml run, immediately after
+#   the snapshot it emits tickets from, so it inherits that workflow's cadence
+#   exactly and gets the same 22h budget for the same reasons. It is not given
+#   a looser one on the grounds that a paper ledger is not production: a ledger
+#   that silently stops appending is a forward test that has quietly stopped,
+#   and the whole value of docs/bankroll.md's Stage 0 is that its history
+#   cannot be edited or interrupted without anyone noticing.
+#
 # career-war.yml — Mondays 19:11 UTC only, one slot, no redundancy. This is
 #   not an oversight: the input is season-aggregate posteriors
 #   (data/projections/*_projections_2026.parquet) that a weekly Modal refit
@@ -194,6 +202,15 @@ ARTIFACTS: tuple[Artifact, ...] = (
         path="public/data/market/latest.json",
         kind="json_field",
         field="as_of",
+        budget_hours=22,
+        required=True,
+        workflow="market-snapshot.yml",
+    ),
+    Artifact(
+        name="paper ledger",
+        path="public/data/market/paper_ledger.json",
+        kind="json_field",
+        field="generated_at",
         budget_hours=22,
         required=True,
         workflow="market-snapshot.yml",

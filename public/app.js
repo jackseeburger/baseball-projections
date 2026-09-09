@@ -24,7 +24,7 @@ let tooltip;
 
 // ─── Data Loading ────────────────────────────────────────────────
 async function loadData() {
-  const [comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros] = await Promise.all([
+  const [comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros, paper] = await Promise.all([
     d3.json("data/comparison.json"),
     d3.json("data/our_model.json"),
     d3.json("data/aging_curves.json"),
@@ -36,8 +36,12 @@ async function loadData() {
     // null first: a checkout that has never run build_ros_projections.py still
     // renders, it just shows the preseason numbers alone.
     d3.json("data/projections/latest.json").catch(() => null),
+    // The Stage 0 paper ledger (docs/bankroll.md). Absent in a checkout that
+    // has never run scripts/paper_ledger.py; the page says so rather than
+    // rendering an empty curve.
+    d3.json("data/market/paper_ledger.json").catch(() => null),
   ]);
-  DATA = { comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros };
+  DATA = { comparison, ourModel, agingCurves, summary, careerWar, playoffs, accuracy, ros, paper };
 }
 
 // ─── Navigation ──────────────────────────────────────────────────
@@ -67,6 +71,7 @@ function renderPage(page) {
     case "comparison": renderComparison(); break;
     case "aging": renderAging(); break;
     case "leaderboard": renderLeaderboard(); break;
+    case "paper": renderPaperLedger(); break;
   }
 }
 
@@ -1922,6 +1927,152 @@ function renderAccuracy() {
   document.getElementById("accuracy-provenance-note").textContent =
     `Written by ${d.meta?.generated_by || "scripts/build_accuracy_json.py"} and archived ` +
     `daily under public/data/accuracy/, one dated file per day, never overwritten.`;
+}
+
+// ══════════════════════════════════════════════════════════════════
+// PAPER LEDGER PAGE — Stage 0 of docs/bankroll.md
+//
+// Deliberately plain. This page exists to show a bankroll curve that has
+// not opened, a gate that has not been met, and the counts behind both.
+// Nothing here is a recommendation and no money is involved; the framing
+// string the builder writes says so and is rendered first, not last.
+// ══════════════════════════════════════════════════════════════════
+function pct(v, digits = 1) {
+  return v == null || isNaN(v) ? "—" : (v * 100).toFixed(digits) + "%";
+}
+
+function renderPaperLedger() {
+  const d = DATA.paper;
+  if (!d) {
+    document.getElementById("paper-subtitle").innerHTML =
+      '<span class="stale-warning">No paper ledger found — run ' +
+      "scripts/paper_ledger.py.</span>";
+    return;
+  }
+  const sha = d.git_sha ? ` · built from <code>${esc(d.git_sha.slice(0, 7))}</code>` : "";
+  document.getElementById("paper-subtitle").innerHTML =
+    `${d.counts.tickets.toLocaleString()} tickets from ${d.snapshots.n} snapshots, ` +
+    `${d.snapshots.first ? esc(String(d.snapshots.first).slice(0, 10)) : "—"} to ` +
+    `${d.snapshots.last ? esc(String(d.snapshots.last).slice(0, 10)) : "—"} · ` +
+    `generated ${new Date(d.generated_at).toLocaleString()}${sha}`;
+  document.getElementById("paper-framing").textContent = d.framing;
+
+  const r = d.rules;
+  document.getElementById("paper-metrics").innerHTML = [
+    { label: "Tickets", value: d.counts.tickets.toLocaleString() },
+    { label: "Settled", value: d.counts.settled.toLocaleString() },
+    { label: "Bankroll (taker)", value: endBankroll(d.curves.taker, r.start_bankroll) },
+    { label: "Maker fills", value: d.counts.maker_filled.toLocaleString() },
+  ].map(m => `<div class="metric-card"><div class="label">${m.label}</div>` +
+    `<div class="value">${m.value}</div></div>`).join("");
+
+  renderPaperCurve(d);
+  renderPaperGate(d);
+  renderPaperROI(d);
+
+  document.getElementById("paper-curve-note").textContent =
+    `Start ${r.start_bankroll.toLocaleString()} units, quarter Kelly capped at ` +
+    `${pct(r.kelly_cap, 0)} of the running bankroll, a bet only where the model ` +
+    `disagrees with the quote by more than ${pct(r.threshold, 0)}. ` +
+    `Fees: ${r.fee}. The three curves are the same tickets under three rules — ` +
+    "crossing the quote and paying the fee, the same but selected by the " +
+    "posterior probability that the edge is real, and resting at the passive " +
+    "price with the fee waived. The maker curve counts only the tickets a " +
+    "later pre-game snapshot showed the market trading through, which sees " +
+    "three moments a day and is a floor, not an estimate.";
+  document.getElementById("paper-gate-note").textContent = d.gate.note;
+  document.getElementById("paper-roi-note").textContent =
+    "Intervals are 95% bootstrap, clustered on the game: a hitter's 1+, 2+ and " +
+    "3+ hits are one afternoon's at bats, not three independent bets. Voided " +
+    "and scratched markets are closed at zero and excluded from ROI.";
+}
+
+function endBankroll(curve, start) {
+  const last = curve && curve.length ? curve[curve.length - 1].bankroll : start;
+  return last.toFixed(1);
+}
+
+function renderPaperCurve(d) {
+  const series = [
+    { key: "taker", label: "Taker (primary)", color: "#4f8ff7" },
+    { key: "taker_posterior", label: "Taker, posterior rule", color: "#a78bfa" },
+    { key: "maker", label: "Maker, fee waived", color: "#34d399" },
+  ].filter(s => (d.curves[s.key] || []).length);
+  const host = d3.select("#paper-curve").html("");
+  if (!series.length) {
+    host.append("p").attr("class", "method-note")
+      .text("Nothing has settled yet, so there is no curve to draw. The " +
+            "ticket count above is the ledger so far.");
+    return;
+  }
+  const dates = Array.from(new Set(series.flatMap(s =>
+    d.curves[s.key].map(p => p.date)))).sort();
+  const width = 620, height = 300, m = { top: 12, right: 130, bottom: 34, left: 58 };
+  const x = d3.scalePoint(dates, [m.left, width - m.right]);
+  const all = series.flatMap(s => d.curves[s.key].map(p => p.bankroll))
+    .concat([d.rules.start_bankroll]);
+  const y = d3.scaleLinear(d3.extent(all), [height - m.bottom, m.top]).nice();
+
+  const svg = host.append("svg").attr("viewBox", `0 0 ${width} ${height}`)
+    .attr("width", "100%");
+  svg.append("g").attr("transform", `translate(0,${height - m.bottom})`)
+    .call(d3.axisBottom(x).tickFormat(s => String(s).slice(5)));
+  svg.append("g").attr("transform", `translate(${m.left},0)`)
+    .call(d3.axisLeft(y).ticks(6));
+  // The line the whole page is about: the bankroll it started with.
+  svg.append("line").attr("x1", m.left).attr("x2", width - m.right)
+    .attr("y1", y(d.rules.start_bankroll)).attr("y2", y(d.rules.start_bankroll))
+    .attr("stroke", "#888").attr("stroke-dasharray", "3,3");
+
+  const line = d3.line().x(p => x(p.date)).y(p => y(p.bankroll));
+  series.forEach((s, i) => {
+    svg.append("path").datum(d.curves[s.key]).attr("fill", "none")
+      .attr("stroke", s.color).attr("stroke-width", 2).attr("d", line);
+    svg.append("text").attr("x", width - m.right + 8).attr("y", m.top + 14 + i * 18)
+      .attr("fill", s.color).attr("font-size", 12).text(s.label);
+  });
+}
+
+function renderPaperGate(d) {
+  const c = d.gate.conditions;
+  const rows = [
+    ["Settled tickets on hits", `${c.tickets.have.toLocaleString()} / ` +
+      `${c.tickets.need.toLocaleString()}`, c.tickets.met],
+    ["Distinct game-days", `${c.game_days.have} / ${c.game_days.need}`, c.game_days.met],
+    ["ROI interval excludes zero",
+      `${pct(c.interval_excludes_zero.roi)} (${pct(c.interval_excludes_zero.lo)}, ` +
+      `${pct(c.interval_excludes_zero.hi)})`, c.interval_excludes_zero.met],
+    ["Drawdown within 1.5x Kelly-implied",
+      `${c.drawdown.realised.toFixed(1)} vs ${c.drawdown.allowed.toFixed(1)} allowed`,
+      c.drawdown.met],
+  ];
+  let h = '<table class="acc-table"><thead><tr><th>Condition</th><th>Where it stands</th>' +
+    "<th>Met</th></tr></thead><tbody>";
+  rows.forEach(([name, value, met]) => {
+    h += `<tr><td class="name-cell">${esc(name)}</td><td class="num">${esc(value)}</td>` +
+      `<td>${met ? '<span class="badge-fresh">yes</span>'
+                 : '<span class="badge-stale">no</span>'}</td></tr>`;
+  });
+  document.getElementById("paper-gate").innerHTML = h + "</tbody></table>";
+}
+
+function renderPaperROI(d) {
+  const stats = Array.from(new Set(Object.keys(d.roi.taker))).sort(
+    (a, b) => (a === "all" ? -1 : b === "all" ? 1 : a.localeCompare(b)));
+  let h = '<table class="acc-table"><thead><tr><th>Prop</th><th>Settled</th>' +
+    "<th>Staked</th><th>ROI, taker</th><th>95% CI</th><th>ROI, maker</th>" +
+    "<th>95% CI</th></tr></thead><tbody>";
+  stats.forEach(s => {
+    const t = d.roi.taker[s] || {}, mk = (d.roi.maker || {})[s] || {};
+    h += `<tr><td class="name-cell">${esc(s)}</td>` +
+      `<td class="num">${(t.n || 0).toLocaleString()}</td>` +
+      `<td class="num">${(t.staked || 0).toFixed(1)}</td>` +
+      `<td class="num">${pct(t.roi)}</td>` +
+      `<td class="num">(${pct(t.roi_lo)}, ${pct(t.roi_hi)})</td>` +
+      `<td class="num">${pct(mk.roi)}</td>` +
+      `<td class="num">(${pct(mk.roi_lo)}, ${pct(mk.roi_hi)})</td></tr>`;
+  });
+  document.getElementById("paper-roi").innerHTML = h + "</tbody></table>";
 }
 
 // ══════════════════════════════════════════════════════════════════
