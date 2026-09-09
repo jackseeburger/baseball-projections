@@ -31,8 +31,9 @@ Tuned Marcel serves today. The Bayes model draws with it on outcomes
 alone on all three components it has been rolled to — K% (BAS-69), BB%
 and HR/PA (BAS-73, the full grid: HR/PA's predicted win did not appear,
 BB% loses by a hair) — and has not yet been fought *with* the measurements
-inside it. That fight is BAS-83, in flight, and it is the one that decides
-the layer. The pitcher-side hierarchical model (BAS-74) is next, with
+inside it. The first structural fight, BAS-83, put the contact measurement in
+as a regressor and lost by 19% of MAE on HR/PA; the diagnosis is errors in
+variables, and the fix is the measurement model (BAS-85), not a re-tune. The pitcher-side hierarchical model (BAS-74) is next, with
 stuff as a covariate from day one.
 
 **Layer 3 — playing time.** Served: rest-of-season PA with the horizon
@@ -66,7 +67,7 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    Marcel with a learned ballast. The model wins only by carrying
    structure Marcel cannot express, so the track is three structural
    models in order, each pre-registered and each kept whatever the
-   verdict: the covariates inside the likelihood (BAS-83, in flight), the
+   verdict: the covariates inside the likelihood (BAS-83: measured, and worse; the block imports the thin current window's noise at a coefficient fitted on full seasons, which is the case for a measurement model rather than a regressor), the
    joint multi-component model with correlated player effects (BAS-84,
    `docs/bayes-joint.md`), and the measurement model where Statcast is a
    second observation of the same latent talent rather than a regressor
