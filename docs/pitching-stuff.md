@@ -94,3 +94,115 @@ enough for any downstream test to mean anything; report it and stop.
   than as a talent covariate.
 - Prediction 3 fails: publish it as denoising, keep the covariate if it
   clears the gate, and do not describe it as measuring skill.
+
+## Results (2026-09-09)
+
+Code: `src/data/pitching_stuff.py`, `src/models/stuff.py`, `src/eval/stuff.py`,
+`scripts/build_pitching_stuff.py`, `scripts/run_stuff_backtest.py`. Artifact:
+`data/features/pitching_stuff_monthly.parquet` (40,105 rows, 2.4 MB).
+Evidence: `data/eval/pitching_stuff_stage1.json`, `pitching_stuff_stage2.json`.
+
+**Vacuity check: passed.** Walk-forward out-of-sample AUC on whiff-given-swing
+runs .728 (2017) to .762 (2026) against the .62 floor.
+
+### Stage 1, walk-forward by season
+
+Whiff | swing, log-loss (AUC). `pitching` is the location-augmented arm,
+labelled and never merged into stuff:
+
+| season | stuff | pitch-type only | fastball-velo only | pitching (+location) |
+| --- | --- | --- | --- | --- |
+| 2017 | .4860 (.728) | .5150 (.629) | .5351 (.517) | .4465 (.758) |
+| 2020 | .4742 (.746) | .5458 (.611) | .5602 (.531) | .4653 (.761) |
+| 2023 | .4594 (.756) | .5342 (.607) | .5472 (.529) | .4504 (.770) |
+| 2026 | .4490 (.762) | .5232 (.611) | .5378 (.530) | .4416 (.773) |
+
+(Every season 2017–2026 has the same ordering; the full table is in the
+stage-1 JSON.) CSW | pitch shows the same shape: stuff .530–.540 vs
+pitch-type .584–.594 vs velocity .585–.596.
+
+**Prediction 1 holds** on every scored season, on both targets, by 0.029–0.074
+of log-loss against pitch-type-only and 0.048–0.086 against velocity-only —
+three to eight times the pre-registered 0.01.
+
+Swing mapping: swings are `hit_into_play, foul, foul_tip, swinging_strike,
+swinging_strike_blocked`; whiffs the two `swinging_strike*`; CSW adds
+`called_strike`. Bunts, pitchouts, intentional balls and position-player
+pitch types are dropped. Fastball = `FF`/`SI`/`FT` (cutters excluded),
+minimum 25 per pitcher-season, below which every relative feature is NaN.
+Fits are capped at 1.5M rows (`random_state=20260909`), LightGBM 4.6.0.
+
+### Stage 2 — the gate (2022–2026 × May/Jul/Aug, 4,881 pitcher-cells, 948 pitchers, SE clustered by pitcher)
+
+| Component | Δ MAE vs `marcel_pitcher_tuned` | % | t | vs `stuff_recal` | % | t |
+| --- | --- | --- | --- | --- | --- | --- |
+| K/BF | −.001009 | **−3.20%** | **−3.37** | −.001231 | −3.87% | −4.57 |
+| BB/BF | −.000585 | −3.26% | −5.98 | −.000138 | −0.79% | −2.37 |
+| (BB+HBP)/BF | −.000544 | −2.81% | −5.34 | −.000098 | −0.52% | −1.64 |
+| HR/BF | −.000255 | −2.51% | −3.56 | −.000217 | −2.15% | −3.58 |
+
+`stuff_recal` (the baseline refit with no covariate) alone: K/BF **+0.70%**
+(worse), BB/BF −2.49%, (BB+HBP)/BF −2.30%, HR/BF −0.37%. The permuted
+control lands on `stuff_recal` everywhere (|t| ≤ 1.7). Verdict:
+`SERVE: p_k_rate, p_bb_rate, p_bbhbp_rate, p_hr_rate`.
+
+**Prediction 2 holds**: K/BF −3.20%, inside the 2–6% band, |t| = 3.37 > 2.5.
+More than all of it is the covariate — the recalibration control by itself
+is *worse* than the baseline — which is the reverse of what contact quality
+found for pitcher K% (+0.5%, t +0.86). That is the pre-registration's central
+claim landing.
+
+**Prediction 3 is mixed, leaning information.** K/BF, as % of each slice's
+own base MAE:
+
+| axis | low | mid | high | May 1 | Jul 1 | Aug 1 |
+| --- | --- | --- | --- | --- | --- | --- |
+| pre-cutoff BF tercile | −2.50% | −4.16% | −2.84% | −3.76% (t −3.38) | −3.68% (t −3.17) | **−0.41% (t −0.28)** |
+
+The exposure axis supports information — the gain is larger in the
+high-exposure tercile than the low, and HR/BF is textbook (−0.11% low,
+−3.34% high). The cutoff axis contradicts it for K/BF: the gain collapses
+from −3.76% in May to −0.41% by August. K/BF is not pure denoising (it
+survives at high exposure and recalibration buys nothing there) but it does
+not survive to the August cutoff. Per the failure conditions: keep the
+covariate, and do not describe it as *measuring* skill until the August
+collapse is understood.
+
+**Prediction 4 fails, in both directions at once.** BB/BF (−3.26%),
+(BB+HBP)/BF (−2.81%) and HR/BF (−2.51%) all move more than the 2% ceiling.
+But the control shows almost all of the walk-rate movement is a fitted
+rescaling of the pitcher Marcel, not stuff: the covariate's own share is
+−0.79% for BB/BF and −0.52% (t −1.64, not significant) for (BB+HBP)/BF —
+the trap contact-quality.md §4 documents. Read against the control, the
+prediction's *reasoning* is right and its number is wrong. HR/BF is the
+opposite: −2.51%, and essentially all of it (−2.15%) is the covariate; the
+reasoning under-rated how much movement says about a home run.
+
+### Things that complicate the reading
+
+- Both stage-2 hyperparameters tuned to a grid corner (current season only,
+  smallest ballast) on the tuning window. Pinned in `src/eval/stuff.py`; the
+  recency corner is a 3.5%-of-MAE effect and is itself evidence for
+  prediction 3's mechanism.
+- The stage-1 model is not one fixed model across seasons: `spin_axis`
+  arrives in 2017 and `arm_angle` around 2021, so the AUC rise from .728 to
+  .762 is partly features arriving. Per-season log-losses are not strictly
+  comparable.
+- 2015–2016 are scored in sample (no two prior seasons); they only enter the
+  2017/2018 three-season windows, and the 2022–2026 holdout is strictly
+  walk-forward.
+- Per-season K/BF is noisy: 2023 goes the wrong way (+0.89%, t +0.41), only
+  2025 is individually significant (−6.87%). The pooled result rests on
+  five seasons.
+- `p_babip` was not scored: stuff has no mechanism for balls in play.
+  `p_bbhbp_rate` was added so the control could speak to the rate station E
+  consumes.
+- The location arm beats stuff on every season (whiff .4416 vs .4490 in
+  2026): roughly a third of the reachable signal is command (BAS-76).
+
+### What ships
+
+Nothing in this pass. The gate is cleared on four pitcher components; the
+serving path (an additive engine on `marcel_pitcher_tuned`, month-lagged,
+walk-forward, with the same fallback as the hitter side) is BAS-79, the
+pitcher mirror of BAS-72.
