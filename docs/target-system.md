@@ -179,7 +179,7 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
 | K/BF | NOT STARTED — BAS-74 | stuff — gated (−3.2%, t −3.4; BAS-71); additive arm **withheld** at t 2.50 vs the 2.5 bar (BAS-79) |
-| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — **SERVED** on BB/BF (`stuff_additive`, BAS-79), mostly a level correction — calibration IN FLIGHT, BAS-80 (`docs/pitcher-marcel-calibration.md`); command / location — NOT STARTED, BAS-76 |
+| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — **SERVED** on BB/BF (`stuff_additive`, BAS-79), mostly a level correction; calibration measured and not shipped, vacuity failed (BAS-80, `docs/pitcher-marcel-calibration.md`); command / location — NOT STARTED, BAS-76 |
 | HR/BF | NOT STARTED — BAS-74 | stuff — **SERVED** (`stuff_additive`, −2.8%, all covariate; BAS-79); contact-quality-allowed — gated, *information* |
 | BABIP against | NOT STARTED — BAS-74 | contact-quality-allowed — gated |
 
