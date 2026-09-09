@@ -302,7 +302,13 @@ def test_the_live_engine_is_the_tuned_marcel():
     from src.eval import baselines
     from src.eval.baselines import STOCK_PARAMS, load_marcel_params
 
-    assert ros_module.LIVE_ENGINE == "marcel_tuned"
+    # BAS-72: LIVE_ENGINE is now per component (docs/contact-quality.md §4
+    # cleared on all five hitter components), but `marcel_tuned` is still what
+    # every engine's base rests on, and `LIVE_PROVIDERS["marcel"]` is still
+    # exactly that function, unwrapped.
+    assert set(ros_module.LIVE_ENGINE) == set(ros_module.COMPONENT_ORDER)
+    assert set(ros_module.LIVE_ENGINE.values()) <= {
+        ros_module.MARCEL_ENGINE, ros_module.CONTACT_ENGINE}
     assert ros_module.LIVE_PROVIDERS == {
         "marcel": baselines.marcel_tuned,
         "marcel_preseason": baselines.marcel_tuned_preseason,
@@ -365,3 +371,84 @@ def test_an_empty_training_frame_is_an_error_not_a_silent_zero():
     with pytest.raises(ValueError):
         build_ros_projections(AS_OF, make_seasons().iloc[:0], make_pa_frame([]),
                               make_playing_time({1: 100.0}))
+
+
+# --- the contact engine (BAS-72) ----------------------------------------
+
+def test_contact_cutoff_is_the_last_month_boundary_on_or_before_as_of():
+    """The lag is up to a month, never a partial one -- Sept 9 and Sept 30
+    both read the same, Sept 1, contact cutoff (features through Aug 31)."""
+    assert ros_module.contact_cutoff("2026-09-09") == pd.Timestamp("2026-09-01")
+    assert ros_module.contact_cutoff("2026-09-30") == pd.Timestamp("2026-09-01")
+    assert ros_module.contact_cutoff("2026-09-01") == pd.Timestamp("2026-09-01")
+    assert (ros_module.contact_features_through("2026-09-09")
+            == pd.Timestamp("2026-08-31"))
+
+
+def test_the_engine_never_reads_a_bucket_from_the_as_of_month_or_later():
+    """The leakage guard, at the level this ticket wires: an as-of date inside
+    September must never see a September contact bucket, even though the
+    monthly artifact has one and the as-of date is well past the 1st.
+
+    A September bucket of a thousand 120 mph barrels would move `ev_mean` and
+    `barrel` enormously if it leaked in; the feature computed at the engine's
+    own cutoff must be bit-for-bit what it would be if that row were never in
+    the table at all.
+    """
+    from src.data.contact_quality import COUNT_COLUMNS
+    from src.eval.contact import features_at_cutoff
+
+    def bucket(player, season, month, bbe, ev, la, barrel_frac=0.0):
+        row = {"side": "hitter", "player": player, "season": season, "month": month}
+        row.update({c: 0.0 for c in COUNT_COLUMNS})
+        row["bbe"] = float(bbe)
+        row["sum_ev"] = float(bbe) * ev
+        row["sum_ev2"] = float(bbe) * ev * ev
+        row["sum_la"] = float(bbe) * la
+        row["n_barrel"] = float(bbe) * barrel_frac
+        row["n_hardhit"] = float(bbe) * (1.0 if ev >= 95 else 0.0)
+        row["n_sweetspot"] = float(bbe) * (1.0 if 8 <= la <= 32 else 0.0)
+        return row
+
+    as_of = "2026-09-09"
+    cutoff = ros_module.contact_cutoff(as_of)
+    assert cutoff == pd.Timestamp("2026-09-01")
+
+    normal = [bucket(1, 2026, 5, 40, 90.0, 12.0, 0.10),
+              bucket(1, 2026, 6, 40, 90.0, 12.0, 0.10),
+              bucket(1, 2026, 7, 40, 90.0, 12.0, 0.10),
+              bucket(1, 2026, 8, 40, 90.0, 12.0, 0.10)]
+    monthly_clean = pd.DataFrame(normal)
+    # The same player, plus an extreme September bucket that would blow up
+    # ev_mean and barrel rate if it ever entered the pre-cutoff sum.
+    monthly_with_september = pd.DataFrame(
+        normal + [bucket(1, 2026, 9, 1000, 120.0, 25.0, 1.0)])
+
+    clean = features_at_cutoff(monthly_clean, "hitter", cutoff, 2026)
+    leaky = features_at_cutoff(monthly_with_september, "hitter", cutoff, 2026)
+    pd.testing.assert_frame_equal(
+        clean.sort_values("player").reset_index(drop=True),
+        leaky.sort_values("player").reset_index(drop=True))
+
+
+def test_engine_providers_fall_back_to_marcel_tuned_without_contact_inputs():
+    """No monthly frame, no pa_dir, no as-of -> every component falls back to
+    marcel_tuned rather than raising, matching the module docstring's promise
+    that a missing input degrades gracefully rather than failing the build."""
+    providers, used = ros_module.engine_providers(components=COMPONENT_ORDER)
+    assert set(used.values()) == {ros_module.MARCEL_ENGINE}
+    from src.eval import baselines
+    assert all(p is baselines.marcel_tuned for p in providers.values())
+
+
+def test_marcel_rates_records_which_engine_actually_ran():
+    """`engine_used` on the returned frame's `.attrs` is what
+    `scripts/build_ros_projections.py` stamps as `engine` -- it has to be
+    present even when the contact engine was never asked for, so a caller can
+    always read it without a None check."""
+    pa = make_pa_frame(pd.date_range("2026-04-01", periods=60), batters=(1, 2))
+    seasons = make_seasons()
+    partial = partial_season(pa, AS_OF)
+    out = marcel_rates(seasons, partial)
+    assert out.attrs["engine_used"] == {c: ros_module.MARCEL_ENGINE
+                                        for c in COMPONENT_ORDER}

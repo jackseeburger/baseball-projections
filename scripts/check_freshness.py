@@ -187,6 +187,27 @@ ARTIFACTS: tuple[Artifact, ...] = (
         required=True,
         workflow="nightly-odds.yml",
     ),
+    # BAS-72: the current season's rows are rebuilt every night, before
+    # build_ros_projections.py, by
+    # `scripts/build_contact_quality.py --update-season <current>` — same
+    # nightly-odds.yml cadence and slots as the three artifacts above, so the
+    # same 36h budget (worst legitimate gap 29h30m + 6h30m slack) applies.
+    # The timestamp lives in a JSON sidecar next to the parquet
+    # (`contact_quality_monthly.meta.json`, `built_at`), not in the parquet
+    # itself — this script is stdlib-only on purpose (see the module
+    # docstring), and parsing parquet needs pandas/pyarrow. `build_year`'s
+    # caller stamps the sidecar only when the season it just rebuilt is the
+    # newest one on record, so a rebuild of an old season for a backfill does
+    # not make tonight's freshness read as current.
+    Artifact(
+        name="contact-quality monthly (current season)",
+        path="data/features/contact_quality_monthly.meta.json",
+        kind="json_field",
+        field="built_at",
+        budget_hours=36,
+        required=True,
+        workflow="nightly-odds.yml",
+    ),
     Artifact(
         name="market snapshot archive",
         path="data/market/snapshots",

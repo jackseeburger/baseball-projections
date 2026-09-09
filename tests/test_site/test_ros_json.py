@@ -113,9 +113,14 @@ def test_the_document_names_the_engine_it_was_built_with(doc):
     put through the switch to the tuned constants, so the file has to say
     outright which Marcel filled them — otherwise two snapshots with the same
     column names mean different models with nothing to tell them apart."""
-    from src.projections.ros import LIVE_ENGINE
+    from src.projections.ros import CONTACT_ENGINE, LIVE_ENGINE
 
-    assert doc["engine"] == LIVE_ENGINE == "marcel_tuned"
+    # BAS-72: the contact-quality arm cleared the gate on all five hitter
+    # components, so `engine` is now per component rather than one string —
+    # but every component in a fresh build still reads `LIVE_ENGINE` exactly,
+    # because the fixture ships the contact inputs the engine needs.
+    assert doc["engine"] == LIVE_ENGINE
+    assert set(doc["engine"].values()) == {CONTACT_ENGINE}
     assert "Tuned Marcel" in doc["method"]
     assert "marcel_params.json" in doc["method"]
     live = next(a for a in doc["arms"] if a["is_live"])

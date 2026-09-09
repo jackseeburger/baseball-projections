@@ -101,6 +101,8 @@ OUT_DIR = ROOT / "public/data/projections"
 SEASONS_PARQUET = ROOT / "data/parquet/hitter_seasons_api.parquet"
 PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
 PROJECTIONS_DIR = ROOT / "data/projections"
+CONTACT_MONTHLY_PARQUET = ROOT / "data/features/contact_quality_monthly.parquet"
+CONTACT_PA_DIR = ROOT / "data/parquet/pa_outcomes"
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 
@@ -346,6 +348,12 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
     players = records(projections)
     pitchers = (pitchers if pitchers is not None
                 else pd.DataFrame(columns=list(pitcher_ros.OUTPUT_COLUMNS)))
+    # `engine_used` is what `ros.marcel_rates` actually ran, per component —
+    # it can differ from `ros.LIVE_ENGINE` on a build that fell back to
+    # marcel_tuned for a missing contact input (BAS-72). Absent entirely on a
+    # stale/empty document, since `to_document` is not called for those.
+    engine_used = projections.attrs.get("engine_used", ENGINE)
+    contact_through = projections.attrs.get("contact_features_through")
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "as_of": as_of,
@@ -355,7 +363,8 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
         "git_sha": git_sha if git_sha is not None else current_sha(),
         "title": "Rest-of-season projection",
         "n_hitters": int(len(projections)),
-        "engine": ENGINE,
+        "engine": engine_used,
+        "contact_features_through": contact_through,
         "playing_time_method": PLAYING_TIME_METHOD,
         "method": METHOD,
         "framing": FRAMING.format(through=through),
@@ -477,6 +486,7 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
           pitcher_seasons_path: Path = PITCHER_SEASONS_PARQUET,
           refresh: bool = False) -> dict:
     """Assemble the document. Never raises for a missing input."""
+    from src.data.contact_quality import load_monthly
     from src.data.pa_outcomes import load_pa_outcomes
 
     previous, previous_name = newest_previous(out_dir)
@@ -487,10 +497,24 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
         pa = load_pa_outcomes(SEASON, data_dir=pa_dir or (ROOT / "data/parquet"))
         names = load_names()
         playing_time, teams = build_playing_time(as_of, refresh=refresh)
+        # The contact engine (BAS-72) is optional at this call site: a
+        # component whose LIVE_ENGINE is "contact" but sees `None` here falls
+        # back to marcel_tuned for that build alone (`ros.engine_providers`),
+        # rather than the whole hitter block going stale over a missing file
+        # that is committed to the repo and only ever absent in a stripped
+        # checkout.
+        contact_monthly = None
+        if CONTACT_MONTHLY_PARQUET.exists():
+            try:
+                contact_monthly = load_monthly(CONTACT_MONTHLY_PARQUET)
+            except Exception as exc:                          # noqa: BLE001
+                logger.warning("contact-quality monthly artifact unreadable: "
+                               "%s: %s", type(exc).__name__, exc)
         projections = build_ros_projections(
             as_of, seasons, pa, playing_time,
             bayes_frames=load_bayes_frames(projections_dir),
-            names=names, teams=teams, season=SEASON)
+            names=names, teams=teams, season=SEASON,
+            contact_monthly=contact_monthly, contact_pa_dir=CONTACT_PA_DIR)
     except Exception as exc:                                  # noqa: BLE001
         reason = f"could not rebuild the projection: {type(exc).__name__}: {exc}"
         logger.warning(reason)

@@ -64,6 +64,12 @@ from src.data.contact_quality import (
     EV_BIN_EDGES,
 )
 from src.eval.backtest import COMPONENTS, ComponentSpec
+from src.eval.baselines import marcel_tuned as _marcel_tuned
+from src.eval.intraseason import (
+    assert_split_clean,
+    build_training_frame,
+    partial_and_realized,
+)
 
 # The covariates, in a fixed order so a coefficient vector is readable.
 FEATURES = ("ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean")
@@ -397,10 +403,135 @@ def spec_for(component: str) -> ComponentSpec:
     return COMPONENTS[component]
 
 
+# --- walk-forward fit for live serving ---------------------------------------
+
+# The same cell seasons and cutoff months `scripts/run_contact_backtest.py`
+# scores against, minus 2020 (no May 1 cutoff in a 60-game season). Hitter
+# side only — this module ships the hitter engine; the pitcher walk rates'
+# gain in docs/contact-quality.md §4 turned out to be pure recalibration, and
+# pitcher K% does not clear the gate at all, so there is no pitcher arm here.
+LIVE_CELL_SEASONS = (2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026)
+LIVE_CUTOFF_MONTHS = ("05-01", "07-01", "08-01")
+LIVE_MIN_TRIALS = 100
+
+
+def build_hitter_cells(
+    seasons_table: pd.DataFrame,
+    pa_dir,
+    components,
+    seasons=LIVE_CELL_SEASONS,
+    cutoff_months=LIVE_CUTOFF_MONTHS,
+    min_trials: int = LIVE_MIN_TRIALS,
+) -> pd.DataFrame:
+    """One row per (component, season, cutoff, player): baseline prediction,
+    realized rest-of-season rate, trials and pre-cutoff exposure.
+
+    The hitter-side counterpart of `scripts/run_contact_backtest.py`'s
+    `build_cells`, kept in `src.eval` rather than a script so
+    `fit_live_contact` can call it directly at serve time with exactly the
+    same split (`partial_and_realized`, `assert_split_clean`, the harness's
+    own `min_trials` filter) the backtest scores.
+    """
+    import pandas as pd  # local: avoid a module-level dependency on Path typing
+
+    rows = []
+    for season in seasons:
+        pa = pd.read_parquet(
+            f"{pa_dir}/pa_outcomes_{season}.parquet",
+            columns=["batter", "pitcher", "game_pk", "game_date", "game_year",
+                     "event", "is_k", "is_bb", "is_hbp", "is_hit", "is_hr",
+                     "is_single", "is_double", "is_triple"])
+        pa["game_date"] = pd.to_datetime(pa["game_date"])
+        for md in cutoff_months:
+            cutoff = f"{season}-{md}"
+            partial, realized = partial_and_realized(pa, cutoff, season)
+            train = build_training_frame(seasons_table, partial, season, "batter")
+            assert_split_clean(train, realized, cutoff, season)
+            pre = partial.set_index("batter")
+            for component in components:
+                spec = COMPONENTS[component]
+                real = realized[realized[spec.trials] >= min_trials]
+                if real.empty:
+                    continue
+                base = _marcel_tuned(train, spec, season)[["batter", "predicted"]]
+                base = base.dropna(subset=["predicted"])
+                j = real[["batter", spec.successes, spec.trials]].merge(
+                    base, on="batter", how="inner")
+                if j.empty:
+                    continue
+                rows.append(pd.DataFrame({
+                    "component": component, "side": "hitter", "season": season,
+                    "cutoff": cutoff, "player": j["batter"].to_numpy(),
+                    "base": j["predicted"].to_numpy(dtype="float64"),
+                    "realized_rate": (j[spec.successes] / j[spec.trials]
+                                      ).to_numpy(dtype="float64"),
+                    "trials": j[spec.trials].to_numpy(dtype="float64"),
+                    "pre_trials": pre[spec.trials].reindex(
+                        j["batter"].to_numpy()).fillna(0.0).to_numpy(dtype="float64"),
+                }))
+    if not rows:
+        return pd.DataFrame(columns=["component", "side", "season", "cutoff",
+                                     "player", "base", "realized_rate",
+                                     "trials", "pre_trials", *FEATURES])
+    return pd.concat(rows, ignore_index=True)
+
+
+def attach_live_features(
+    cells: pd.DataFrame, monthly: pd.DataFrame,
+    weights: tuple[float, float, float] = DEFAULT_WINDOW_WEIGHTS,
+    ballast: float = DEFAULT_BALLAST,
+) -> pd.DataFrame:
+    """Merge the standardized contact covariates onto `build_hitter_cells`'s
+    output, one cutoff-cell at a time (the covariates do not depend on the
+    component)."""
+    out = []
+    for (season, cutoff), g in cells.groupby(["season", "cutoff"]):
+        z = features_at_cutoff(monthly, "hitter", cutoff, season, weights, ballast)
+        zi = z.set_index("player").reindex(g["player"].to_numpy())
+        g = g.copy()
+        for f in FEATURES:
+            g[f] = zi[f].fillna(0.0).to_numpy()
+        out.append(g)
+    return pd.concat(out, ignore_index=True)
+
+
+def fit_live_contact(
+    component: str,
+    seasons_table: pd.DataFrame,
+    monthly: pd.DataFrame,
+    pa_dir,
+    predict_year: int,
+    weights: tuple[float, float, float] = DEFAULT_WINDOW_WEIGHTS,
+    ballast: float = DEFAULT_BALLAST,
+) -> ContactFit:
+    """The `contact` arm's coefficients for `predict_year`, fitted exactly as
+    the harness fits them walk-forward: on cell seasons strictly before the
+    one being served, never on `predict_year` itself.
+
+    This is what `contact_provider` needs and what
+    `scripts/run_contact_backtest.py`'s `walk_forward` does inside the loop —
+    called here once, for the season actually being served, rather than for
+    every fold of a backtest.
+    """
+    train_seasons = tuple(s for s in LIVE_CELL_SEASONS if s < predict_year)
+    if not train_seasons:
+        raise ValueError(
+            f"no contact-quality training seasons strictly before {predict_year}")
+    cells = build_hitter_cells(seasons_table, pa_dir, [component],
+                               seasons=train_seasons)
+    if cells.empty:
+        raise ValueError(f"no contact-quality training cells for {component!r} "
+                         f"before {predict_year}")
+    cells = attach_live_features(cells, monthly, weights, ballast)
+    return fit_contact(cells, component, features=FEATURES)
+
+
 __all__ = [
     "CONTACT_BALLAST_GRID", "CONTACT_WEIGHT_GRID", "DEFAULT_BALLAST",
-    "DEFAULT_WINDOW_WEIGHTS", "FEATURES", "ContactFit",
+    "DEFAULT_WINDOW_WEIGHTS", "FEATURES", "LIVE_CELL_SEASONS",
+    "LIVE_CUTOFF_MONTHS", "LIVE_MIN_TRIALS", "ContactFit",
     "ContactProviderConfig", "assert_month_boundary", "assert_window_clean",
-    "contact_metrics", "contact_provider", "features_at_cutoff",
-    "fit_contact", "league_profile", "standardize", "window_counts",
+    "attach_live_features", "build_hitter_cells", "contact_metrics",
+    "contact_provider", "features_at_cutoff", "fit_contact",
+    "fit_live_contact", "league_profile", "standardize", "window_counts",
 ]

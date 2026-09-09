@@ -39,6 +39,7 @@ column is right there.
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -200,6 +201,31 @@ def save_monthly(df: pd.DataFrame, path: str | Path = DEFAULT_PATH) -> Path:
     return path
 
 
+def meta_path(path: str | Path = DEFAULT_PATH) -> Path:
+    """The JSON sidecar next to the parquet: `<name>.meta.json`.
+
+    `check_freshness.py` reads a build timestamp out of it (BAS-72) rather
+    than out of the parquet itself — that script is stdlib-only on purpose,
+    and parsing parquet needs pandas/pyarrow.
+    """
+    path = Path(path)
+    return path.with_suffix("").with_suffix(".meta.json")
+
+
+def write_meta(path: str | Path = DEFAULT_PATH, *, built_at: str | None = None,
+              seasons_built: list[int] | None = None) -> Path:
+    """Stamp the sidecar with when this build ran and which seasons it touched."""
+    import json
+
+    stamp = built_at or datetime.now(timezone.utc).isoformat()
+    out = meta_path(path)
+    out.write_text(json.dumps({
+        "built_at": stamp,
+        "seasons_built": sorted(seasons_built) if seasons_built else None,
+    }, indent=1) + "\n")
+    return out
+
+
 def load_monthly(path: str | Path = DEFAULT_PATH) -> pd.DataFrame:
     """Read the artifact back with float counts (the feature code sums them)."""
     df = pd.read_parquet(path)
@@ -211,5 +237,6 @@ def load_monthly(path: str | Path = DEFAULT_PATH) -> pd.DataFrame:
 __all__ = [
     "COUNT_COLUMNS", "DEFAULT_PATH", "EV_BIN_COLUMNS", "EV_BIN_EDGES",
     "batted_balls", "build_monthly", "build_year", "ev_bin_index",
-    "load_monthly", "monthly_buckets", "save_monthly",
+    "load_monthly", "meta_path", "monthly_buckets", "save_monthly",
+    "write_meta",
 ]
