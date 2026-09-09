@@ -95,7 +95,17 @@ def test_only_the_components_that_cleared_the_gate_are_served():
 
 
 def test_the_engine_is_the_arm_the_harness_scored():
-    assert pr.LIVE_ENGINE == "marcel_pitcher_tuned"
+    # Per component since BAS-79, and only where the *additive* arm cleared
+    # the serving gate docs/pitching-stuff.md pre-registered: BB/BF (t -6.13)
+    # and HR/BF (t -3.93). K/BF is withheld at t -2.38 against a bar of 2.5,
+    # and BABIP was never scored — stuff has no mechanism for balls in play.
+    assert pr.LIVE_ENGINE == {
+        "p_k_rate": "marcel_pitcher_tuned",
+        "p_bb_rate": "stuff_additive",
+        "p_hr_rate": "stuff_additive",
+        "p_babip": "marcel_pitcher_tuned",
+    }
+    assert set(pr.LIVE_ENGINE) == set(pr.SERVED_COMPONENTS)
     assert pr.LIVE_PROVIDERS["marcel"] is pitcher_eval.marcel_pitcher_tuned
 
 
@@ -220,3 +230,96 @@ def test_a_better_pitcher_gets_a_lower_fip():
 def test_the_frame_is_sorted_by_projected_fip(pa, seasons):
     out = build(pa, seasons)
     assert out["fip_ros"].is_monotonic_increasing
+
+
+# --- the stuff engine (BAS-79) ------------------------------------------
+
+def test_the_stuff_cutoff_is_the_month_boundary_not_the_as_of_date():
+    """A build made mid-month reads the last month boundary, not a partial
+    month — so a build on Sept 9 and one on Sept 30 read the same, Sept 1,
+    cutoff (features through Aug 31)."""
+    assert pr.stuff_cutoff("2026-09-09") == pd.Timestamp("2026-09-01")
+    assert pr.stuff_cutoff("2026-09-30") == pd.Timestamp("2026-09-01")
+    assert pr.stuff_cutoff("2026-09-01") == pd.Timestamp("2026-09-01")
+    assert pr.stuff_features_through("2026-09-09") == pd.Timestamp("2026-08-31")
+
+
+def stuff_bucket(pitcher, season, month, pitches, whiff_rate, velo):
+    """One monthly stuff bucket, every count consistent with the rates."""
+    from src.data.pitching_stuff import COUNT_COLUMNS
+
+    row = {"pitcher": pitcher, "season": season, "month": month}
+    row.update({c: 0.0 for c in COUNT_COLUMNS})
+    swings = pitches * 0.45
+    row["pitches"] = float(pitches)
+    row["swings"] = swings
+    row["p_whiff_sum"] = swings * whiff_rate
+    row["p_csw_sum"] = pitches * (whiff_rate * 0.45 + 0.17)
+    row["sum_velo"] = pitches * velo
+    row["fb_pitches"] = pitches * 0.5
+    row["fb_swings"] = swings * 0.5
+    row["fb_p_whiff_sum"] = swings * 0.5 * whiff_rate
+    row["nfb_pitches"] = pitches * 0.5
+    row["nfb_swings"] = swings * 0.5
+    row["nfb_p_whiff_sum"] = swings * 0.5 * whiff_rate
+    return row
+
+
+def test_the_engine_never_reads_a_bucket_from_the_as_of_month_or_later():
+    """The leakage guard, at the level this ticket wires: an as-of date inside
+    September must never see a September stuff bucket, even though the monthly
+    artifact has one and the as-of date is well past the 1st.
+
+    A September bucket of ten thousand unmissable pitches would move every
+    covariate enormously if it leaked in; the features computed at the
+    engine's own cutoff must be bit-for-bit what they would be if that row
+    were never in the table at all.
+    """
+    from src.eval.stuff import features_at_cutoff
+
+    as_of = "2026-09-09"
+    cutoff = pr.stuff_cutoff(as_of)
+    assert cutoff == pd.Timestamp("2026-09-01")
+
+    normal = [stuff_bucket(1, 2026, m, 400, 0.24, 93.0) for m in (5, 6, 7, 8)]
+    normal += [stuff_bucket(2, 2026, m, 400, 0.20, 91.0) for m in (5, 6, 7, 8)]
+    clean_rows = pd.DataFrame(normal)
+    # The same pitchers, plus an extreme September bucket for one of them.
+    with_september = pd.DataFrame(
+        normal + [stuff_bucket(1, 2026, 9, 10000, 0.95, 104.0)])
+
+    clean = features_at_cutoff(clean_rows, cutoff, 2026)
+    leaky = features_at_cutoff(with_september, cutoff, 2026)
+    pd.testing.assert_frame_equal(
+        clean.sort_values("player").reset_index(drop=True),
+        leaky.sort_values("player").reset_index(drop=True))
+
+
+def test_a_cutoff_that_is_not_a_month_boundary_is_refused_not_rounded():
+    """Rounding a cutoff forward is leakage, so the window sum refuses one."""
+    from src.eval.stuff import features_at_cutoff
+
+    rows = pd.DataFrame([stuff_bucket(1, 2026, m, 400, 0.24, 93.0)
+                         for m in (5, 6, 7, 8)])
+    with pytest.raises(ValueError):
+        features_at_cutoff(rows, pd.Timestamp("2026-09-09"), 2026)
+
+
+def test_engine_providers_fall_back_to_marcel_without_stuff_inputs():
+    """No monthly frame, no pa_dir, no as-of -> every component falls back to
+    the tuned pitcher Marcel rather than raising, which is what the module
+    docstring and the pre-registration's fourth serving prediction promise."""
+    providers, used = pr.engine_providers()
+    assert set(used.values()) == {pr.MARCEL_ENGINE}
+    assert set(used) == set(pr.SERVED_COMPONENTS)
+    assert all(f is pitcher_eval.marcel_pitcher_tuned
+               for f in providers.values())
+
+
+def test_the_projection_records_the_engine_that_actually_ran(pa, seasons):
+    """Provenance rides on `.attrs`, per component, and says Marcel when the
+    stuff artifact was not supplied — never the engine that was intended."""
+    out = build(pa, seasons)
+    assert out.attrs["pitcher_engine_used"] == {
+        c: pr.MARCEL_ENGINE for c in pr.SERVED_COMPONENTS}
+    assert out.attrs["stuff_features_through"] == "2026-07-31"  # AS_OF is Aug 1

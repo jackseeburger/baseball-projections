@@ -1,6 +1,6 @@
 """Walk-forward test of pitching stuff as covariates on the pitcher rates (BAS-71, stage 2).
 
-Three arms at every (component, season, cutoff) cell, scored with the harness's
+Five arms at every (component, season, cutoff) cell, scored with the harness's
 own metrics on the harness's own common pitcher set:
 
     marcel_pitcher_tuned   the live baseline, untouched
@@ -8,9 +8,18 @@ own metrics on the harness's own common pitcher set:
                            seasons only — the control that absorbs a pure
                            recalibration gain
     stuff                  the same fit plus standardized stuff covariates
+    stuff_additive         the baseline's coefficient pinned at 1 and the
+                           covariates added as a correction — the deployable
+                           shape, and the one docs/pitching-stuff.md's
+                           "Serving" section pre-registers the serving gate on
+    stuff_additive_recal   the same shape with no covariate at all: baseline
+                           plus a fitted intercept. What is left of a
+                           `stuff_additive` gain after this control is the
+                           covariate's own
 
 `stuff` vs `marcel_pitcher_tuned` is the gate. `stuff` vs `stuff_recal` is what
-the covariate itself is worth. Coefficients for a scored season are fitted on
+the covariate itself is worth, and `stuff_additive` vs `stuff_additive_recal`
+is the same question asked of the arm that actually ships. Coefficients for a scored season are fitted on
 cells strictly before it; the two hyperparameters (the recency weights over
 seasons and the shrinkage ballast) are chosen on a tuning window that ends
 before the scored seasons begin.
@@ -44,8 +53,8 @@ import pandas as pd
 
 from src.data.pitching_stuff import load_monthly
 from src.eval import pitchers as pitcher_eval
-from src.eval.backtest import COMPONENTS, score
-from src.eval.intraseason import assert_split_clean, build_training_frame
+from src.eval import stuff as stuff_eval
+from src.eval.backtest import score
 from src.eval.stuff import (
     DEFAULT_BALLAST,
     DEFAULT_WINDOW_WEIGHTS,
@@ -76,6 +85,10 @@ TUNE_THROUGH = 2021
 # to say so again.
 DEFAULT_COMPONENTS = ("p_k_rate", "p_bb_rate", "p_bbhbp_rate", "p_hr_rate")
 BASE_ARM = "marcel_pitcher_tuned"
+# The clustered |t| a component's `stuff_additive` arm has to clear to be
+# served, pre-registered in docs/pitching-stuff.md's "Serving" section before
+# any additive number was read.
+SERVE_MIN_T = 2.5
 
 
 # --- cells -------------------------------------------------------------------
@@ -89,50 +102,13 @@ def build_cells(components, seasons_table: pd.DataFrame, pa_dir: Path,
     The split is the harness's own — `partial_and_realized` either side of the
     date, `assert_split_clean` on both, the same `min_trials` filter and the
     same intersection with the baseline's coverage that `_run_split` applies.
-    Nothing here re-implements a metric.
+    Nothing here re-implements a metric, and since BAS-79 it does not even
+    build the cells: `src.eval.stuff.build_pitcher_cells` does, so the arm the
+    site serves is fitted on exactly the rows the gate below is scored on.
     """
-    rows = []
-    for season in CELL_SEASONS:
-        pa = pd.read_parquet(pa_dir / f"pa_outcomes_{season}.parquet",
-                             columns=["batter", "pitcher", "game_pk",
-                                      "game_date", "game_year", "event",
-                                      "is_k", "is_bb", "is_hbp", "is_hit",
-                                      "is_hr", "is_single", "is_double",
-                                      "is_triple"])
-        pa["game_date"] = pd.to_datetime(pa["game_date"])
-        for md in CUTOFF_MONTHS:
-            cutoff = f"{season}-{md}"
-            partial, realized = pitcher_eval.partial_and_realized(pa, cutoff,
-                                                                  season)
-            train = build_training_frame(seasons_table, partial, season,
-                                         "pitcher")
-            assert_split_clean(train, realized, cutoff, season)
-            pre = partial.set_index("pitcher")
-            for component in components:
-                spec = COMPONENTS[component]
-                real = realized[realized[spec.trials] >= min_trials]
-                if real.empty:
-                    continue
-                base = pitcher_eval.marcel_pitcher_tuned(
-                    train, spec, season)[["pitcher", "predicted"]]
-                base = base.dropna(subset=["predicted"])
-                j = real[["pitcher", spec.successes, spec.trials]].merge(
-                    base, on="pitcher", how="inner")
-                if j.empty:
-                    continue
-                rows.append(pd.DataFrame({
-                    "component": component, "season": season, "cutoff": cutoff,
-                    "player": j["pitcher"].to_numpy(),
-                    "base": j["predicted"].to_numpy(dtype="float64"),
-                    "realized_successes": j[spec.successes].to_numpy(dtype="float64"),
-                    "trials": j[spec.trials].to_numpy(dtype="float64"),
-                    "realized_rate": (j[spec.successes] / j[spec.trials]
-                                      ).to_numpy(dtype="float64"),
-                    "pre_trials": pre[spec.trials].reindex(
-                        j["pitcher"].to_numpy()).fillna(0.0).to_numpy(dtype="float64"),
-                }))
-            logger.info("%s: %d component frames so far", cutoff, len(rows))
-    return pd.concat(rows, ignore_index=True)
+    return stuff_eval.build_pitcher_cells(
+        seasons_table, pa_dir, components, seasons=CELL_SEASONS,
+        cutoff_months=CUTOFF_MONTHS, min_trials=min_trials)
 
 
 def attach_z(cells: pd.DataFrame, monthly: pd.DataFrame, weights, ballast
@@ -192,12 +168,15 @@ def walk_forward(cells: pd.DataFrame, components, score_seasons,
             recal = fit_stuff(past, component, features=())
             full = fit_stuff(past, component, features=features)
             add = fit_stuff(past, component, features=features, fixed_base=True)
+            add_recal = fit_stuff(past, component, features=(), fixed_base=True)
             base = here["base"].to_numpy(dtype="float64")
             preds = {
                 BASE_ARM: base,
                 "stuff_recal": np.clip(recal.predict(base, None), 1e-4, 0.999),
                 "stuff": np.clip(full.predict(base, here), 1e-4, 0.999),
                 "stuff_additive": np.clip(add.predict(base, here), 1e-4, 0.999),
+                "stuff_additive_recal": np.clip(
+                    add_recal.predict(base, None), 1e-4, 0.999),
             }
             rows = {}
             if shuffled is not None:
@@ -215,7 +194,10 @@ def walk_forward(cells: pd.DataFrame, components, score_seasons,
                 f["predicted"] = p
                 f["coef"] = json.dumps(
                     full.coef if name == "stuff"
-                    else recal.coef if name == "stuff_recal" else {})
+                    else add.coef if name == "stuff_additive"
+                    else recal.coef if name == "stuff_recal"
+                    else add_recal.coef if name == "stuff_additive_recal"
+                    else {})
                 frames.append(f)
     return pd.concat(frames, ignore_index=True)
 
@@ -345,7 +327,9 @@ def main() -> None:
           "arm is better ---")
     prows = []
     arms = [("stuff", BASE_ARM), ("stuff_recal", BASE_ARM),
-            ("stuff", "stuff_recal"), ("stuff_additive", BASE_ARM)]
+            ("stuff", "stuff_recal"), ("stuff_additive", BASE_ARM),
+            ("stuff_additive_recal", BASE_ARM),
+            ("stuff_additive", "stuff_additive_recal")]
     if args.shuffle_control:
         arms += [("stuff_shuffled", BASE_ARM), ("stuff_shuffled", "stuff_recal")]
     for component in components:
@@ -411,6 +395,35 @@ def main() -> None:
     print(f"\nSERVE: {', '.join(clears) if clears else '(none)'}")
     print(f"WITHHOLD: {', '.join(withheld) if withheld else '(none)'}")
 
+    # The *serving* verdict is a different and stricter question, and the one
+    # docs/pitching-stuff.md's "Serving" section pre-registered before BAS-79
+    # wired anything: it is asked of `stuff_additive` (the shape that ships,
+    # baseline pinned at 1) and it needs a clustered |t| above SERVE_MIN_T,
+    # not merely a negative difference. A component that clears the gate on
+    # the free fit and misses this bar is withheld whatever its point estimate
+    # says. `src/projections/pitcher_ros.py`'s `LIVE_ENGINE` is this table,
+    # written down.
+    serve_rows = []
+    for component in components:
+        r = next(p for p in prows if p["component"] == component
+                 and p["arm"] == "stuff_additive" and p["base"] == BASE_ARM)
+        c = next(p for p in prows if p["component"] == component
+                 and p["arm"] == "stuff_additive"
+                 and p["base"] == "stuff_additive_recal")
+        serve_rows.append({
+            "component": component, "diff": r["diff"], "pct": r["pct"],
+            "t": r["t"], "covariate_pct": c["pct"], "covariate_t": c["t"],
+            "serves": bool(r["diff"] < 0 and abs(r["t"]) > SERVE_MIN_T)})
+    sv = pd.DataFrame(serve_rows)
+    print(f"\n=== serving gate: stuff_additive vs {BASE_ARM}, |t| > "
+          f"{SERVE_MIN_T} ===")
+    print(sv.round(6).to_string(index=False))
+    served = sv[sv["serves"]]["component"].tolist()
+    not_served = sv[~sv["serves"]]["component"].tolist()
+    print(f"\nSERVE (additive): {', '.join(served) if served else '(none)'}")
+    print("WITHHOLD (additive): "
+          f"{', '.join(not_served) if not_served else '(none)'}")
+
     if args.json_out:
         payload = {
             "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -423,6 +436,7 @@ def main() -> None:
             "split": json.loads(split.to_json(orient="records")),
             "per_season": json.loads(pd.DataFrame(yrows).to_json(orient="records")),
             "gate": json.loads(v.to_json(orient="records")),
+            "serving_gate": json.loads(sv.to_json(orient="records")),
             "grid": (json.loads(grid.assign(weights=grid["weights"].astype(str))
                                 .to_json(orient="records"))
                      if grid is not None else []),

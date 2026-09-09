@@ -102,7 +102,10 @@ SEASONS_PARQUET = ROOT / "data/parquet/hitter_seasons_api.parquet"
 PITCHER_SEASONS_PARQUET = ROOT / "data/parquet/pitcher_seasons_api.parquet"
 PROJECTIONS_DIR = ROOT / "data/projections"
 CONTACT_MONTHLY_PARQUET = ROOT / "data/features/contact_quality_monthly.parquet"
-CONTACT_PA_DIR = ROOT / "data/parquet/pa_outcomes"
+# The walk-forward fits behind both the hitter contact engine and the pitcher
+# stuff engine train on these cells.
+PA_OUTCOMES_DIR = ROOT / "data/parquet/pa_outcomes"
+STUFF_MONTHLY_PARQUET = ROOT / "data/features/pitching_stuff_monthly.parquet"
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 
@@ -275,14 +278,43 @@ def pitcher_inputs(as_of: str, refresh: bool = False) -> dict:
     }
 
 
+def load_stuff_monthly(path: Path = STUFF_MONTHLY_PARQUET):
+    """The pitching-stuff artifact, or None if it is missing or unreadable.
+
+    Same contract as the contact artifact on the hitter side: None means the
+    `stuff_additive` components fall back to `marcel_pitcher_tuned` for this
+    build, which is a worse projection but an honest one, rather than the
+    pitcher block going missing over a file that is committed to the repo and
+    only ever absent in a stripped checkout.
+    """
+    from src.data.pitching_stuff import load_monthly as load_stuff
+
+    if not Path(path).exists():
+        logger.warning("%s not found — pitcher rates fall back to Marcel", path)
+        return None
+    try:
+        return load_stuff(path)
+    except Exception as exc:                                  # noqa: BLE001
+        logger.warning("pitching-stuff artifact unreadable: %s: %s",
+                       type(exc).__name__, exc)
+        return None
+
+
 def build_pitchers(as_of: str, pa: pd.DataFrame, names: pd.Series,
                    seasons_path: Path = PITCHER_SEASONS_PARQUET,
-                   refresh: bool = False) -> pd.DataFrame:
+                   refresh: bool = False,
+                   stuff_monthly: pd.DataFrame | None = None) -> pd.DataFrame:
     """The pitcher block, or an empty frame if its own inputs are missing.
 
     Deliberately non-fatal on its own: the hitter projection is the site's
     established product and a missing pitcher season table must not take it
     down with it. An empty frame renders as "not built" on the page.
+
+    `stuff_monthly` is the pitching-stuff artifact the `stuff_additive`
+    components need (BAS-79). It is optional here for the same reason the
+    contact artifact is optional on the hitter side: a component that does not
+    get it falls back to `marcel_pitcher_tuned` for that build alone
+    (`pitcher_ros.engine_providers`) rather than taking the block down.
     """
     from src.eval import pitchers as pitcher_eval
 
@@ -298,7 +330,8 @@ def build_pitchers(as_of: str, pa: pd.DataFrame, names: pd.Series,
         team_games_recent=inputs["team_games_recent"],
         games_remaining=inputs["games_remaining"],
         active_fraction=inputs["active_fraction"],
-        names=names, teams=inputs["teams"], season=SEASON)
+        names=names, teams=inputs["teams"], season=SEASON,
+        stuff_monthly=stuff_monthly, stuff_pa_dir=PA_OUTCOMES_DIR)
 
 
 # ─── the document ─────────────────────────────────────────────────
@@ -391,7 +424,12 @@ def to_document(projections: pd.DataFrame, as_of: str, *, git_sha: str | None = 
         "players": players,
         # ─── the pitcher block (additive; nothing above it moved) ───
         "n_pitchers": int(len(pitchers)),
-        "pitcher_engine": PITCHER_ENGINE,
+        # Per component since BAS-79, and what actually ran rather than what
+        # was intended: a component whose stuff fit could not be built comes
+        # back here as "marcel_pitcher_tuned".
+        "pitcher_engine": pitchers.attrs.get("pitcher_engine_used",
+                                             PITCHER_ENGINE),
+        "stuff_features_through": pitchers.attrs.get("stuff_features_through"),
         "batters_faced_method": BATTERS_FACED_METHOD,
         "pitcher_method": PITCHER_METHOD,
         "pitcher_arms": [
@@ -514,7 +552,7 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
             as_of, seasons, pa, playing_time,
             bayes_frames=load_bayes_frames(projections_dir),
             names=names, teams=teams, season=SEASON,
-            contact_monthly=contact_monthly, contact_pa_dir=CONTACT_PA_DIR)
+            contact_monthly=contact_monthly, contact_pa_dir=PA_OUTCOMES_DIR)
     except Exception as exc:                                  # noqa: BLE001
         reason = f"could not rebuild the projection: {type(exc).__name__}: {exc}"
         logger.warning(reason)
@@ -528,7 +566,8 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
     try:
         pitchers = build_pitchers(as_of, pa, names,
                                   seasons_path=pitcher_seasons_path,
-                                  refresh=refresh)
+                                  refresh=refresh,
+                                  stuff_monthly=load_stuff_monthly())
     except Exception as exc:                                  # noqa: BLE001
         logger.warning("could not build the pitcher block: %s: %s",
                        type(exc).__name__, exc)

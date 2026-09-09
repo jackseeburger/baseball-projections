@@ -328,9 +328,153 @@ def spec_for(component: str) -> ComponentSpec:
     return COMPONENTS[component]
 
 
+# --- walk-forward fit for live serving ---------------------------------------
+
+# The cells `scripts/run_stuff_backtest.py` builds, named here so the serving
+# path fits on exactly the same rows the gate was scored on rather than on a
+# second, subtly different definition. 2020 is out everywhere in this repo: a
+# 60-game season that started July 23 has no May 1 cutoff.
+LIVE_CELL_SEASONS = (2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026)
+LIVE_CUTOFF_MONTHS = ("05-01", "07-01", "08-01")
+LIVE_MIN_TRIALS = 100
+
+
+def build_pitcher_cells(
+    seasons_table: pd.DataFrame,
+    pa_dir,
+    components,
+    seasons=LIVE_CELL_SEASONS,
+    cutoff_months=LIVE_CUTOFF_MONTHS,
+    min_trials: int = LIVE_MIN_TRIALS,
+) -> pd.DataFrame:
+    """One row per (component, season, cutoff, pitcher): the baseline
+    projection, the realized rest-of-season rate, trials and pre-cutoff
+    exposure.
+
+    The pitcher mirror of `contact.build_hitter_cells`, and the same frame
+    `scripts/run_stuff_backtest.py`'s `build_cells` produces — the split is the
+    harness's own (`partial_and_realized` either side of the date,
+    `assert_split_clean` on both, the same `min_trials` filter and the same
+    intersection with the baseline's coverage). It lives here rather than in
+    the script so `fit_live_stuff` can call it at serve time and fit on
+    exactly what the gate scored.
+    """
+    from src.eval import pitchers as pitcher_eval
+    from src.eval.intraseason import assert_split_clean, build_training_frame
+
+    rows = []
+    for season in seasons:
+        pa = pd.read_parquet(
+            f"{pa_dir}/pa_outcomes_{season}.parquet",
+            columns=["batter", "pitcher", "game_pk", "game_date", "game_year",
+                     "event", "is_k", "is_bb", "is_hbp", "is_hit", "is_hr",
+                     "is_single", "is_double", "is_triple"])
+        pa["game_date"] = pd.to_datetime(pa["game_date"])
+        for md in cutoff_months:
+            cutoff = f"{season}-{md}"
+            partial, realized = pitcher_eval.partial_and_realized(pa, cutoff,
+                                                                  season)
+            train = build_training_frame(seasons_table, partial, season,
+                                         "pitcher")
+            assert_split_clean(train, realized, cutoff, season)
+            pre = partial.set_index("pitcher")
+            for component in components:
+                spec = COMPONENTS[component]
+                real = realized[realized[spec.trials] >= min_trials]
+                if real.empty:
+                    continue
+                base = pitcher_eval.marcel_pitcher_tuned(
+                    train, spec, season)[["pitcher", "predicted"]]
+                base = base.dropna(subset=["predicted"])
+                j = real[["pitcher", spec.successes, spec.trials]].merge(
+                    base, on="pitcher", how="inner")
+                if j.empty:
+                    continue
+                rows.append(pd.DataFrame({
+                    "component": component, "side": "pitcher",
+                    "season": season, "cutoff": cutoff,
+                    "player": j["pitcher"].to_numpy(),
+                    "base": j["predicted"].to_numpy(dtype="float64"),
+                    "realized_successes": j[spec.successes].to_numpy(
+                        dtype="float64"),
+                    "realized_rate": (j[spec.successes] / j[spec.trials]
+                                      ).to_numpy(dtype="float64"),
+                    "trials": j[spec.trials].to_numpy(dtype="float64"),
+                    "pre_trials": pre[spec.trials].reindex(
+                        j["pitcher"].to_numpy()).fillna(0.0
+                                                        ).to_numpy(dtype="float64"),
+                }))
+    if not rows:
+        return pd.DataFrame(columns=["component", "side", "season", "cutoff",
+                                     "player", "base", "realized_successes",
+                                     "realized_rate", "trials", "pre_trials",
+                                     *FEATURES])
+    return pd.concat(rows, ignore_index=True)
+
+
+def attach_live_features(
+    cells: pd.DataFrame, monthly: pd.DataFrame,
+    weights: tuple[float, float, float] = DEFAULT_WINDOW_WEIGHTS,
+    ballast: float = DEFAULT_BALLAST,
+) -> pd.DataFrame:
+    """Merge the standardized stuff covariates onto `build_pitcher_cells`'s
+    output, one cutoff-cell at a time (the covariates do not depend on the
+    component). A pitcher with no tracked pitches before the cutoff gets z = 0.
+    """
+    out = []
+    for (season, cutoff), g in cells.groupby(["season", "cutoff"]):
+        z = features_at_cutoff(monthly, cutoff, season, weights, ballast)
+        zi = z.set_index("player").reindex(g["player"].to_numpy())
+        g = g.copy()
+        for f in FEATURES:
+            g[f] = zi[f].fillna(0.0).to_numpy()
+        out.append(g)
+    return pd.concat(out, ignore_index=True)
+
+
+def fit_live_stuff(
+    component: str,
+    seasons_table: pd.DataFrame,
+    monthly: pd.DataFrame,
+    pa_dir,
+    predict_year: int,
+    weights: tuple[float, float, float] = DEFAULT_WINDOW_WEIGHTS,
+    ballast: float = DEFAULT_BALLAST,
+    fixed_base: bool = True,
+) -> StuffFit:
+    """The served arm's coefficients for `predict_year`, fitted exactly as the
+    harness fits them walk-forward: on cell seasons strictly before the one
+    being served, never on `predict_year` itself.
+
+    `fixed_base=True` (the default) is `stuff_additive` — the shape
+    docs/pitching-stuff.md's "Serving" section pre-registered before this was
+    wired: the baseline's coefficient is pinned at exactly 1 and the stuff
+    aggregate is a pure correction added to `marcel_pitcher_tuned`, rather
+    than a fit that also rescales the baseline. The free `stuff` arm's extra
+    gain on the two walk rates is almost entirely that rescaling (the control
+    `stuff_recal` gets −2.49% of the free fit's −3.26% on BB/BF by itself),
+    which is a claim about the pitcher Marcel's ballasts and belongs in a
+    ticket about the pitcher Marcel.
+    """
+    train_seasons = tuple(s for s in LIVE_CELL_SEASONS if s < predict_year)
+    if not train_seasons:
+        raise ValueError(
+            f"no stuff training seasons strictly before {predict_year}")
+    cells = build_pitcher_cells(seasons_table, pa_dir, [component],
+                                seasons=train_seasons)
+    if cells.empty:
+        raise ValueError(f"no stuff training cells for {component!r} "
+                         f"before {predict_year}")
+    cells = attach_live_features(cells, monthly, weights, ballast)
+    return fit_stuff(cells, component, features=FEATURES,
+                     fixed_base=fixed_base)
+
+
 __all__ = [
     "DEFAULT_BALLAST", "DEFAULT_WINDOW_WEIGHTS", "FEATURES",
+    "LIVE_CELL_SEASONS", "LIVE_CUTOFF_MONTHS", "LIVE_MIN_TRIALS",
     "STUFF_BALLAST_GRID", "STUFF_WEIGHT_GRID", "StuffFit",
-    "StuffProviderConfig", "features_at_cutoff", "fit_stuff", "league_profile",
+    "StuffProviderConfig", "attach_live_features", "build_pitcher_cells",
+    "features_at_cutoff", "fit_live_stuff", "fit_stuff", "league_profile",
     "standardize", "stuff_metrics", "stuff_provider", "window_counts",
 ]

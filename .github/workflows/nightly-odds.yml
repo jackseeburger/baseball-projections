@@ -74,13 +74,38 @@ jobs:
           python scripts/build_contact_quality.py --download
           --update-season 2026 || true
 
+      # BAS-79: the pitcher mirror of the step above, and for the same reason.
+      # Two pitcher components (BB/BF and HR/BF) are served as
+      # `stuff_additive` (src/projections/pitcher_ros.py), which reads the
+      # monthly pitching-stuff buckets; without this refresh they would stop
+      # wherever the committed artifact stopped. `--update-season` replaces
+      # only 2026's rows in the committed parquet and stamps the sidecar
+      # `check_freshness.py` watches (`pitching_stuff_monthly.meta.json`).
+      # It refits this season's stage-1 model walk-forward on the three
+      # seasons before it, so it downloads more than the contact step does
+      # and takes longer; it is still cheaper than re-scoring twelve seasons.
+      # `|| true` for the same reason as above: a component whose stuff fit
+      # cannot be built falls back to `marcel_pitcher_tuned`
+      # (`pitcher_ros.engine_providers`), so a stale Statcast fetch must not
+      # take the board down.
+      - name: Refresh this season's pitching-stuff features
+        env:
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_ENDPOINT_URL: ${{ secrets.R2_ENDPOINT_URL }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+        run: >
+          python scripts/build_pitching_stuff.py --download
+          --update-season 2026 || true
+
       # Station A, live (docs/ros-projections.md). Marcel fed the season to
       # date x station B's projected PA, written to public/data/projections/.
       # Since Sept 3 the same file also carries the pitcher block: the tuned
       # pitcher Marcel's rates times a structural batters-faced projection.
       # Since BAS-72 the hitter rates are the `contact` engine wherever it
-      # cleared the gate, built on the contact-quality artifact the step
-      # above just refreshed. Needs the 2026 PA parquet from R2 and the MLB
+      # cleared the gate, and since BAS-79 two of the pitcher rates are the
+      # `stuff_additive` engine wherever it cleared its own — both built on
+      # the artifacts the two steps above just refreshed. Needs the 2026 PA parquet from R2 and the MLB
       # Stats API; without either it keeps the last committed file and marks
       # it stale rather than failing, so no `|| true` is needed — the script
       # exits 0 by design.
@@ -121,7 +146,9 @@ jobs:
           git config user.email "nightly-odds-bot@users.noreply.github.com"
           git add public/data/playoff_odds/ public/data/accuracy/ public/data/projections/ \
                   data/features/contact_quality_monthly.parquet \
-                  data/features/contact_quality_monthly.meta.json
+                  data/features/contact_quality_monthly.meta.json \
+                  data/features/pitching_stuff_monthly.parquet \
+                  data/features/pitching_stuff_monthly.meta.json
           if git diff --cached --quiet; then
             echo "no changes"
           else

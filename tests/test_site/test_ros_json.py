@@ -305,9 +305,16 @@ def test_a_document_without_pitchers_still_declares_the_block(doc):
 def test_the_document_names_the_pitcher_engine_and_the_workload_method(doc_with_pitchers):
     """Two models fill the pitcher block, so the file names both in fields
     rather than only in prose — and the workload's name says it was scored."""
-    from src.projections.pitcher_ros import BF_METHOD, LIVE_ENGINE as PITCHER_ENGINE
+    from src.projections.pitcher_ros import BF_METHOD, LIVE_ENGINE, MARCEL_ENGINE
 
-    assert doc_with_pitchers["pitcher_engine"] == PITCHER_ENGINE == "marcel_pitcher_tuned"
+    # BAS-79: `pitcher_engine` is per component, and it records what actually
+    # ran rather than what was intended — a component whose stuff fit could
+    # not be built on this machine (no PA-outcome cells to fit on, say) comes
+    # back as the tuned pitcher Marcel, which is the honest fallback, not a
+    # failure.
+    engine = doc_with_pitchers["pitcher_engine"]
+    assert isinstance(engine, dict) and set(engine) == set(LIVE_ENGINE)
+    assert set(engine.values()) <= set(LIVE_ENGINE.values()) | {MARCEL_ENGINE}
     assert doc_with_pitchers["batters_faced_method"] == BF_METHOD == "recent_usage"
     assert "marcel_pitcher_params.json" in doc_with_pitchers["pitcher_method"]
     assert "docs/pitcher-workload.md" in doc_with_pitchers["pitcher_method"]
@@ -348,13 +355,19 @@ def test_the_pitcher_numbers_are_rounded_for_the_archive():
 
 def test_the_committed_projection_carries_the_pitcher_block():
     from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
+    from src.projections.pitcher_ros import MARCEL_ENGINE
 
     if not LATEST.exists():
         pytest.skip("public/data/projections/latest.json not present")
     doc = json.loads(LATEST.read_text())
     if doc.get("stale"):
         pytest.skip("carried-over projection")
-    assert doc.get("pitcher_engine") == PITCHER_ENGINE
+    # Per component since BAS-79. A build that could not fit a component's
+    # stuff arm honestly stamps `marcel_pitcher_tuned` for it, so the
+    # committed file is allowed to be the fallback but never a third thing.
+    engine = doc.get("pitcher_engine")
+    assert isinstance(engine, dict) and set(engine) == set(PITCHER_ENGINE)
+    assert set(engine.values()) <= set(PITCHER_ENGINE.values()) | {MARCEL_ENGINE}
     assert doc.get("n_pitchers", 0) > 0
     for row in doc["pitchers"][:25]:
         for key in REQUIRED_PITCHER_KEYS:

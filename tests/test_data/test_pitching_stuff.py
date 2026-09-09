@@ -159,3 +159,20 @@ def test_fastball_split_partitions_the_totals():
     for stem in ("pitches", "swings", "p_whiff_sum", "p_csw_sum", "sum_velo"):
         assert g[f"fb_{stem}"] + g[f"nfb_{stem}"] == pytest.approx(g[stem])
     assert g["n_ff"] == 1 and g["n_sl"] == 1 and g["n_ch"] == 1
+
+
+def test_the_sidecar_records_when_the_build_ran_and_what_it_touched(tmp_path):
+    """`scripts/check_freshness.py` is stdlib-only, so the build timestamp
+    lives in a JSON sidecar rather than inside the parquet (BAS-79)."""
+    import json
+
+    from src.data.pitching_stuff import meta_path, write_meta
+
+    parquet = tmp_path / "pitching_stuff_monthly.parquet"
+    assert meta_path(parquet) == tmp_path / "pitching_stuff_monthly.meta.json"
+
+    out = write_meta(parquet, built_at="2026-09-09T04:11:00+00:00",
+                     seasons_built=[2026])
+    payload = json.loads(out.read_text())
+    assert payload["built_at"] == "2026-09-09T04:11:00+00:00"
+    assert payload["seasons_built"] == [2026]

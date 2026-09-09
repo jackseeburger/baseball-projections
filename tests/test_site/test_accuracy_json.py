@@ -259,13 +259,22 @@ def test_ros_section_framing_is_counted_not_asserted(doc):
 # ─── the pitcher rest-of-season section ──────────────────────────
 
 def test_pitcher_section_scores_the_arm_the_site_serves(doc):
-    """The page must not mark an arm live that the site is not running."""
+    """The page must not mark an arm live that the site is not running.
+
+    This table only scores Marcel-family arms, so — exactly as the hitter one
+    does — it marks the Marcel the served engine is built on. BAS-79 serves
+    two pitcher components as `stuff_additive`, whose base is
+    `marcel_pitcher_tuned` untouched; which components those are is what the
+    `contact_quality` section's per-component engine map answers, not this
+    table's."""
     from src.projections.pitcher_ros import LIVE_ENGINE as PITCHER_ENGINE
 
     section = doc["sections"]["pitcher_ros_backtest"]
-    assert section["live_arm"] == PITCHER_ENGINE
+    assert set(PITCHER_ENGINE.values()) <= {"marcel_pitcher_tuned",
+                                            "stuff_additive"}
+    assert section["live_arm"] == "marcel_pitcher_tuned"
     live = [r for r in section["rows"] if r["is_production"]]
-    assert live and all(r["model"] == PITCHER_ENGINE for r in live)
+    assert live and all(r["model"] == "marcel_pitcher_tuned" for r in live)
     assert len(live) == len(section["cutoffs"]), "one live row per cell"
 
 

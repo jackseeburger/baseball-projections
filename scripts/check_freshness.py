@@ -208,6 +208,28 @@ ARTIFACTS: tuple[Artifact, ...] = (
         required=True,
         workflow="nightly-odds.yml",
     ),
+    # BAS-79: the pitcher mirror of the artifact above, and the same
+    # reasoning end to end. The current season's rows are rebuilt every night,
+    # before build_ros_projections.py, by
+    # `scripts/build_pitching_stuff.py --update-season <current>` — same
+    # nightly-odds.yml cadence and slots, so the same 36h budget (worst
+    # legitimate gap 29h30m + 6h30m slack) applies. The timestamp lives in a
+    # JSON sidecar next to the parquet (`pitching_stuff_monthly.meta.json`,
+    # `built_at`) because this script is stdlib-only on purpose (see the
+    # module docstring) and parsing parquet needs pandas/pyarrow. If it goes
+    # stale the pitcher rates do not break: the two `stuff_additive`
+    # components fall back to `marcel_pitcher_tuned`
+    # (`pitcher_ros.engine_providers`), which is a worse projection served
+    # honestly — and this line is how anyone finds out it happened.
+    Artifact(
+        name="pitching-stuff monthly (current season)",
+        path="data/features/pitching_stuff_monthly.meta.json",
+        kind="json_field",
+        field="built_at",
+        budget_hours=36,
+        required=True,
+        workflow="nightly-odds.yml",
+    ),
     Artifact(
         name="market snapshot archive",
         path="data/market/snapshots",

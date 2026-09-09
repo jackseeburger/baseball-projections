@@ -60,6 +60,7 @@ ALL_FRESH = {
     "rest-of-season projections": 5,
     "accuracy page data": 5,
     "contact-quality monthly (current season)": 5,
+    "pitching-stuff monthly (current season)": 5,
     "market snapshot archive": 3,
     "market latest.json": 3,
     # Written by the same market-snapshot.yml run as the two above, so it is
@@ -231,7 +232,7 @@ def test_report_names_the_workflow_to_go_look_at(tmp_path, capsys):
     fresh.main(["--root", str(tmp_path), "--now", NOW.isoformat()])
     out = capsys.readouterr().out
     assert "STALE" in out and "market-snapshot.yml" in out
-    assert "1 of 8 artifacts out of budget" in out
+    assert "1 of 9 artifacts out of budget" in out
 
 
 def test_naive_and_zulu_timestamps_are_read_as_utc():
