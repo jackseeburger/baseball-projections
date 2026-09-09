@@ -368,6 +368,27 @@ def test_a_manual_rescue_run_clears_the_alarm_and_is_labelled():
     assert "event=workflow_dispatch" in result.detail
 
 
+def test_a_failed_run_rescued_by_a_later_manual_run_is_not_failed():
+    """The issue's own remedy is 're-run the workflow by hand'. Once that
+    re-run succeeds in the same slot window the alarm has to clear, or the
+    watchdog contradicts itself until the next slot comes due."""
+    result = check([run("2026-09-03T09:25:00Z", conclusion="failure", number=6),
+                    run("2026-09-03T14:00:00Z", conclusion="success", number=8,
+                        event="workflow_dispatch")],
+                   "2026-09-03T15:43:00Z")
+    assert not result.failed and result.status != "FAILED"
+    assert "rescued by run #8" in result.detail
+    assert "event=workflow_dispatch" in result.detail
+
+
+def test_a_later_failed_rerun_does_not_rescue():
+    result = check([run("2026-09-03T09:25:00Z", conclusion="failure", number=6),
+                    run("2026-09-03T14:00:00Z", conclusion="failure", number=7,
+                        event="workflow_dispatch")],
+                   "2026-09-03T15:43:00Z")
+    assert result.status == "FAILED"
+
+
 def test_a_failed_run_is_reported_even_though_it_started():
     result = check([run("2026-09-03T09:25:00Z", conclusion="failure")],
                    "2026-09-03T15:43:00Z")

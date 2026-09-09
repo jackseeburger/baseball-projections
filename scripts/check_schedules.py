@@ -456,6 +456,11 @@ class SlotOutcome:
     slot: datetime
     run: dict | None = None
     started: datetime | None = None
+    # A later run in the same window that concluded successfully after `run`
+    # failed. The issue text tells the owner to re-run the workflow by hand;
+    # a watchdog that then kept reporting the original failure until the
+    # next slot came due would be contradicting its own remedy.
+    rescue: dict | None = None
 
     @property
     def late_hours(self) -> float | None:
@@ -551,7 +556,14 @@ def check_workflow(path: str, crons: list[str], workflow: dict | None,
                       if start >= slot and (upper is None or start < upper)]
         if attributed:
             run, start = min(attributed, key=lambda pair: pair[1])
-            outcomes.append(SlotOutcome(slot=slot, run=run, started=start))
+            rescue = None
+            if run.get("conclusion") in BAD_CONCLUSIONS:
+                later_ok = [(r, s) for r, s in attributed
+                            if s > start and r.get("conclusion") == "success"]
+                if later_ok:
+                    rescue = max(later_ok, key=lambda pair: pair[1])[0]
+            outcomes.append(SlotOutcome(slot=slot, run=run, started=start,
+                                        rescue=rescue))
         else:
             outcomes.append(SlotOutcome(slot=slot))
     result.slots = outcomes
@@ -579,7 +591,14 @@ def check_workflow(path: str, crons: list[str], workflow: dict | None,
              f"({format_hours(newest.late_hours)} after the slot, "
              f"event={newest.run.get('event', '?')})")
 
-    if conclusion in BAD_CONCLUSIONS:
+    if conclusion in BAD_CONCLUSIONS and newest.rescue is not None:
+        rescue = newest.rescue
+        result.run_url = rescue.get("html_url")
+        result.detail = (f"{where}, conclusion={conclusion}; rescued by run "
+                         f"#{rescue.get('run_number', '?')} "
+                         f"(event={rescue.get('event', '?')}, "
+                         f"conclusion=success)")
+    elif conclusion in BAD_CONCLUSIONS:
         result.status = "FAILED"
         result.detail = f"{where}, conclusion={conclusion}"
     elif conclusion is None:
