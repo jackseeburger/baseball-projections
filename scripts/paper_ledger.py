@@ -261,6 +261,19 @@ def run(snapshots: dict, ledger: pd.DataFrame, closes: pd.DataFrame | None,
         priced = price_snapshot(rows, ctx)
         if priced.empty:
             continue
+        if bankroll <= 0:
+            # Ruin. docs/bankroll.md sizes each ticket at up to 5% of the
+            # bankroll and says nothing about how many tickets one evening may
+            # carry; a Kalshi prop slate offers hundreds at once, so the first
+            # evening staked 9,069 units of a 1,000-unit bankroll and the
+            # paper bankroll went through zero. `pnl.kelly_stake` on a
+            # non-positive bankroll returns a negative stake, which is not a
+            # bet in either direction, so emission stops here rather than
+            # inventing a rule the pre-registration does not contain. Recorded
+            # and reported; not fixed by re-tuning after seeing the number.
+            logger.warning("%s: paper bankroll is %.2f — ruin, no tickets emitted",
+                           ts, bankroll)
+            continue
         tickets = paper.emit(priced, bankroll)
         # Settle what this snapshot can already close, so the next snapshot's
         # bankroll is the one the ledger really showed.
@@ -315,6 +328,44 @@ def by_stat(ledger: pd.DataFrame, column: str, draws: int, seed: int) -> dict:
     return out
 
 
+def ruin_note(ledger: pd.DataFrame, snapshots: dict) -> dict | None:
+    """Whether the paper bankroll went through zero, and what that means.
+
+    Not a metric — a finding. docs/bankroll.md pre-registers a per-ticket cap
+    of 5% of bankroll and a Stage 1 gate of 1,000 settled tickets, and those
+    two are not compatible on this book: a Kalshi prop slate offers hundreds
+    of simultaneous tickets, so one evening's exposure is several times the
+    bankroll and the gate's ticket count can never be reached. The page says
+    so in plain words rather than showing a curve that stops for no visible
+    reason.
+    """
+    curve = paper.bankroll_curve(ledger)
+    if not curve or curve[-1]["bankroll"] > 0:
+        return None
+    first = next(p for p in curve if p["bankroll"] <= 0)
+    staked = float(pd.to_numeric(ledger["stake"], errors="coerce").fillna(0).sum())
+    emitted = set(ledger["snapshot_ts"].astype(str))
+    return {
+        "date": first["date"],
+        "bankroll": first["bankroll"],
+        "total_staked": staked,
+        "exposure_multiple": staked / paper.START_BANKROLL,
+        "snapshots_after_ruin": sum(1 for ts in snapshots if ts not in emitted),
+        "note": (
+            f"The paper bankroll went through zero on {first['date']}. The "
+            f"pre-registered rule sizes every ticket at up to 5% of bankroll "
+            f"and a prop slate offers hundreds of them at once, so the tickets "
+            f"in this ledger stake {staked:,.0f} units against a "
+            f"{paper.START_BANKROLL:,.0f}-unit bankroll — "
+            f"{staked / paper.START_BANKROLL:.1f}x exposure in a single "
+            f"evening. Emission stops at ruin because a non-positive bankroll "
+            f"has no Kelly stake. Nothing was re-tuned after seeing this: the "
+            f"per-ticket cap and the 1,000-ticket Stage 1 gate in "
+            f"docs/bankroll.md are not compatible on this book, and that is a "
+            f"question for the pre-registration, not for the code."),
+    }
+
+
 def to_document(ledger: pd.DataFrame, snapshots: dict, draws: int = 2000,
                 seed: int = 0) -> dict:
     """The site's JSON: three curves, the ROI tables, and the Stage 1 gate."""
@@ -360,6 +411,7 @@ def to_document(ledger: pd.DataFrame, snapshots: dict, draws: int = 2000,
                                   ledger["context_source"].astype(str)
                                   .value_counts().items()},
         },
+        "ruin": ruin_note(ledger, snapshots),
         "curves": {
             "taker": paper.bankroll_curve(ledger, "profit"),
             "taker_posterior": paper.bankroll_curve(post, "profit"),

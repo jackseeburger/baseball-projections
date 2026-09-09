@@ -61,6 +61,8 @@ ALL_FRESH = {
     "accuracy page data": 5,
     "market snapshot archive": 3,
     "market latest.json": 3,
+    # Written by the same market-snapshot.yml run as the two above, so it is
+    # fresh whenever they are.
     "paper ledger": 3,
     "career WAR (ungated Bayesian)": 5,
 }
