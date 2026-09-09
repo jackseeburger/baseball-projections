@@ -1,0 +1,200 @@
+{
+ "generated_at": "2026-09-09T15:03:10.551651+00:00",
+ "git_sha": "aa5a3b62bd113518a9dabbcfea59461fdf482bb7",
+ "title": "Paper ledger \u2014 Stage 0",
+ "source": "scripts/paper_ledger.py",
+ "engine": "marcel_partial + matchup",
+ "served_model": "marcel_partial + matchup",
+ "gated": false,
+ "framing": "A paper ledger. No money is involved and no order is placed: these are the tickets the served props model would have written against the live Kalshi and Polymarket books, priced before first pitch from the committed snapshot archive and settled from the exchange's own results. Stage 0 of docs/bankroll.md; Stage 2 \u2014 a real bankroll \u2014 has a gate it has not met.",
+ "rules": {
+  "start_bankroll": 1000.0,
+  "kelly_fraction": 0.25,
+  "kelly_cap": 0.05,
+  "threshold": 0.02,
+  "tau": 0.65,
+  "fee": "Kalshi taker, round_up_to_cent(0.07\u00b7C\u00b7P\u00b7(1\u2212P)); Polymarket taker 0; maker ledger fee waived"
+ },
+ "snapshots": {
+  "n": 19,
+  "first": "2026-09-02T22:46:14+00:00",
+  "last": "2026-09-09T01:13:20+00:00"
+ },
+ "counts": {
+  "tickets": 591,
+  "settled": 0,
+  "open": 591,
+  "void": 0,
+  "game_days": 2,
+  "posterior_tickets": 585,
+  "maker_filled": 0,
+  "maker_fill_rate": 0.0,
+  "by_venue": {
+   "kalshi": 417,
+   "polymarket": 174
+  },
+  "by_stat": {
+   "tb": 319,
+   "hits": 177,
+   "k": 66,
+   "hr": 29
+  },
+  "by_context_source": {
+   "posted_card": 523,
+   "probable_starter": 66,
+   "club_card": 2
+  }
+ },
+ "curves": {
+  "taker": [],
+  "taker_posterior": [],
+  "maker": []
+ },
+ "roi": {
+  "taker": {
+   "all": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "hits": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "hr": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "k": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "tb": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   }
+  },
+  "taker_posterior": {
+   "all": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "hits": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "hr": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "k": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   },
+   "tb": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   }
+  },
+  "maker": {
+   "all": {
+    "n": 0,
+    "staked": 0.0,
+    "profit": 0.0,
+    "roi": null,
+    "roi_lo": null,
+    "roi_hi": null,
+    "max_drawdown": 0.0,
+    "hit_rate": null
+   }
+  }
+ },
+ "gate": {
+  "stat": "hits",
+  "conditions": {
+   "tickets": {
+    "have": 0,
+    "need": 1000,
+    "met": false
+   },
+   "game_days": {
+    "have": 0,
+    "need": 21,
+    "met": false
+   },
+   "interval_excludes_zero": {
+    "roi": null,
+    "lo": null,
+    "hi": null,
+    "met": false
+   },
+   "drawdown": {
+    "realised": 0.0,
+    "kelly_implied": 0.0,
+    "allowed": 0.0,
+    "met": false
+   }
+  },
+  "met": false,
+  "note": "docs/bankroll.md Stage 1. All four conditions on the primary test (hits props, taker prices, after fees). A gate met on the maker ledger only is not met."
+ }
+}
