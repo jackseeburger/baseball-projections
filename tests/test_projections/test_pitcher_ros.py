@@ -323,3 +323,16 @@ def test_the_projection_records_the_engine_that_actually_ran(pa, seasons):
     assert out.attrs["pitcher_engine_used"] == {
         c: pr.MARCEL_ENGINE for c in pr.SERVED_COMPONENTS}
     assert out.attrs["stuff_features_through"] == "2026-07-31"  # AS_OF is Aug 1
+
+
+def test_engine_providers_say_why_a_component_fell_back(monkeypatch, caplog):
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("pa_outcomes_2017.parquet")
+
+    monkeypatch.setattr(pr, "stuff_engine_provider", boom)
+    with caplog.at_level("WARNING", logger="src.projections.pitcher_ros"):
+        providers, used = pr.engine_providers(
+            seasons_table=pd.DataFrame(), monthly=pd.DataFrame(), pa_dir=".",
+            as_of="2026-09-09", components=("p_bb_rate",))
+    assert used["p_bb_rate"] == "marcel_pitcher_tuned"
+    assert "p_bb_rate" in caplog.text and "FileNotFoundError" in caplog.text

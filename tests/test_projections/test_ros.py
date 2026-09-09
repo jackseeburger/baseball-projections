@@ -452,3 +452,18 @@ def test_marcel_rates_records_which_engine_actually_ran():
     out = marcel_rates(seasons, partial)
     assert out.attrs["engine_used"] == {c: ros_module.MARCEL_ENGINE
                                         for c in COMPONENT_ORDER}
+
+
+def test_engine_providers_say_why_a_component_fell_back(monkeypatch, caplog):
+    """A fallback that does not log is how a whole season of tuned-Marcel
+    documents shipped under the contact engine's name (2026-09-09)."""
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("pa_outcomes_2017.parquet")
+
+    monkeypatch.setattr(ros_module, "contact_engine_provider", boom)
+    with caplog.at_level("WARNING", logger="src.projections.ros"):
+        providers, used = ros_module.engine_providers(
+            seasons_table=pd.DataFrame(), monthly=pd.DataFrame(), pa_dir=".",
+            as_of="2026-09-09", components=("k_rate",))
+    assert used == {"k_rate": "marcel_tuned"}
+    assert "k_rate" in caplog.text and "FileNotFoundError" in caplog.text

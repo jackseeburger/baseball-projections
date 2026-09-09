@@ -69,6 +69,8 @@ network; the fetch layer is `scripts/build_ros_projections.py`.
 """
 from __future__ import annotations
 
+import logging
+
 import numpy as np
 import pandas as pd
 
@@ -76,6 +78,8 @@ from src.eval import pitchers as P
 from src.eval import stuff as stuff_eval
 from src.eval.backtest import COMPONENTS
 from src.eval.intraseason import build_training_frame, split_at_cutoff
+
+logger = logging.getLogger(__name__)
 
 SEASON = 2026
 
@@ -276,8 +280,10 @@ def engine_providers(
                     predict_year)
                 engine_used[component] = STUFF_ENGINE
                 continue
-            except Exception:                                   # noqa: BLE001
-                pass
+            except Exception as exc:                            # noqa: BLE001
+                logger.warning("%s: the stuff engine could not be built (%s: %s); "
+                               "serving marcel fallback for this component",
+                               component, type(exc).__name__, exc)
         providers[component] = P.marcel_pitcher_tuned
         engine_used[component] = MARCEL_ENGINE
     return providers, engine_used

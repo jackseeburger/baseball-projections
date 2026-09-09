@@ -106,6 +106,48 @@ CONTACT_MONTHLY_PARQUET = ROOT / "data/features/contact_quality_monthly.parquet"
 # stuff engine train on these cells.
 PA_OUTCOMES_DIR = ROOT / "data/parquet/pa_outcomes"
 STUFF_MONTHLY_PARQUET = ROOT / "data/features/pitching_stuff_monthly.parquet"
+
+
+def training_pa_seasons(season: int = SEASON) -> tuple[int, ...]:
+    """Every PA-outcomes season the two live walk-forward fits train on.
+
+    The hitter contact engine (`src.eval.contact.LIVE_CELL_SEASONS`) and the
+    pitcher stuff engine (`src.eval.stuff.LIVE_CELL_SEASONS`) both fit on cell
+    seasons strictly before the one being served. Those parquets are not in
+    the repository — the nightly runner starts from a bare checkout — so they
+    have to come from R2 like the current season's does.
+    """
+    from src.eval import contact as contact_eval
+    from src.eval import stuff as stuff_eval
+
+    years = set(contact_eval.LIVE_CELL_SEASONS) | set(stuff_eval.LIVE_CELL_SEASONS)
+    return tuple(sorted(y for y in years if y < season))
+
+
+def ensure_training_pa_outcomes(years, pa_dir: Path = PA_OUTCOMES_DIR,
+                                download=None) -> list[int]:
+    """Download any of `years` missing from `pa_dir`; return the years still
+    missing afterwards. Never raises: a season that cannot be fetched is
+    logged and left to the engines' own fallback (`ros.engine_providers`,
+    `pitcher_ros.engine_providers`), which then says which component it cost.
+    """
+    from src.data import pa_outcomes
+
+    fetch = download or pa_outcomes.download
+    missing = []
+    for year in years:
+        if pa_outcomes.local_path(year, pa_dir).exists():
+            continue
+        try:
+            fetch(year, pa_dir)
+        except Exception as exc:                              # noqa: BLE001
+            logger.warning("pa_outcomes %s: could not fetch from R2 (%s: %s)",
+                           year, type(exc).__name__, exc)
+            missing.append(year)
+    if missing:
+        logger.warning("training PA outcomes missing for %s; the contact and "
+                       "stuff engines will fall back to tuned Marcel", missing)
+    return missing
 COMPARISON_PARQUET = PROJECTIONS_DIR / "comparison_2026.parquet"
 BIRTHDATES_PARQUET = ROOT / "data/parquet/birthdates.parquet"
 
@@ -528,6 +570,7 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
     from src.data.pa_outcomes import load_pa_outcomes
 
     previous, previous_name = newest_previous(out_dir)
+    ensure_training_pa_outcomes(training_pa_seasons(), PA_OUTCOMES_DIR)
     try:
         import build_playing_time as bpt
 
