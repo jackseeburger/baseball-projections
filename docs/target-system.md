@@ -168,23 +168,24 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
-| K% (K/PA) | LIVE research arm: PA-level, season random walk, draws with `marcel_tuned` (BAS-69) | contact quality — gated, denoising (BAS-58); wiring: BAS-72 |
-| BB% (BB/PA) | NOT STARTED — BAS-73 | contact quality — gated; swing decisions — NOT STARTED, BAS-75 |
-| HR/PA | NOT STARTED — BAS-73 | contact quality — gated, *information* |
-| ISO (per AB) | recovered HSGP model, never scored in the harness (#86) — after BAS-73 | contact quality — gated, *information* |
-| BABIP (per BIP) | recovered HSGP model, never scored (#86) — after BAS-73 | contact quality — gated, denoising; sprint speed — NOT STARTED |
+| K% (K/PA) | LIVE research arm: PA-level, season random walk, draws with `marcel_tuned` (BAS-69) | contact quality — **SERVED** (`contact_additive`, BAS-72) |
+| BB% (BB/PA) | IN FLIGHT — BAS-73 grid (smoke: a draw) | contact quality — **SERVED** (BAS-72); swing decisions — NOT STARTED, BAS-75 |
+| HR/PA | IN FLIGHT — BAS-73 grid (smoke: flat arm beats Marcel 11/12) | contact quality — **SERVED** (BAS-72), *information* |
+| ISO (per AB) | recovered HSGP model, never scored in the harness (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), *information* |
+| BABIP (per BIP) | recovered HSGP model, never scored (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), denoising; sprint speed — NOT STARTED |
 
 **Pitching**
 
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
-| K/BF | NOT STARTED — BAS-74 | stuff — IN FLIGHT, BAS-71 |
-| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | command / location — NOT STARTED, BAS-76 |
-| HR/BF | NOT STARTED — BAS-74 | contact-quality-allowed — gated, *information*; stuff |
+| K/BF | NOT STARTED — BAS-74 | stuff — **GATED** (−3.2%, t −3.4; BAS-71), serving: BAS-79 |
+| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — gated but mostly recalibration (BAS-71); command / location — NOT STARTED, BAS-76 |
+| HR/BF | NOT STARTED — BAS-74 | stuff — **GATED** (−2.5%, all covariate; BAS-71); contact-quality-allowed — gated, *information* |
 | BABIP against | NOT STARTED — BAS-74 | contact-quality-allowed — gated |
 
-`marcel_tuned` / `marcel_pitcher_tuned` serve every component on both sides
-today and stay the baseline every model above must beat.
+`marcel_tuned` + `contact_additive` serves the five hitter components;
+`marcel_pitcher_tuned` serves every pitcher component. Both Marcels stay the
+baseline every model above must beat.
 
 **Defence** — framing cancelled; public pitch data carries no fielder
 tracking. This track stays thin until a public source exists.

@@ -1,0 +1,1580 @@
+{
+ "seed_seasons": [
+  2015,
+  2016
+ ],
+ "score_seasons": [
+  2017,
+  2018,
+  2019,
+  2020,
+  2021,
+  2022,
+  2023,
+  2024,
+  2025,
+  2026
+ ],
+ "metrics": [
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 333404,
+   "base_rate": 0.2254891963,
+   "log_loss": 0.486010175,
+   "auc": 0.7276508623,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 658322,
+   "season": 2017,
+   "base_log_loss": 0.5337681746
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 333404,
+   "base_rate": 0.2254891963,
+   "log_loss": 0.5150233214,
+   "auc": 0.6286047131,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 658322,
+   "season": 2017,
+   "base_log_loss": 0.5337681746
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 333404,
+   "base_rate": 0.2254891963,
+   "log_loss": 0.5351050501,
+   "auc": 0.5165553602,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 658322,
+   "season": 2017,
+   "base_log_loss": 0.5337681746
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 333404,
+   "base_rate": 0.2254891963,
+   "log_loss": 0.4464937896,
+   "auc": 0.7577348951,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 658322,
+   "season": 2017,
+   "base_log_loss": 0.5337681746
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 715471,
+   "base_rate": 0.2733234471,
+   "log_loss": 0.540338162,
+   "auc": 0.6798388614,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 1404141,
+   "season": 2017,
+   "base_log_loss": 0.586536468
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 715471,
+   "base_rate": 0.2733234471,
+   "log_loss": 0.5847085057,
+   "auc": 0.5346697623,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 1404141,
+   "season": 2017,
+   "base_log_loss": 0.586536468
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 715471,
+   "base_rate": 0.2733234471,
+   "log_loss": 0.5868454374,
+   "auc": 0.504507163,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 1404141,
+   "season": 2017,
+   "base_log_loss": 0.586536468
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 715471,
+   "base_rate": 0.2733234471,
+   "log_loss": 0.5104791052,
+   "auc": 0.7303384596,
+   "train_seasons": [
+    2015,
+    2016
+   ],
+   "n_train": 1404141,
+   "season": 2017,
+   "base_log_loss": 0.586536468
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 334285,
+   "base_rate": 0.2311620324,
+   "log_loss": 0.4556725341,
+   "auc": 0.7501284826,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 991726,
+   "season": 2018,
+   "base_log_loss": 0.5406766304
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 334285,
+   "base_rate": 0.2311620324,
+   "log_loss": 0.5235267909,
+   "auc": 0.622371643,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 991726,
+   "season": 2018,
+   "base_log_loss": 0.5406766304
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 334285,
+   "base_rate": 0.2311620324,
+   "log_loss": 0.5406034345,
+   "auc": 0.5271942498,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 991726,
+   "season": 2018,
+   "base_log_loss": 0.5406766304
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 334285,
+   "base_rate": 0.2311620324,
+   "log_loss": 0.4449580561,
+   "auc": 0.7683531175,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 991726,
+   "season": 2018,
+   "base_log_loss": 0.5406766304
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 715486,
+   "base_rate": 0.2770326743,
+   "log_loss": 0.53523216,
+   "auc": 0.6982445479,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 1500000,
+   "season": 2018,
+   "base_log_loss": 0.5901289069
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 715486,
+   "base_rate": 0.2770326743,
+   "log_loss": 0.5885756069,
+   "auc": 0.5333409716,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 1500000,
+   "season": 2018,
+   "base_log_loss": 0.5901289069
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 715486,
+   "base_rate": 0.2770326743,
+   "log_loss": 0.5902007195,
+   "auc": 0.5093239879,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 1500000,
+   "season": 2018,
+   "base_log_loss": 0.5901289069
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 715486,
+   "base_rate": 0.2770326743,
+   "log_loss": 0.5081734355,
+   "auc": 0.7392053077,
+   "train_seasons": [
+    2015,
+    2016,
+    2017
+   ],
+   "n_train": 1500000,
+   "season": 2018,
+   "base_log_loss": 0.5901289069
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 342023,
+   "base_rate": 0.2383231537,
+   "log_loss": 0.4648348979,
+   "auc": 0.7476047223,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1326011,
+   "season": 2019,
+   "base_log_loss": 0.5491393416
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 342023,
+   "base_rate": 0.2383231537,
+   "log_loss": 0.5344312487,
+   "auc": 0.6135717539,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1326011,
+   "season": 2019,
+   "base_log_loss": 0.5491393416
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 342023,
+   "base_rate": 0.2383231537,
+   "log_loss": 0.5488392507,
+   "auc": 0.5296131375,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1326011,
+   "season": 2019,
+   "base_log_loss": 0.5491393416
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 342023,
+   "base_rate": 0.2383231537,
+   "log_loss": 0.455510394,
+   "auc": 0.7635792487,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1326011,
+   "season": 2019,
+   "base_log_loss": 0.5491393416
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 725336,
+   "base_rate": 0.2771377679,
+   "log_loss": 0.5341029654,
+   "auc": 0.6994308155,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1500000,
+   "season": 2019,
+   "base_log_loss": 0.5902296881
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 725336,
+   "base_rate": 0.2771377679,
+   "log_loss": 0.5886437414,
+   "auc": 0.5341557729,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1500000,
+   "season": 2019,
+   "base_log_loss": 0.5902296881
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 725336,
+   "base_rate": 0.2771377679,
+   "log_loss": 0.5903466739,
+   "auc": 0.5057475558,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1500000,
+   "season": 2019,
+   "base_log_loss": 0.5902296881
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 725336,
+   "base_rate": 0.2771377679,
+   "log_loss": 0.5083934457,
+   "auc": 0.7395491755,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018
+   ],
+   "n_train": 1500000,
+   "season": 2019,
+   "base_log_loss": 0.5902296881
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 120982,
+   "base_rate": 0.2478302557,
+   "log_loss": 0.4741772155,
+   "auc": 0.7454678187,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5599388585
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 120982,
+   "base_rate": 0.2478302557,
+   "log_loss": 0.5457602395,
+   "auc": 0.6105738885,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5599388585
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 120982,
+   "base_rate": 0.2478302557,
+   "log_loss": 0.5602322613,
+   "auc": 0.5310631396,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5599388585
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 120982,
+   "base_rate": 0.2478302557,
+   "log_loss": 0.4652605954,
+   "auc": 0.7611066686,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5599388585
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 262759,
+   "base_rate": 0.2825554976,
+   "log_loss": 0.5376607317,
+   "auc": 0.7007520902,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5953507199
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 262759,
+   "base_rate": 0.2825554976,
+   "log_loss": 0.5944210024,
+   "auc": 0.5273015295,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5953507199
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 262759,
+   "base_rate": 0.2825554976,
+   "log_loss": 0.5956788088,
+   "auc": 0.505552244,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5953507199
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 262759,
+   "base_rate": 0.2825554976,
+   "log_loss": 0.5103413727,
+   "auc": 0.7421096632,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019
+   ],
+   "n_train": 1500000,
+   "season": 2020,
+   "base_log_loss": 0.5953507199
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 334313,
+   "base_rate": 0.2403765334,
+   "log_loss": 0.467189,
+   "auc": 0.7467458312,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5515135619
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 334313,
+   "base_rate": 0.2403765334,
+   "log_loss": 0.5379862932,
+   "auc": 0.6079063832,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5515135619
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 334313,
+   "base_rate": 0.2403765334,
+   "log_loss": 0.5508852924,
+   "auc": 0.5284077965,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5515135619
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 334313,
+   "base_rate": 0.2403765334,
+   "log_loss": 0.4592525853,
+   "auc": 0.7605172059,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5515135619
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 706627,
+   "base_rate": 0.2784694047,
+   "log_loss": 0.5349887616,
+   "auc": 0.6987991562,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5915019121
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 706627,
+   "base_rate": 0.2784694047,
+   "log_loss": 0.590356135,
+   "auc": 0.5274225345,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5915019121
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 706627,
+   "base_rate": 0.2784694047,
+   "log_loss": 0.5915567122,
+   "auc": 0.5076251777,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5915019121
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 706627,
+   "base_rate": 0.2784694047,
+   "log_loss": 0.5094390711,
+   "auc": 0.7389605664,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020
+   ],
+   "n_train": 1500000,
+   "season": 2021,
+   "base_log_loss": 0.5915019121
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 337149,
+   "base_rate": 0.2354152022,
+   "log_loss": 0.4624449159,
+   "auc": 0.7487906797,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5457372501
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 337149,
+   "base_rate": 0.2354152022,
+   "log_loss": 0.5320925452,
+   "auc": 0.6078941741,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5457372501
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 337149,
+   "base_rate": 0.2354152022,
+   "log_loss": 0.5448795546,
+   "auc": 0.5293457777,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5457372501
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 337149,
+   "base_rate": 0.2354152022,
+   "log_loss": 0.4538473868,
+   "auc": 0.7625369429,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5457372501
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 705401,
+   "base_rate": 0.2764200788,
+   "log_loss": 0.5352281803,
+   "auc": 0.6970148328,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5895403505
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 705401,
+   "base_rate": 0.2764200788,
+   "log_loss": 0.588379928,
+   "auc": 0.5265627777,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5895403505
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 705401,
+   "base_rate": 0.2764200788,
+   "log_loss": 0.5894978657,
+   "auc": 0.5091056245,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5895403505
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 705401,
+   "base_rate": 0.2764200788,
+   "log_loss": 0.509586012,
+   "auc": 0.7375440573,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021
+   ],
+   "n_train": 1500000,
+   "season": 2022,
+   "base_log_loss": 0.5895403505
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 339339,
+   "base_rate": 0.2373850338,
+   "log_loss": 0.4594257237,
+   "auc": 0.7560014402,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5480469187
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 339339,
+   "base_rate": 0.2373850338,
+   "log_loss": 0.5341697615,
+   "auc": 0.6068048922,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5480469187
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 339339,
+   "base_rate": 0.2373850338,
+   "log_loss": 0.5472291312,
+   "auc": 0.5288491096,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5480469187
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 339339,
+   "base_rate": 0.2373850338,
+   "log_loss": 0.4503902348,
+   "auc": 0.7697427827,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5480469187
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 715226,
+   "base_rate": 0.2772228638,
+   "log_loss": 0.5358555081,
+   "auc": 0.69735041,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5903112519
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 715226,
+   "base_rate": 0.2772228638,
+   "log_loss": 0.5896854812,
+   "auc": 0.5231858127,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5903112519
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 715226,
+   "base_rate": 0.2772228638,
+   "log_loss": 0.5903556941,
+   "auc": 0.5081768801,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5903112519
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 715226,
+   "base_rate": 0.2772228638,
+   "log_loss": 0.5094702681,
+   "auc": 0.7389309014,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022
+   ],
+   "n_train": 1500000,
+   "season": 2023,
+   "base_log_loss": 0.5903112519
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 338510,
+   "base_rate": 0.2323092375,
+   "log_loss": 0.4542878183,
+   "auc": 0.7583897028,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.542051599
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 338510,
+   "base_rate": 0.2323092375,
+   "log_loss": 0.5274037596,
+   "auc": 0.6100364669,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.542051599
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 338510,
+   "base_rate": 0.2323092375,
+   "log_loss": 0.5409619634,
+   "auc": 0.5332113817,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.542051599
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 338510,
+   "base_rate": 0.2323092375,
+   "log_loss": 0.4455417021,
+   "auc": 0.7712414167,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.542051599
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 707027,
+   "base_rate": 0.2753841084,
+   "log_loss": 0.5345673053,
+   "auc": 0.6959724017,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.5885407623
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 707027,
+   "base_rate": 0.2753841084,
+   "log_loss": 0.5876745678,
+   "auc": 0.5250304848,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.5885407623
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 707027,
+   "base_rate": 0.2753841084,
+   "log_loss": 0.5885816686,
+   "auc": 0.5064665465,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.5885407623
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 707027,
+   "base_rate": 0.2753841084,
+   "log_loss": 0.5075555186,
+   "auc": 0.7397873247,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023
+   ],
+   "n_train": 1500000,
+   "season": 2024,
+   "base_log_loss": 0.5885407623
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 336780,
+   "base_rate": 0.2315458163,
+   "log_loss": 0.4510070621,
+   "auc": 0.7611235641,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5411374328
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 336780,
+   "base_rate": 0.2315458163,
+   "log_loss": 0.5266066657,
+   "auc": 0.608781187,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5411374328
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 336780,
+   "base_rate": 0.2315458163,
+   "log_loss": 0.5406604177,
+   "auc": 0.5273062247,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5411374328
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 336780,
+   "base_rate": 0.2315458163,
+   "log_loss": 0.4430200611,
+   "auc": 0.7724844704,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5411374328
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 706629,
+   "base_rate": 0.273529674,
+   "log_loss": 0.5331121864,
+   "auc": 0.6979503251,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5867380149
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 706629,
+   "base_rate": 0.273529674,
+   "log_loss": 0.5859019236,
+   "auc": 0.5247757327,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5867380149
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 706629,
+   "base_rate": 0.273529674,
+   "log_loss": 0.5868222882,
+   "auc": 0.5073471965,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5867380149
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 706629,
+   "base_rate": 0.273529674,
+   "log_loss": 0.5069740995,
+   "auc": 0.7391164915,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024
+   ],
+   "n_train": 1500000,
+   "season": 2025,
+   "base_log_loss": 0.5867380149
+  },
+  {
+   "target": "whiff",
+   "arm": "stuff",
+   "n": 289928,
+   "base_rate": 0.2292362242,
+   "log_loss": 0.4489591936,
+   "auc": 0.7616632354,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5383518144
+  },
+  {
+   "target": "whiff",
+   "arm": "pitch_type",
+   "n": 289928,
+   "base_rate": 0.2292362242,
+   "log_loss": 0.5232050029,
+   "auc": 0.6113023903,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5383518144
+  },
+  {
+   "target": "whiff",
+   "arm": "fb_velo",
+   "n": 289928,
+   "base_rate": 0.2292362242,
+   "log_loss": 0.5377799508,
+   "auc": 0.5296814899,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5383518144
+  },
+  {
+   "target": "whiff",
+   "arm": "pitching",
+   "n": 289928,
+   "base_rate": 0.2292362242,
+   "log_loss": 0.441604239,
+   "auc": 0.7733294675,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5383518144
+  },
+  {
+   "target": "csw",
+   "arm": "stuff",
+   "n": 610197,
+   "base_rate": 0.2712714091,
+   "log_loss": 0.530503132,
+   "auc": 0.7023861923,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5845193157
+  },
+  {
+   "target": "csw",
+   "arm": "pitch_type",
+   "n": 610197,
+   "base_rate": 0.2712714091,
+   "log_loss": 0.583640828,
+   "auc": 0.5251242917,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5845193157
+  },
+  {
+   "target": "csw",
+   "arm": "fb_velo",
+   "n": 610197,
+   "base_rate": 0.2712714091,
+   "log_loss": 0.584541571,
+   "auc": 0.5100067857,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5845193157
+  },
+  {
+   "target": "csw",
+   "arm": "pitching",
+   "n": 610197,
+   "base_rate": 0.2712714091,
+   "log_loss": 0.5023479711,
+   "auc": 0.7452491599,
+   "train_seasons": [
+    2015,
+    2016,
+    2017,
+    2018,
+    2019,
+    2020,
+    2021,
+    2022,
+    2023,
+    2024,
+    2025
+   ],
+   "n_train": 1500000,
+   "season": 2026,
+   "base_log_loss": 0.5845193157
+  }
+ ]
+}
