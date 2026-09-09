@@ -30,13 +30,43 @@ BAS-83, and it is what prediction 2 in `docs/bayes-measurement.md`
 
 **Identification.** The outcome loading is fixed at 1: theta enters the HR
 and K logits with coefficient 1, exactly as `player_ability` already does in
-`src/models/pa_joint.py`. The extra channels then load on the *standardized*
-latent `z = (theta - mu_ability) / sigma_ability`, so a loading is read in
-"channel units per standard deviation of ability" and a Normal(0, 1) prior on
-it is wide rather than accidentally informative. On the raw logit-scale
-theta, whose prior sd is 0.4, a loading of 1 would mean 0.4 of a
-batted-ball sd of exit velocity per sd of power, and the prior — not the
-data — would be doing the answering.
+`src/models/pa_joint.py`. The extra channels load on the *centred* latent
+`theta - mu_ability`, and the loading carries the scale.
+
+An earlier version divided by `sigma_ability` so that a loading read directly
+in "channel units per standard deviation of ability". That is the natural
+unit to report, and it is still what `measurement_param_summary` reports -
+but it is a catastrophic thing to put in the *graph*. A parameter in a
+denominator is the classic funnel, and on this model it made the posterior
+unsamplable by NumPyro: two chains at 2 x 300 came back with R-hat 2.23,
+ESS 3 and the two power loadings collapsed onto zero with prior-wide
+intervals (`lambda_barrel` +0.005 [-0.613, +0.611] against PyMC's +0.583
+[+0.544, +0.623]). Raising `target_accept` to 0.99 removed every divergence
+and left R-hat at 2.24: the chains were not taking bad steps, they were in
+different places and could not mix. Since NumPyro is the sweep's default
+sampler, that would have been a *spurious* failure of prediction 1 - the
+channels reported as not loading because two chains disagreed - and it would
+have looked exactly like a real result.
+
+So the division is gone and the loading absorbs the scale. The prior is
+`Normal(0, LAMBDA_SIGMA)` with `LAMBDA_SIGMA = 2.5`, which is
+`1 / ABILITY_SD_PRIOR`: at the prior's own ability scale of 0.4 that is the
+same prior predictive the per-sd `Normal(0, 1)` gave, so nothing about how
+much the prior is allowed to say has changed. Per-sd loadings are recovered
+after the fact by multiplying each draw by that draw's `sigma_ability`, which
+is what the summary reports - so the numbers remain directly comparable to
+the per-sd parameterisation, and every pre-registered test on them (excludes
+zero; pairwise |corr| < 0.95) is invariant to the rescaling anyway.
+
+What the channels must *not* read is `z_ability`, the joint model's own
+non-centred standard normal. It is tempting - it is right there, and it is
+already standard normal - but it is a different quantity twice over. The LKJ
+Cholesky mixes the components (`ability0 = mu + z @ L'`), so `z[:, 0]` is the
+standardised K ability but `z[:, 1]` is the part of HR ability *orthogonal*
+to K ability: at this model's own fitted values its correlation with the
+standardised HR ability is 0.886, not 1. And `z_ability` is a season-0
+quantity, while the channels are per (batter, season) and must read the
+season's state, which under `ability_walk` is `ability0` plus the walk.
 
 **Everything else is the joint model.** `build_measurement_model` builds
 `pa_joint.build_joint_model` over the two components in scope and then
@@ -85,12 +115,14 @@ MEASUREMENT_COMPONENTS = ("k_rate", "hr_rate")
 CHANNEL_COMPONENT = {"barrel": "hr_rate", "ev": "hr_rate", "whiff": "k_rate"}
 CHANNELS = ("barrel", "ev", "whiff")
 
-# Prior scale on every channel loading (docs/bayes-measurement.md names
-# Normal(0, 1)). The loadings are per standard deviation of the latent and
-# the channels are in logit or in per-batted-ball sd units, so a loading of 1
-# is already a very strong channel and two prior sds is outside anything the
-# public work on contact quality reports.
-LAMBDA_SIGMA = 1.0
+# Prior scale on every channel loading. The pre-registration names
+# Normal(0, 1) on a loading read *per standard deviation of ability*; the
+# graph carries the loading per *logit* of ability instead (see the module
+# docstring - the division by sigma_ability is a funnel), so the prior scale
+# is divided by the ability scale to leave the prior predictive where the
+# pre-registration put it. 1 / 0.4 = 2.5.
+LAMBDA_SIGMA_PER_SD = 1.0
+LAMBDA_SIGMA = LAMBDA_SIGMA_PER_SD / 0.4
 # Prior scale on each channel intercept. Wide: the intercept absorbs the
 # league's own barrel rate and whiff rate, which the latent must not have to.
 ALPHA_SIGMA = 2.0
@@ -104,6 +136,12 @@ SIGMA_EV_PRIOR = 1.0
 # approximation to the mean of a handful of numbers.
 MIN_BBE = 5
 MIN_SWINGS = 20
+
+# Stamped on every fit record. The channels' latent has been parameterised two
+# ways and only one of them samples (see the module docstring); a fit record
+# that does not say which one produced it cannot be compared with one from the
+# other, and the numbers differ in *units* as well as in quality.
+PARAMETERISATION = "centred-latent/loading-carries-scale"
 
 # Columns each artifact must carry, checked on the way in so a renamed
 # artifact column is an error here and not three silent zeros later.
@@ -355,14 +393,19 @@ def build_measurement_model(data, channels: MeasurementChannels,
     with model:
         ability = model["player_ability"]
         mu_ability = model["mu_ability"]
-        sigma_ability = model["sigma_ability"]
 
         def latent(component: str, batter_idx, season_idx):
-            """The standardized latent for one channel's observed cells."""
+            """The centred latent for one channel's observed cells.
+
+            Centred, not standardized: dividing by `sigma_ability` here is
+            what made this posterior unsamplable (module docstring). The
+            loading carries the scale instead, and the summary converts back
+            to per-sd units from the posterior draws.
+            """
             j = comps.index(component)
             theta = (ability[batter_idx, season_idx, j] if walk
                      else ability[batter_idx, j])
-            return (theta - mu_ability[j]) / sigma_ability[j]
+            return theta - mu_ability[j]
 
         alpha, lam = {}, {}
         for channel in CHANNELS:
@@ -455,14 +498,37 @@ def measurement_param_summary(trace, channels: MeasurementChannels | None = None
     if post is None:
         return out
 
+    # sigma_ability per component, draw by draw, so a per-logit loading can be
+    # turned back into the per-sd number the pre-registration talks about
+    # *inside* the posterior rather than by scaling a summary by a mean. The
+    # two differ whenever sigma_ability is not tight, and the interval is what
+    # prediction 1 is read off.
+    sigma_draws = {}
+    if "sigma_ability" in post:
+        var = post["sigma_ability"]
+        if "component" in var.dims:
+            for c in var.coords["component"].values:
+                sigma_draws[str(c)] = np.asarray(
+                    var.sel(component=c).values, dtype="float64").ravel()
+
     draws = {}
     for channel in CHANNELS:
         name = loading_name(channel)
         if name in post:
-            vals = np.asarray(post[name].values, dtype="float64").ravel()
-            draws[name] = vals
-            s = _summarise(vals)
+            raw = np.asarray(post[name].values, dtype="float64").ravel()
+            draws[name] = raw
+            # Per sd of ability: the loading times that draw's ability scale.
+            sigma = sigma_draws.get(CHANNEL_COMPONENT[channel])
+            per_sd = raw * sigma if (sigma is not None
+                                     and sigma.size == raw.size) else raw
+            s = _summarise(per_sd)
             if s:
+                # The headline numbers are per sd, which is the unit
+                # docs/bayes-measurement.md states the loadings in; the
+                # per-logit parameter the graph actually carries is kept
+                # beside it so a fit record says what was sampled as well as
+                # what was reported.
+                s["per_logit"] = _summarise(raw)
                 if channel == "ev" and channels is not None:
                     s["mph_per_sd"] = s["mean"] * float(channels.ev_sd)
                 out[name] = s

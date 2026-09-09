@@ -23,6 +23,7 @@ Every case here is built from a hand-made frame with the answer known in
 advance. Nothing samples and nothing reads a real artifact.
 """
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -317,6 +318,52 @@ def test_prediction_5_catches_a_collapsed_latent_and_a_degenerate_pair():
 
 def test_prediction_5_with_no_fits_at_all_fails():
     assert not bas85.score_prediction_5([])["holds"]
+
+
+# --- per-season and provenance ----------------------------------------------
+
+def test_by_season_separates_a_one_season_result_from_a_repeated_one():
+    """A gain that exists in one season and not the other is a different
+    claim from one that repeats, and the pooled table cannot tell them
+    apart. The grid runs one season per process and is scored after each, so
+    this is the read that partial results actually get."""
+    a = _cells({5: 0.90, 8: 0.99})
+    b = _cells({5: 1.02, 8: 1.01}, seed=7)
+    b["season"] = 2025
+    b["cutoff"] = b["cutoff"].str.replace("2024", "2025", regex=False)
+    per = bas85.by_season(pd.concat([a, b], ignore_index=True), "hr_rate")
+
+    assert sorted(per) == [2024, 2025]
+    got = {s: [r for r in rows if r["base"] == bas85.CONTACT_ARM][0]
+           for s, rows in per.items()}
+    assert got[2024]["pct_of_base_mae"] < -3.0     # the real gain
+    assert got[2025]["pct_of_base_mae"] > 0        # and the season without it
+
+
+def test_a_grid_mixing_samplers_is_flagged_not_pooled_silently(tmp_path, capsys):
+    """Two measurement fits from different backends are not one table.
+
+    NumPyro and PyMC disagree on this graph (the HR latent has a scale/sign
+    ridge -- see data/eval/bas85/NUMPYRO_NON_IDENTIFIABILITY.md), so a
+    checkpoint that resumed under a different `--bayes-sampler` would pool
+    two incompatible posteriors into one row and nothing downstream would
+    say so.
+    """
+    cells = _cells({5: 0.90, 8: 0.99})
+    cells.to_parquet(tmp_path / "cells_bayes.parquet", index=False)
+    fits = [_fit("2024-05-01", "hr_rate", LOADS),
+            _fit("2024-08-01", "hr_rate", LOADS)]
+    fits[0]["sampler"], fits[0]["parameterisation"] = "pymc", "centred"
+    fits[1]["sampler"], fits[1]["parameterisation"] = "numpyro", "centred"
+    (tmp_path / "bayes_fits.json").write_text(json.dumps(fits))
+
+    sys.argv = ["analyze_bas85.py", "--in-dir", str(tmp_path)]
+    bas85.main()
+    out = capsys.readouterr().out
+    assert "more than one" in out and "not comparable" in out
+
+    payload = json.loads((tmp_path / "analysis_bas85.json").read_text())
+    assert len(payload["provenance"]) == 2
 
 
 # --- the whole pass ---------------------------------------------------------

@@ -357,6 +357,12 @@ def _measurement_summary(trace, channels) -> dict:
     return measurement_param_summary(trace, channels)
 
 
+def _parameterisation() -> str:
+    from src.models.pa_measurement import PARAMETERISATION
+
+    return PARAMETERISATION
+
+
 # --- the joint arm (BAS-84) ------------------------------------------------
 # One joint fit backs all three components at a cutoff, so the sweep's
 # per-component loop must not pay for three. The cache holds exactly one
@@ -494,7 +500,16 @@ def fit_joint_rate(
             # Prediction 1 (the channels load) and prediction 5 (the loadings
             # are not degenerate) are read off these, on every fit record.
             **({"measurement_params": _measurement_summary(trace, channels),
-                "channels": channels.summary()} if channels is not None else {}),
+                "channels": channels.summary(),
+                "parameterisation": _parameterisation()}
+               if channels is not None else {}),
+            # Which backend drew this posterior. NumPyro and PyMC do not
+            # agree on this graph -- NumPyro came back with R-hat 2.23 and
+            # the power loadings collapsed onto zero where PyMC found them
+            # comfortably away from it -- so a fit record that does not name
+            # its sampler cannot be read against another one.
+            "sampler": config.nuts_sampler,
+            "target_accept": config.target_accept,
         },
     )
 

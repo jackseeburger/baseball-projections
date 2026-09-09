@@ -396,6 +396,104 @@ def _fake_trace(**arrays):
         posterior=_FakePosterior({k: _Var(v) for k, v in arrays.items()}))
 
 
+@needs_pymc
+def test_sigma_ability_is_not_in_a_denominator_anywhere(built):
+    """The funnel that made this posterior unsamplable by NumPyro.
+
+    Dividing the channel's latent by `sigma_ability` put a parameter in a
+    denominator; two chains at 2 x 300 came back with R-hat 2.23, ESS 3 and
+    both power loadings collapsed onto zero with prior-wide intervals, and
+    `target_accept=0.99` removed every divergence while leaving R-hat at 2.24
+    -- the chains were not taking bad steps, they were in different places.
+    NumPyro is the sweep's default sampler, so that would have read as a
+    failure of prediction 1 rather than as a broken fit.
+
+    Pinned on the graph rather than on a diagnostic, because the diagnostic
+    only fails after twenty minutes of sampling and only on one backend.
+    """
+    from src.models.pa_joint import build_joint_model
+    from src.models.pa_measurement import build_measurement_model
+    from src.models.pa_rate import ModelOptions
+
+    data, channels = built
+    options = ModelOptions(ability_walk=True)
+    plain = build_joint_model(data, options)
+    full = build_measurement_model(data, channels, options)
+
+    def divisors(model):
+        """Every variable appearing as the denominator of a true division."""
+        from pytensor.graph.traversal import ancestors, io_toposort
+        from pytensor.tensor.elemwise import Elemwise
+        from pytensor.scalar import basic as ps
+
+        seen = set()
+        for node in io_toposort(
+                model.free_RVs + list(model.data_vars), model.observed_RVs
+                or [v for v in model.basic_RVs]):
+            op = node.op
+            if isinstance(op, Elemwise) and isinstance(op.scalar_op,
+                                                       ps.TrueDiv):
+                for anc in ancestors([node.inputs[-1]]):
+                    if anc.name:
+                        seen.add(anc.name)
+        return seen
+
+    # The joint model divides by nothing of ours; the measurement model may
+    # only add `sigma_ev / sqrt(ev_n)`, whose denominator is DATA, not a
+    # parameter. `sigma_ability` must not appear in either.
+    added = divisors(full) - divisors(plain)
+    assert "sigma_ability" not in divisors(full), (
+        "sigma_ability is back in a denominator -- this is the funnel")
+    assert "ability_cov" not in added
+
+
+def test_the_loading_prior_matches_the_pre_registration_at_the_ability_scale():
+    """The graph carries the loading per logit, the pre-registration states
+    it per sd. The prior scale has to be divided by the ability scale or the
+    reparameterisation would quietly tighten (or loosen) the prior."""
+    from src.models.pa_joint import ABILITY_SD_PRIOR
+    from src.models.pa_measurement import LAMBDA_SIGMA, LAMBDA_SIGMA_PER_SD
+
+    assert LAMBDA_SIGMA == pytest.approx(LAMBDA_SIGMA_PER_SD / ABILITY_SD_PRIOR)
+
+
+def test_the_summary_converts_the_loadings_back_to_per_sd_units():
+    """Reported per sd, so the numbers stay comparable across the two
+    parameterisations and to the pre-registration's own units. Converted
+    draw by draw, not by scaling a summary: the two differ whenever
+    `sigma_ability` is not tight, and the interval is what prediction 1 is
+    read off."""
+    import numpy as np
+    from types import SimpleNamespace
+
+    rng = np.random.default_rng(1)
+    raw = 1.6 + 0.1 * rng.standard_normal(500)
+    sigma = 0.35 + 0.02 * rng.standard_normal(500)
+
+    labels = np.array(["k_rate", "hr_rate"])
+
+    class _V:
+        """Just enough of an xarray DataArray for the summary to read it."""
+        def __init__(self, v, dims=()):
+            self.values = np.asarray(v)
+            self.dims = dims
+            self.coords = {"component": _V(labels)} if "component" in dims else {}
+
+        def sel(self, component=None, **kw):
+            j = int(np.nonzero(labels == component)[0][0])
+            return _V(self.values[..., j])
+
+    post = {"lambda_barrel": _V(raw),
+            "sigma_ability": _V(np.stack([sigma, sigma], axis=-1),
+                                dims=("draw", "component"))}
+    out = measurement_param_summary(SimpleNamespace(posterior=post))
+    got = out["lambda_barrel"]
+    assert got["mean"] == pytest.approx(float((raw * sigma).mean()), rel=1e-9)
+    assert got["per_logit"]["mean"] == pytest.approx(float(raw.mean()), rel=1e-9)
+    # And the per-sd number is the one the pre-registration's ~0.58 compares to.
+    assert 0.4 < got["mean"] < 0.8
+
+
 def test_the_summary_reports_an_interval_and_a_tail_mass_per_loading():
     """Prediction 1 is "the interval excludes zero", so an interval — not a
     mean and an sd — is what the fit record has to carry."""

@@ -372,6 +372,29 @@ def score_prediction_1(by_cutoff: dict) -> dict:
     return out
 
 
+def by_season(cells: pd.DataFrame, component: str) -> dict:
+    """The headline comparison per season.
+
+    The grid runs one season per process and is scored after each, so a
+    partial read is a handful of complete seasons rather than a ragged slice
+    of all of them. Reported per season as well as pooled because a result
+    that only exists in one season is a different claim from one that repeats
+    across four, and the pooled table cannot tell them apart.
+    """
+    out = {}
+    for season, g in cells.groupby("season"):
+        rows = []
+        for arm, base in ((MEASUREMENT_ARM, CONTACT_ARM),
+                          (MEASUREMENT_ARM, WALK_ARM),
+                          (MEASUREMENT_ARM, "marcel_tuned")):
+            r = _compare(g, arm, base, component)
+            if r:
+                rows.append(r)
+        if rows:
+            out[int(season)] = rows
+    return out
+
+
 def score_prediction_5(fits: list[dict]) -> dict:
     """Vacuity: the latent scale is real and no two loadings are the same
     parameter wearing two names."""
@@ -503,6 +526,17 @@ def main() -> None:
         "prediction_1_loadings": score_prediction_1(by_cutoff),
         "prediction_5_vacuity": score_prediction_5(fits),
     }
+    tags = {(f.get("sampler"), f.get("parameterisation"))
+            for f in fits if f.get("measurement_params")}
+    payload["provenance"] = [{"sampler": a, "parameterisation": b}
+                             for a, b in sorted(tags, key=lambda t: (
+                                 str(t[0]), str(t[1])))]
+    if len(tags) > 1:
+        print("\n!! WARNING: measurement fits came from more than one "
+              f"sampler/parameterisation: {sorted(tags)}\n"
+              "   Those posteriors are not comparable -- see "
+              "data/eval/bas85/NUMPYRO_NON_IDENTIFIABILITY.md")
+
     elapsed = [f["elapsed_s"] for f in fits if f.get("elapsed_s")]
     if elapsed:
         e = np.asarray(elapsed, dtype="float64")
@@ -525,6 +559,17 @@ def main() -> None:
     payload["prediction_3_pooled"] = score_prediction_3(pooled)
     payload["prediction_4_coverage"] = {
         c: score_prediction_4(cells, c) for c in payload["scope"]["components"]}
+    payload["by_season"] = {
+        c: {str(k): v for k, v in by_season(cells, c).items()}
+        for c in payload["scope"]["components"]}
+
+    for component in payload["scope"]["components"]:
+        per = by_season(cells, component)
+        if len(per) > 1:
+            print(f"\n=== {component} by season ===")
+            for season, rows in sorted(per.items()):
+                print(f"-- {season}")
+                print(render(rows))
 
     print("\n=== hr_rate: measurement vs contact_additive by regime ===")
     print(render([r for r in split.values()] or []))
