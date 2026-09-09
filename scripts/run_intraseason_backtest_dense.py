@@ -1155,10 +1155,16 @@ def main() -> None:
                          f"(default: {' '.join(DEFAULT_BAYES_COMPONENTS)})")
     args = ap.parse_args()
 
-    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    # Aliases resolve here, before validation, so `--variants joint_walk` (the
+    # spelling docs/bayes-joint.md uses) reaches the same config as
+    # `joint+ability_walk` and everything downstream sees one vocabulary.
+    variants = [resolve_variant(v.strip())
+                for v in args.variants.split(",") if v.strip()]
     unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
     if unknown:
-        ap.error(f"unknown --variants {unknown}; known: {sorted(VARIANT_ARM_NAMES)}")
+        ap.error(f"unknown --variants {unknown}; known: "
+                 f"{sorted(VARIANT_ARM_NAMES)} (aliases: "
+                 f"{sorted(VARIANT_ALIASES)})")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     cheap_ckpt = args.out_dir / "cells_cheap.parquet"
