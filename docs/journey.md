@@ -19,17 +19,21 @@ first, the market is the bar, money is the exam.
   out to be the same signal as contact quality on K%; not served (BAS-81).
 - Pitching: stuff (velocity, movement, spin → whiff) is **served** on
   BB/BF and HR/BF; K/BF withheld by 0.001 of a t (BAS-79). Command /
-  location is in flight (BAS-76) — the third of the pitch-level signal
-  stuff cannot use, and the walk measurement pitchers lack.
+  location was measured (BAS-76): it is a third of the pitch-level signal,
+  but the pitcher-level residual over stuff does not persist year to year
+  (r 0.40 against a 0.45 floor), so stage 2 was never run and nothing is
+  served. A level aggregate with stuff as a control is the next ticket,
+  under its own pre-registration.
 - Defence has no public tracking; that track stays thin.
 
 **Layer 2 — true talent (hierarchical Bayes).** The contested layer.
-Tuned Marcel serves today. The Bayes K% model draws with it on outcomes
-alone (BAS-69) and has not yet been fought *with* the measurements inside
-it — that fight is BAS-83, in flight. The BB%/HR% grid (BAS-73) scores
-whether HR/PA's Bayes arm beats Marcel outright. The pitcher-side
-hierarchical model (BAS-74) is next, with stuff as a covariate from day
-one.
+Tuned Marcel serves today. The Bayes model draws with it on outcomes
+alone on all three components it has been rolled to — K% (BAS-69), BB%
+and HR/PA (BAS-73, the full grid: HR/PA's predicted win did not appear,
+BB% loses by a hair) — and has not yet been fought *with* the measurements
+inside it. That fight is BAS-83, in flight, and it is the one that decides
+the layer. The pitcher-side hierarchical model (BAS-74) is next, with
+stuff as a covariate from day one.
 
 **Layer 3 — playing time.** Served: rest-of-season PA with the horizon
 blend, IL and option return probabilities, the lineup-slot cap.
@@ -56,11 +60,12 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
 
 ## The plan from here, in order
 
-1. **BAS-73 grid and BAS-83** — decide whether the hierarchical model,
-   fed the measurements, is the layer-2 engine. HR/PA is the likeliest
-   first win.
-2. **BAS-76 command**, then **BAS-74**, the pitcher hierarchical model with
-   stuff and command inside it.
+1. **BAS-83** — decide whether the hierarchical model, fed the
+   measurements, is the layer-2 engine. On outcomes alone it is a draw on
+   every component (BAS-69, BAS-73); the covariates are its remaining
+   case.
+2. **BAS-74**, the pitcher hierarchical model with stuff inside it; a
+   command *level* aggregate (BAS-76's follow-up) once pre-registered.
 3. **ISO and BABIP** hierarchical models (their own denominators), after 1.
 4. **Per-game win probability** — the largest unclosed gap to the market;
    the Bayes talent posteriors feeding the sim is the untested lever.

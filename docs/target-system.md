@@ -126,7 +126,7 @@ one hid the fact that two of them are much emptier than the first.
 | | **Hitting** | **Pitching** | **Defence / catching** |
 |---|---|---|---|
 | **L1 Measurement** | batted ball → contact quality — **gated**, 7 of 8, not yet wired; HSGP version lost | pitch characteristics → "stuff" / run value — **not started** | fielding location → out probability — **not started** |
-| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm now DRAWS with it (BAS-69) | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
+| **L2 True talent** | K% BB% HR/PA BABIP ISO — tuned Marcel live; Bayesian arm DRAWS with it on K%, BB% and HR/PA (BAS-69, BAS-73) | K% BB% HR/BF BABIP-against, WHIP rate — **gated**, all five clear | framing runs, fielder runs — **in progress** (framing); no Marcel equivalent exists |
 | **L3 Playing time** | PA — **gated**, the biggest win in the repo | batters faced — **gated** (B-P) | innings by position — **does not exist** |
 | **L4 Assembly** | rates × PA → wOBA → wRC+ → oWAR | rates × BF → FIP / RA9 → pWAR | runs saved → dWAR |
 | ↓ | | | |
@@ -169,8 +169,8 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
 | K% (K/PA) | LIVE research arm: PA-level, season random walk, draws with `marcel_tuned` (BAS-69); + contact covariates vs the served engine IN FLIGHT, BAS-83 (`docs/bayes-covariates.md`) | contact quality — **SERVED** (`contact_additive`, BAS-72) |
-| BB% (BB/PA) | IN FLIGHT — BAS-73 grid (smoke: a draw) | contact quality — **SERVED** (BAS-72); swing decisions — measured, not served: same measurement as contact quality on K%, variance reducer on BB% (BAS-75/81, `docs/swing-decisions.md`) |
-| HR/PA | IN FLIGHT — BAS-73 grid (smoke: flat arm beats Marcel 11/12); + contact covariates vs the served engine IN FLIGHT, BAS-83 | contact quality — **SERVED** (BAS-72), *information* |
+| BB% (BB/PA) | MEASURED — Bayes walk loses to tuned Marcel by +0.00033, t 2.10 (BAS-73 grid, `docs/bayes-components.md`); a draw in substance, a loss by the pre-registered letter; not served | contact quality — **SERVED** (BAS-72); swing decisions — measured, not served: same measurement as contact quality on K%, variance reducer on BB% (BAS-75/81, `docs/swing-decisions.md`) |
+| HR/PA | MEASURED — Bayes walk draws with tuned Marcel (+0.00002, t 0.30; BAS-73 grid); the predicted win did not appear; not served. + contact covariates vs the served engine IN FLIGHT, BAS-83 | contact quality — **SERVED** (BAS-72), *information* |
 | ISO (per AB) | recovered HSGP model, never scored in the harness (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), *information* |
 | BABIP (per BIP) | recovered HSGP model, never scored (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), denoising; sprint speed — NOT STARTED |
 
@@ -179,7 +179,7 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
 | K/BF | NOT STARTED — BAS-74 | stuff — gated (−3.2%, t −3.4; BAS-71); additive arm **withheld** at t 2.50 vs the 2.5 bar (BAS-79) |
-| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — **SERVED** on BB/BF (`stuff_additive`, BAS-79), mostly a level correction; calibration measured and not shipped, vacuity failed (BAS-80, `docs/pitcher-marcel-calibration.md`); command / location — IN FLIGHT, BAS-76 (`docs/pitching-command.md`) |
+| BB/BF, (BB+HBP)/BF | NOT STARTED — BAS-74 | stuff — **SERVED** on BB/BF (`stuff_additive`, BAS-79), mostly a level correction; calibration measured and not shipped, vacuity failed (BAS-80, `docs/pitcher-marcel-calibration.md`); command / location — MEASURED, NOT SHIPPED: real at the pitch (CSW log-loss −.06 to −.08 over stuff) but the stuff-differenced pitcher aggregate fails its pre-registered persistence floor (r 0.40 vs 0.45), stage 2 not run (BAS-76, `docs/pitching-command.md`) |
 | HR/BF | NOT STARTED — BAS-74 | stuff — **SERVED** (`stuff_additive`, −2.8%, all covariate; BAS-79); contact-quality-allowed — gated, *information* |
 | BABIP against | NOT STARTED — BAS-74 | contact-quality-allowed — gated |
 
