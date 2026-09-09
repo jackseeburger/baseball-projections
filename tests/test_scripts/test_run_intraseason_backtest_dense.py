@@ -373,14 +373,17 @@ class TestVariantParamNamesMatchTheModel:
     the model says `peak_age`. Pin the names against the model's own source so
     a rename is caught here rather than discovered in an empty results column.
 
-    Reads `src/models/pa_k_rate.py` as text — the module imports pymc, which
-    CI does not install.
+    Reads `src/models/pa_rate.py` as text — the module imports pymc, which
+    CI does not install. That is the file the model graph lives in since
+    BAS-73 made the component a parameter; `src/models/pa_k_rate.py` is now a
+    wrapper that pins `component="k_rate"` and declares no variables of its
+    own.
     """
 
     def _model_source(self):
         from pathlib import Path
         root = Path(__file__).resolve().parents[2]
-        return (root / "src" / "models" / "pa_k_rate.py").read_text()
+        return (root / "src" / "models" / "pa_rate.py").read_text()
 
     def test_every_declared_param_is_named_in_the_model(self):
         import re
@@ -391,7 +394,7 @@ class TestVariantParamNamesMatchTheModel:
             pattern = rf'pm\.(?:Deterministic|HalfNormal|Normal|Beta)\(\s*"{name}"'
             assert re.search(pattern, source), (
                 f"{name!r} is in VARIANT_OWN_PARAMS but no PyMC variable of that "
-                f"name exists in src/models/pa_k_rate.py — variant_param_summary "
+                f"name exists in src/models/pa_rate.py — variant_param_summary "
                 f"would silently record nothing for it"
             )
 
