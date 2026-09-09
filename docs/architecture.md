@@ -165,6 +165,15 @@ Consequences:
 - **Agreement with FanGraphs is not a score.** The coin-flip control proved
   September playoff odds can't distinguish models; use per-game Brier and
   component MAE.
+- **A covariate has to earn its own gain (from 2026-09-09, BAS-80).** A
+  layer-1 measurement is served as a covariate only if the arm clears the
+  gate *and* its covariate-only share — the arm against the same shape with
+  the covariate removed (the recalibration control) — clears |t| > 2.5 on
+  the same cells. BAS-79 served two components whose gain was mostly a
+  fitted intercept and withheld the one whose gain was all measurement,
+  because the rule looked only at the total. The rule in force at the time
+  is the one that counts, so BAS-72 and BAS-79 stand; this applies from the
+  next serving decision.
 
 Which *method* a station reaches for — hierarchical Bayes, machine learning,
 or neither — is a separate question from the bar it has to clear, and is
