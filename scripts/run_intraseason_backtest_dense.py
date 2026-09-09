@@ -61,7 +61,9 @@ rule below matters proportionally more.
 **Layer-1 covariates (BAS-83, docs/bayes-covariates.md).**
 `--bayes-covariates contact` re-keys every requested variant to its
 covariate-carrying twin — `ability_walk` becomes `ability_walk+contact`, arm
-`bayes_walk+contact` — so the hierarchical model reads the same six
+`bayes_walk+contact` — and scores **both twins in the same cell**, so the
+covariate arm and its no-covariate twin are paired on one common-player set
+rather than on two. The hierarchical model then reads the same six
 contact-quality aggregates the served `contact_additive` engine reads.
 `--contact-arm` puts `contact_additive` itself (Marcel plus those aggregates,
 baseline pinned at 1, fitted walk-forward on cell seasons strictly before the
@@ -620,6 +622,7 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              min_trials: int = MIN_TRIALS, checkpoint: Path | None = None,
              fits_path: Path | None = None,
              draws: int = 500, tune: int = 500, chains: int = 2,
+             cores: int | None = None,
              sampler: str = "numpyro", include_pitcher: bool = False,
              pa_dir: Path = ROOT / "data/parquet/pa_outcomes",
              variants: list[str] | None = None,
@@ -663,7 +666,13 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
         if covariates not in COVARIATE_SETS:
             raise ValueError(f"unknown covariate set {covariates!r}; known: "
                              f"{list(COVARIATE_SETS)}")
-        variants = [covariate_variant(v, covariates) for v in variants]
+        # Both twins in the SAME cell, not the covariate one in place of the
+        # plain one. `backtest()` intersects predicted coverage across
+        # whatever providers it is handed in one call, so scoring
+        # `bayes_walk` and `bayes_walk+contact` in separate runs would pair
+        # them on two different common-player sets — and the whole question
+        # is what the covariate adds to that arm, on the same hitters.
+        variants = variants + [covariate_variant(v, covariates) for v in variants]
     unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
     if unknown:
         raise ValueError(f"unknown bayes variant(s) {unknown}; "
@@ -713,7 +722,8 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
                 config_kwargs = dict(
                     pa_dir=pa_dir, seasons=bayes_seasons, min_pa=50,
                     include_pitcher=include_pitcher, max_batters=None,
-                    draws=draws, tune=tune, chains=chains, cores=chains,
+                    draws=draws, tune=tune, chains=chains,
+                    cores=(chains if cores is None else cores),
                     target_accept=0.9, nuts_sampler=sampler,
                 )
                 # Recomputing the cell invalidates any fit records already
@@ -1133,6 +1143,10 @@ def main() -> None:
     ap.add_argument("--bayes-draws", type=int, default=500)
     ap.add_argument("--bayes-tune", type=int, default=500)
     ap.add_argument("--bayes-chains", type=int, default=2)
+    ap.add_argument("--bayes-cores", type=int, default=None,
+                    help="sampler processes; defaults to --bayes-chains. Set 1 "
+                         "to run the chains sequentially when this box is "
+                         "shared with another job")
     ap.add_argument("--bayes-sampler", default="numpyro")
     ap.add_argument("--bayes-seasons", nargs="+", type=int, default=list(BAYES_SEASONS))
     ap.add_argument("--variants", type=str, default=",".join(DEFAULT_VARIANTS),
@@ -1197,6 +1211,7 @@ def main() -> None:
                                 BIWEEKLY_MMDD, args.min_trials, checkpoint=bayes_ckpt,
                                 fits_path=fits_path, draws=args.bayes_draws,
                                 tune=args.bayes_tune, chains=args.bayes_chains,
+                                cores=args.bayes_cores,
                                 sampler=args.bayes_sampler, pa_dir=args.pa_dir,
                                 variants=variants,
                                 components=args.bayes_components,
