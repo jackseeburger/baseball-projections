@@ -169,7 +169,7 @@ unstarted cell has a Linear issue; the status here is updated when one moves.
 | Component | L2 hierarchical model | L1 measurement feeding it |
 | --- | --- | --- |
 | K% (K/PA) | LIVE research arm: PA-level, season random walk, draws with `marcel_tuned` (BAS-69) | contact quality — **SERVED** (`contact_additive`, BAS-72) |
-| BB% (BB/PA) | IN FLIGHT — BAS-73 grid (smoke: a draw) | contact quality — **SERVED** (BAS-72); swing decisions — IN FLIGHT, BAS-75 (`docs/swing-decisions.md`) |
+| BB% (BB/PA) | IN FLIGHT — BAS-73 grid (smoke: a draw) | contact quality — **SERVED** (BAS-72); swing decisions — measured, not served: same measurement as contact quality on K%, variance reducer on BB% (BAS-75/81, `docs/swing-decisions.md`) |
 | HR/PA | IN FLIGHT — BAS-73 grid (smoke: flat arm beats Marcel 11/12) | contact quality — **SERVED** (BAS-72), *information* |
 | ISO (per AB) | recovered HSGP model, never scored in the harness (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), *information* |
 | BABIP (per BIP) | recovered HSGP model, never scored (#86) — after BAS-73 | contact quality — **SERVED** (BAS-72), denoising; sprint speed — NOT STARTED |
