@@ -173,6 +173,8 @@ def main() -> None:
                          "alias for the explicit-rebuild path with no date override")
     ap.add_argument("--chunk-days", type=int, default=3)
     ap.add_argument("--work-dir", type=Path, default=Path("data/raw"))
+    ap.add_argument("--pa-dir", type=Path, default=Path("data/parquet/pa_outcomes"),
+                    help="where the season's PA outcomes parquet is written")
     ap.add_argument("--no-upload", action="store_true", help="build files but skip R2")
     ap.add_argument("--skip-fetch", action="store_true",
                     help="reuse an existing statcast_<season>.parquet in --work-dir")
@@ -209,7 +211,10 @@ def main() -> None:
     pa = process_year(args.season, data_dir=str(raw))
     if pa.empty:
         raise SystemExit(f"no plate appearances built for {args.season}")
-    pa_dir = Path("data/parquet/pa_outcomes")
+    # Never a hard-coded path: the tests drive main() from the repo root, and
+    # the one time this was fixed at data/parquet/pa_outcomes a test run
+    # overwrote the real 2026 file with a four-column fixture.
+    pa_dir = args.pa_dir
     pa_dir.mkdir(parents=True, exist_ok=True)
     pa_path = pa_dir / f"pa_outcomes_{args.season}.parquet"
     pa.to_parquet(pa_path, index=False)
