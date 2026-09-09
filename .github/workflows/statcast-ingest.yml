@@ -5,6 +5,12 @@ name: Statcast ingest
 #
 # The archive had stopped at 2025, which meant every refit trained on a
 # season that had already ended. This job closes that gap nightly.
+#
+# With no `since` input, the script resumes incrementally: it reads the
+# season file already in R2 and only fetches the last few days plus a
+# short overlap, merging the result back in (rather than the ~15-minute
+# full-season re-download this job used to do every night). Set `since`
+# (or pass --full to the script) to force a full rebuild instead.
 on:
   schedule:
     # Odd minute on purpose — see nightly-odds.yml.
