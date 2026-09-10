@@ -367,11 +367,31 @@ VACUITY_MIN_R = 0.45
 
 
 def season_aggregate(monthly: pd.DataFrame) -> pd.DataFrame:
-    """Per pitcher-season command residual per pitch — the vacuity quantity."""
-    g = monthly.groupby(["pitcher", "season"], as_index=False)[
-        ["pitches", "cmd_resid_sum", "takens", "cs_resid_sum"]].sum()
-    g["cmd_resid"] = g["cmd_resid_sum"] / g["pitches"].where(g["pitches"] > 0)
-    g["cs_resid"] = g["cs_resid_sum"] / g["takens"].where(g["takens"] > 0)
+    """Per pitcher-season command aggregates per pitch — the vacuity quantity.
+
+    `cmd_resid` and `cs_resid` are BAS-76's stuff-differenced residuals, the
+    two that failed its 0.45 floor. The **levels** are here too because BAS-87
+    re-registers the check on them: `cmd_csw` (the location-aware model's own
+    CSW probability per pitch), `cs_taken` (called strike per take), and the
+    two region/zone shares its covariate block uses. Every one is a ratio of
+    two sums that are already additive over months, so a season is the sum of
+    its buckets and nothing is re-derived from pitches.
+    """
+    cols = ["pitches", "takens", "cmd_csw_sum", "cmd_resid_sum",
+            "cs_taken_sum", "cs_resid_sum", "in_zone",
+            *[f"n_{r}" for r in REGIONS]]
+    g = monthly.groupby(["pitcher", "season"], as_index=False)[cols].sum()
+    pitches = g["pitches"].where(g["pitches"] > 0)
+    takens = g["takens"].where(g["takens"] > 0)
+    region_known = sum(g[f"n_{r}"] for r in REGIONS)
+    region_known = region_known.where(region_known > 0)
+    g["cmd_resid"] = g["cmd_resid_sum"] / pitches
+    g["cs_resid"] = g["cs_resid_sum"] / takens
+    g["cmd_csw"] = g["cmd_csw_sum"] / pitches
+    g["cs_taken"] = g["cs_taken_sum"] / takens
+    g["zone_share"] = g["in_zone"] / pitches
+    for r in REGIONS:
+        g[f"{r}_share"] = g[f"n_{r}"] / region_known
     return g
 
 
