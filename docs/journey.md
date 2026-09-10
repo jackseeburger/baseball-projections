@@ -22,8 +22,10 @@ first, the market is the bar, money is the exam.
   location was measured (BAS-76): it is a third of the pitch-level signal,
   but the pitcher-level residual over stuff does not persist year to year
   (r 0.40 against a 0.45 floor), so stage 2 was never run and nothing is
-  served. A level aggregate with stuff as a control is the next ticket,
-  under its own pre-registration.
+  served. The level aggregate with stuff as a control (BAS-87) then
+  cleared the gate on BB/BF: −4.5% of error vs tuned Marcel and −1.5% on
+  top of the served stuff engine at t −3.6, nothing on strikeouts or home
+  runs. Serving it on the pitcher walk rate is pre-registered (BAS-88).
 - Defence has no public tracking; that track stays thin.
 
 **Layer 2 — true talent (hierarchical Bayes).** The contested layer.
