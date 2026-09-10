@@ -255,17 +255,13 @@ def main() -> None:
                     help="fit at a neutral park offset, which is what the "
                          "dense checkpoint's own fits ran under (its grid "
                          "predates BAS-86's park artifact)")
-    ap.add_argument("--suffix", default="",
-                    help="appended to the output filenames; used by the "
-                         "neutral-park control so it does not overwrite the "
-                         "served fits")
     ap.add_argument("--check-only", action="store_true",
                     help="skip fitting; re-run the checkpoint comparison on "
                          "the parquet files already on disk")
     args = ap.parse_args()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    fits_path = args.out_dir / f"bayes_width_fits{args.suffix}.json"
+    fits_path = args.out_dir / f"bayes_width_fits.json"
 
     available = set(y for y in CHEAP_SEASONS
                     if (args.pa_dir / f"pa_outcomes_{y}.parquet").exists())
@@ -279,7 +275,7 @@ def main() -> None:
     done = {(f["component"], f["cutoff"]) for f in fits}
 
     for cutoff in args.cutoffs:
-        path = args.out_dir / f"bayes_width_{cutoff}{args.suffix}.parquet"
+        path = args.out_dir / f"bayes_width_{cutoff}.parquet"
         have = pd.read_parquet(path) if path.exists() else pd.DataFrame()
         if args.check_only:
             continue
@@ -306,7 +302,7 @@ def main() -> None:
 
     widths = []
     for cutoff in args.cutoffs:
-        path = args.out_dir / f"bayes_width_{cutoff}{args.suffix}.parquet"
+        path = args.out_dir / f"bayes_width_{cutoff}.parquet"
         if path.exists():
             widths.append(pd.read_parquet(path))
     if not widths:
@@ -314,7 +310,7 @@ def main() -> None:
         return
     widths = pd.concat(widths, ignore_index=True)
     check = checkpoint_check(widths)
-    (args.out_dir / f"bayes_width_checkpoint_check{args.suffix}.json").write_text(
+    (args.out_dir / f"bayes_width_checkpoint_check.json").write_text(
         json.dumps(check, indent=1))
     print("\n== checkpoint reproduction (posterior means vs "
           f"{CHECKPOINT_ARM} in the dense grid) ==")

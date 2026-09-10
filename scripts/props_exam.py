@@ -33,6 +33,9 @@ Usage:
     python scripts/props_exam.py --matchup on --markdown
     python scripts/props_exam.py --maker --matchup on --markdown
     python scripts/props_exam.py --stats hits hr --thresholds 0.02 0.04
+    # the posterior columns widened by the hierarchical model (BAS-92)
+    python scripts/props_exam.py --matchup on --posterior \\
+        --bayes-width data/eval/bas92
 """
 from __future__ import annotations
 
@@ -140,7 +143,7 @@ def contexts(closes: pd.DataFrame, season: int, stats: tuple,
 
 def price_with(closes: pd.DataFrame, ctx: dict, stats: tuple,
                pitcher_bf: str, weight: float | None = None,
-               bayes_width=None) -> pd.DataFrame:
+               bayes_width=None, draw_streams: str = "shared") -> pd.DataFrame:
     """One priced frame, optionally at a different matchup weight.
 
     `bayes_width` is BAS-92's `props.BayesWidth` (docs/posterior-width.md) or
@@ -153,7 +156,7 @@ def price_with(closes: pd.DataFrame, ctx: dict, stats: tuple,
     return props.price(closes, ctx["batter_ctx"], ctx["pitcher_ctx"],
                        ctx["slots"], stats=stats, pitcher_bf=pitcher_bf,
                        matchup_ctx=ctx["matchup_ctx"],
-                       bayes_width=bayes_width)
+                       bayes_width=bayes_width, draw_streams=draw_streams)
 
 
 def choose_weight(closes: pd.DataFrame, ctx: dict, stats: tuple,
@@ -591,6 +594,13 @@ def main() -> None:
                          "price is unchanged either way")
     ap.add_argument("--width-audit", type=Path, default=None,
                     help="write the bayes-width fallback / floor counters here")
+    ap.add_argument("--draw-streams", choices=list(props.DRAW_STREAMS),
+                    default="shared",
+                    help="'shared' is the one advancing generator the "
+                         "committed archive was priced under; 'isolated' "
+                         "seeds each (date, player) separately so a change to "
+                         "one player's Beta cannot move another player's "
+                         "Monte Carlo draws (props.DRAW_STREAMS)")
     ap.add_argument("--tau", type=float, default=None,
                     help="skip the walk-forward search and use this tau")
     ap.add_argument("--tau-grid", nargs="+", type=float, default=list(TAU_GRID))
@@ -635,7 +645,8 @@ def main() -> None:
                                                  tuple(args.matchup_weights))
             logger.info("matchup weight chosen on the first half: %.2f", weight)
         priced = price_with(closes, ctx, stats, args.pitcher_bf, weight=weight,
-                            bayes_width=bayes_width)
+                            bayes_width=bayes_width,
+                            draw_streams=args.draw_streams)
     if args.priced_out:
         priced.to_parquet(args.priced_out, index=False)
     if bayes_width is not None:

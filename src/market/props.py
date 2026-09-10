@@ -289,6 +289,41 @@ MC_DRAWS = 2000
 # player+date (three lines on the same 1+/2+/3+ hits market) share draws
 # rather than independently resampling the same posterior.
 MC_SEED = 20260909
+# Which generator each player's draws come from.
+#
+#   "shared"   one generator advanced in the order `price()` visits players —
+#              the construction the committed archive was priced under, and
+#              the default, so the served price stays bit-for-bit what it was.
+#   "isolated" a generator seeded per (kind, date, player), so one player's
+#              draws depend on nothing but his own row.
+#
+# The second mode exists because `Generator.beta` is a rejection sampler: how
+# many uniforms it consumes depends on alpha and beta. Under "shared" that
+# makes every player's draws a function of every *earlier* player's Beta, so
+# changing one batter's pseudo-counts — exactly what BAS-92's arm does — moves
+# the Monte Carlo draws of every player priced after him, including the
+# pitcher strikeout contracts the arm never touches. That is stream drift and
+# not a price change, but it lands in the same column, and
+# docs/posterior-width.md's negative control cannot tell the two apart. Under
+# "isolated" it cannot happen: two runs that differ only in one batter's Beta
+# differ only in that batter's draws, so a control that is meant to be
+# untouched is untouched to the last bit.
+DRAW_STREAMS = ("shared", "isolated")
+# Tags that keep a pitcher and a batter of the same id (a two-way player) off
+# the same stream.
+_STREAM_PITCHER, _STREAM_BATTER = 0, 1
+
+
+def _player_rng(shared: np.random.Generator, mode: str, as_of, pid: int,
+                kind: int) -> np.random.Generator:
+    """The generator this player's draws come from, per `DRAW_STREAMS`."""
+    if mode == "shared":
+        return shared
+    if mode != "isolated":
+        raise ValueError(f"draw_streams must be one of {DRAW_STREAMS}, "
+                         f"not {mode!r}")
+    day = int(str(as_of)[:10].replace("-", ""))
+    return np.random.default_rng([MC_SEED, int(kind), day, int(pid)])
 
 
 @dataclass
@@ -301,12 +336,18 @@ class BayesWidth:
     which is the whole design (see the module comment above).
 
     `tables` maps a cutoff date to a frame indexed by batter with one
-    `sd_<component>` column per served component. `audit` accumulates what a
-    report has to be able to state — how many player-dates got a Bayes width,
-    how many fell back to the Beta because the fit had no row for them, and
-    how often `MIN_BETA_TOTAL` bound — across every call to `apply`, so the
-    numbers come from the run that produced the prices rather than from a
-    second pass that might not see the same rows.
+    `sd_<component>` column per served component. `audit` accumulates, across
+    every call to `apply`, how many rows got a Bayes width, how many fell back
+    to the Beta because the fit had no row for them, and how often
+    `MIN_BETA_TOTAL` bound — measured on the run that produced the prices
+    rather than by a second pass that might not see the same rows.
+
+    Its denominator is the **daily rate table**, which carries every batter
+    with a prior-season line whether or not a prop was ever quoted on him, so
+    `players_without_row` is not the number of contracts that fell back;
+    `scripts/analyze_bas92.width_coverage` computes that per contract. The one
+    counter that means the same thing either way is `floor_bound`, which is a
+    count of impossible moment matches and should be zero.
     """
 
     tables: dict
@@ -609,7 +650,8 @@ def slot_pa(slot: int | None) -> float:
 def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
           slots: dict, stats=PRICEABLE, pitcher_bf: str = "fixed",
           matchup_ctx: dict | None = None,
-          bayes_width: "BayesWidth | None" = None) -> pd.DataFrame:
+          bayes_width: "BayesWidth | None" = None,
+          draw_streams: str = "shared") -> pd.DataFrame:
     """Our probability for every archived prop close we can price.
 
     One pass per game date so each date's rate tables are built once. Returns
@@ -647,6 +689,11 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
     from the hierarchical model on K, BB and HR — see the module comment on
     `BAYES_WIDTH_COMPONENTS`. `p_model`, `p_league` and `p_matchup` are
     untouched either way: the price sold does not move, only the width.
+
+    `draw_streams` is "shared" (the default, and the construction the
+    committed archive was priced under) or "isolated"; see `DRAW_STREAMS` for
+    why an arm that changes one player's Beta needs the second one before its
+    untouched controls can be read as untouched.
     """
     wanted = closes[closes["prop_stat"].isin(list(stats))
                     & closes["player_id"].notna()].copy()
@@ -695,7 +742,8 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                 p_model = pitcher_prop_prob("k", row.prop_line, rate, pa)
                 p_league = pitcher_prop_prob("k", row.prop_line, lg_k, pa)
                 if pid not in pitcher_draw_cache:
-                    pitcher_draw_cache[pid] = rng.beta(
+                    pitcher_draw_cache[pid] = _player_rng(
+                        rng, draw_streams, as_of, pid, _STREAM_PITCHER).beta(
                         float(p_rates.loc[pid, "alpha_k"]),
                         float(p_rates.loc[pid, "beta_k"]), size=MC_DRAWS)
                 rate_draws = pitcher_draw_cache[pid]
@@ -724,7 +772,10 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                                             lg_per_pa, pa)
                 has_draws = pid in draw_rates.index
                 if has_draws and pid not in batter_draw_cache:
-                    batter_draw_cache[pid] = _component_draws(draw_rates.loc[pid], rng)
+                    batter_draw_cache[pid] = _component_draws(
+                        draw_rates.loc[pid],
+                        _player_rng(rng, draw_streams, as_of, pid,
+                                    _STREAM_BATTER))
                     batter_per_pa_draws_cache[pid] = _per_pa_draws(
                         batter_draw_cache[pid], lg)
                 if mday is not None:

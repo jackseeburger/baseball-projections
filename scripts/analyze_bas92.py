@@ -142,15 +142,24 @@ def prediction_1(beta: pd.DataFrame, bayes: pd.DataFrame) -> dict:
         b = bayes.loc[m, SD_COL].to_numpy(dtype=float)
         ok = np.isfinite(a) & np.isfinite(b)
         rho = float(spearmanr(a[ok], b[ok]).statistic) if ok.sum() > 2 else float("nan")
-        with np.errstate(divide="ignore", invalid="ignore"):
-            rel = np.abs(b - a) / a
-        changed = float(np.mean(np.where(a > 0, rel, 0.0) > P1_CHANGE_SIZE))
+        # A contract whose Beta sd is exactly zero has no player-specific
+        # rates behind it at all (`price`'s league fallback), so there is no
+        # relative change to speak of; those rows are counted as unchanged
+        # rather than as an infinite change.
+        pos = a > 0
+        rel = np.zeros_like(a)
+        ratio = np.zeros_like(a)
+        np.divide(np.abs(b - a), a, out=rel, where=pos)
+        np.divide(b, a, out=ratio, where=pos)
+        changed = float(np.mean(np.where(pos, rel, 0.0) > P1_CHANGE_SIZE))
         out["by_stat"][stat] = {
             "n": int(m.sum()), "spearman": rho, "changed_share": changed,
             "median_sd_beta": float(np.median(a)),
             "median_sd_bayes": float(np.median(b)),
             "mean_sd_beta": float(np.mean(a)), "mean_sd_bayes": float(np.mean(b)),
-            "sd_ratio_median": float(np.median(np.where(a > 0, b / a, np.nan))),
+            "n_zero_sd_beta": int((~pos).sum()),
+            "sd_ratio_median": (float(np.median(ratio[pos])) if pos.any()
+                                else float("nan")),
             "p05_sd_bayes": float(np.percentile(b, 5)),
             "p95_sd_bayes": float(np.percentile(b, 95)),
             "p05_sd_beta": float(np.percentile(a, 5)),
@@ -370,6 +379,51 @@ def hits_after_fee(second_beta, second_bayes, tau_beta, tau_bayes,
     }
 
 
+def width_coverage(beta: pd.DataFrame, width_dir: Path) -> dict:
+    """How many priced *contracts* actually got a hierarchical width.
+
+    `BayesWidth.audit`'s denominator is the whole daily rate table, which
+    carries every batter with a prior-season line whether or not a prop was
+    ever quoted on him; that number says nothing about coverage of the thing
+    being scored. This one is per contract and per batter on the archive.
+    """
+    if not width_dir.exists():
+        return {}
+    bw = props.BayesWidth.load(width_dir)
+    rows = beta[beta["prop_stat"] != CONTROL_STAT].copy()
+    rows["cutoff"] = [bw.cutoff_for(str(d)) for d in rows["game_date"]]
+    have, unseen_flag = [], []
+    long = pd.concat([pd.read_parquet(f)
+                      for f in sorted(width_dir.glob("bayes_width_*.parquet"))],
+                     ignore_index=True)
+    seen_keys = set(zip(long["cutoff"].astype(str),
+                        long["batter"].astype("int64"),
+                        long["component"]))
+    unseen_keys = set(zip(long.loc[long["unseen"], "cutoff"].astype(str),
+                          long.loc[long["unseen"], "batter"].astype("int64"),
+                          long.loc[long["unseen"], "component"]))
+    for cutoff, pid in zip(rows["cutoff"], rows["player_id"]):
+        keys = [(str(cutoff), int(pid), c) for c in props.BAYES_WIDTH_COMPONENTS]
+        have.append(all(k in seen_keys for k in keys))
+        unseen_flag.append(any(k in unseen_keys for k in keys))
+    rows["has_width"] = have
+    rows["from_population"] = unseen_flag
+    missing = rows.loc[~rows["has_width"], "player_id"]
+    return {
+        "n_batter_contracts": int(len(rows)),
+        "n_with_bayes_width": int(rows["has_width"].sum()),
+        "n_fell_back_to_the_beta": int((~rows["has_width"]).sum()),
+        "n_batters": int(rows["player_id"].nunique()),
+        "n_batters_without_a_bayes_row": int(missing.nunique()),
+        "batters_without_a_bayes_row": sorted(int(p) for p in missing.unique()),
+        "n_from_the_fitted_population": int(rows["from_population"].sum()),
+        "share_from_the_fitted_population": float(rows["from_population"].mean()),
+        "by_stat": {s: {"n": int(len(g)),
+                        "n_with_bayes_width": int(g["has_width"].sum())}
+                    for s, g in rows.groupby("prop_stat")},
+    }
+
+
 def bas70_reproduction(beta: pd.DataFrame, second_beta, tau_beta,
                        fee_waived, as_quoted, draws, seed) -> dict:
     """The numbers docs/posterior-props.md's Results section publishes.
@@ -401,24 +455,14 @@ def bas70_reproduction(beta: pd.DataFrame, second_beta, tau_beta,
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--beta", type=Path, required=True)
-    ap.add_argument("--bayes", type=Path, required=True)
-    ap.add_argument("--out", type=Path, default=OUT)
-    ap.add_argument("--fits", type=Path,
-                    default=ROOT / "data/eval/bas92/bayes_width_fits.json")
-    ap.add_argument("--checkpoint-check", type=Path,
-                    default=ROOT / "data/eval/bas92/bayes_width_checkpoint_check.json")
-    ap.add_argument("--width-audit", type=Path,
-                    default=ROOT / "data/eval/bas92/width_audit.json")
-    ap.add_argument("--draws", type=int, default=pnl.BOOTSTRAP_DRAWS)
-    ap.add_argument("--seed", type=int, default=0)
-    args = ap.parse_args()
-
-    beta, bayes = align(pd.read_parquet(args.beta), pd.read_parquet(args.bayes))
+def score_pair(beta_path: Path, bayes_path: Path, width_dir: Path,
+               draws: int, seed: int) -> dict:
+    """Everything docs/posterior-width.md asks for, off one pair of priced
+    frames. Called once for the scored pair and once for the cross-check under
+    the other Monte Carlo stream construction."""
+    beta, bayes = align(pd.read_parquet(beta_path), pd.read_parquet(bayes_path))
     logger.info("%d priced rows on both arms", len(beta))
+    args = argparse.Namespace(draws=draws, seed=seed, width_dir=width_dir)
 
     fee_waived = venue_for(0.0, False)
     as_quoted = venue_for(pnl.KALSHI_TAKER_RATE, False)
@@ -500,6 +544,7 @@ def main() -> None:
             "grid_bayes_width_hr_only": json.loads(
                 tab_bayes_hr.to_json(orient="records")),
         },
+        "width_coverage": width_coverage(beta, args.width_dir),
         "bas70_reproduction": bas70_reproduction(
             beta, second_b, tau_beta, fee_waived, as_quoted, args.draws, args.seed),
         "exploratory_hits_after_fee": hits_after_fee(
@@ -513,12 +558,6 @@ def main() -> None:
             "5_negative_control_strikeouts_unchanged": p5,
         },
     }
-    for name, path in (("fits", args.fits),
-                       ("checkpoint_check", args.checkpoint_check),
-                       ("width_audit", args.width_audit)):
-        if path and path.exists():
-            payload[name] = json.loads(path.read_text())
-
     # docs/posterior-width.md's ship rule, verbatim: prediction 2 holding with
     # the second-half interval excluding zero on HR *and* prediction 3 holding.
     ships = bool(p2["passes_primary"]
@@ -543,16 +582,75 @@ def main() -> None:
         "wait_for_the_joint_and_measurement_posteriors": not p1["passes"],
         "ships": ships,
     }
+    return payload
+
+
+def headline(payload: dict) -> dict:
+    """The pass/fail skeleton, for the console and for the cross-check block."""
+    return {"tau": payload["tau"]["beta"], "tau_bayes": payload["tau"]["bayes_width"],
+            "predictions": {
+                k: {kk: vv for kk, vv in v.items()
+                    if kk.startswith("passes")
+                    or kk in ("worst_abs_diff", "p_over_bb_identical",
+                              "p_over_sd_identical", "max_abs_diff_p_over_bb")}
+                for k, v in payload["predictions"].items()},
+            "spearman_hr": payload["predictions"][
+                "1_vacuity_the_width_is_different_information"]["primary"]["spearman"],
+            "changed_share_hr": payload["predictions"][
+                "1_vacuity_the_width_is_different_information"]["primary"]["changed_share"],
+            "gain_vs_matched_hr": payload["predictions"][
+                "2_selection_beats_the_matched_threshold"][PRIMARY_STAT][
+                    "gain_vs_matched_bayes"],
+            "verdict": payload["verdict"]}
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--beta", type=Path, required=True)
+    ap.add_argument("--bayes", type=Path, required=True)
+    ap.add_argument("--beta-cross-check", type=Path, default=None,
+                    help="the same Beta arm priced under the other "
+                         "props.DRAW_STREAMS setting")
+    ap.add_argument("--bayes-cross-check", type=Path, default=None)
+    ap.add_argument("--cross-check-label", default="shared_draw_streams")
+    ap.add_argument("--out", type=Path, default=OUT)
+    ap.add_argument("--fits", type=Path,
+                    default=ROOT / "data/eval/bas92/bayes_width_fits.json")
+    ap.add_argument("--checkpoint-check", type=Path,
+                    default=ROOT / "data/eval/bas92/bayes_width_checkpoint_check.json")
+    ap.add_argument("--neutral-park-check", type=Path,
+                    default=ROOT / "data/eval/bas92/neutral_park"
+                                   "/bayes_width_checkpoint_check.json")
+    ap.add_argument("--neutral-park-fits", type=Path,
+                    default=ROOT / "data/eval/bas92/neutral_park"
+                                   "/bayes_width_fits.json")
+    ap.add_argument("--width-audit", type=Path,
+                    default=ROOT / "data/eval/bas92/width_audit.json")
+    ap.add_argument("--width-dir", type=Path, default=ROOT / "data/eval/bas92")
+    ap.add_argument("--draws", type=int, default=pnl.BOOTSTRAP_DRAWS)
+    ap.add_argument("--seed", type=int, default=0)
+    args = ap.parse_args()
+
+    payload = score_pair(args.beta, args.bayes, args.width_dir,
+                         args.draws, args.seed)
+    if args.beta_cross_check and args.bayes_cross_check:
+        other = score_pair(args.beta_cross_check, args.bayes_cross_check,
+                           args.width_dir, args.draws, args.seed)
+        payload[args.cross_check_label] = headline(other)
+        payload[args.cross_check_label]["full"] = other["predictions"]
+    for name, path in (("fits", args.fits),
+                       ("checkpoint_check", args.checkpoint_check),
+                       ("neutral_park_checkpoint_check", args.neutral_park_check),
+                       ("neutral_park_fits", args.neutral_park_fits),
+                       ("width_audit", args.width_audit)):
+        if path and path.exists():
+            payload[name] = json.loads(path.read_text())
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(payload, indent=1))
     print(f"-> {args.out}")
-    print(json.dumps({"predictions": {
-        k: {kk: vv for kk, vv in v.items()
-            if kk.startswith("passes") or kk in ("primary", "worst_abs_diff",
-                                                 "gain_vs_matched_bayes")}
-        for k, v in payload["predictions"].items()},
-        "verdict": payload["verdict"]}, indent=1))
+    print(json.dumps(headline(payload), indent=1))
 
 
 if __name__ == "__main__":

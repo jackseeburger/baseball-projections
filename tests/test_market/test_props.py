@@ -668,3 +668,63 @@ def test_bayes_width_moves_the_posterior_columns_and_nothing_else(tmp_path):
     # A far wider HR posterior than the ballast implies has to widen P(over).
     assert widened.loc[0, "p_over_sd"] > served.loc[0, "p_over_sd"]
     assert bw.audit["player_component_applied"] == 6
+
+
+def test_shared_draw_stream_lets_one_players_beta_move_anothers_draws():
+    """The reason `DRAW_STREAMS` exists, pinned as a fact about numpy rather
+    than left as a claim in a comment: `Generator.beta` is a rejection
+    sampler, so how far it advances the stream depends on its parameters."""
+    tight = np.random.default_rng(props.MC_SEED)
+    loose = np.random.default_rng(props.MC_SEED)
+    tight.beta(200.0, 700.0, size=props.MC_DRAWS)
+    loose.beta(2.0, 7.0, size=props.MC_DRAWS)
+    assert not np.array_equal(tight.beta(50.0, 50.0, size=64),
+                              loose.beta(50.0, 50.0, size=64))
+    # And the isolated stream is a pure function of who and when.
+    a = props._player_rng(None, "isolated", "2026-08-20", 12345,
+                          props._STREAM_BATTER)
+    b = props._player_rng(None, "isolated", "2026-08-20", 12345,
+                          props._STREAM_BATTER)
+    assert np.array_equal(a.beta(2.0, 7.0, size=16), b.beta(2.0, 7.0, size=16))
+    # A pitcher and a batter with the same id are different streams.
+    p = props._player_rng(None, "isolated", "2026-08-20", 12345,
+                          props._STREAM_PITCHER)
+    assert not np.array_equal(
+        props._player_rng(None, "isolated", "2026-08-20", 12345,
+                          props._STREAM_BATTER).beta(2.0, 7.0, size=16),
+        p.beta(2.0, 7.0, size=16))
+    with pytest.raises(ValueError):
+        props._player_rng(None, "nonsense", "2026-08-20", 1, 0)
+
+
+def test_isolated_streams_keep_an_untouched_players_price_untouched(tmp_path):
+    """The negative control, in miniature: widen batter 1's Beta and batter
+    2's price must not move by a bit. Under the shared stream it does."""
+    ctx = _batter_ctx()
+    pitchers = {"season": 2026, "league": {"rate_k": 0.22},
+                "prior_counts": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                      "bbhbp", "hr", "outs"]),
+                "game_logs": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                   "bbhbp", "hr", "outs", "date"])}
+    closes = pd.DataFrame([
+        {"game_pk": 700001, "game_date": "2026-08-15", "player_id": 1,
+         "prop_stat": "hr", "prop_line": 0.5, "p_over_close": 0.10, "over_hit": False},
+        {"game_pk": 700001, "game_date": "2026-08-15", "player_id": 2,
+         "prop_stat": "hr", "prop_line": 0.5, "p_over_close": 0.12, "over_hit": True},
+    ])
+    slots = {(700001, 1): 2, (700001, 2): 3}
+    # A width table that covers batter 1 only, so batter 2 keeps his Beta.
+    only_one = _width(tmp_path, [_width_long(
+        "2026-08-01", [1], {"k_rate": 0.06, "bb_rate": 0.05, "hr_rate": 0.04})])
+    for streams, untouched in (("shared", False), ("isolated", True)):
+        base = props.price(closes, ctx, pitchers, slots, stats=("hr",),
+                           draw_streams=streams)
+        wide = props.price(closes, ctx, pitchers, slots, stats=("hr",),
+                           bayes_width=only_one, draw_streams=streams)
+        b2 = base["player_id"] == 2
+        same = np.array_equal(base.loc[b2, "p_over_sd"].to_numpy(),
+                              wide.loc[b2, "p_over_sd"].to_numpy())
+        assert same is untouched, streams
+        # Batter 1's own width moves under either stream — that is the arm.
+        b1 = base["player_id"] == 1
+        assert base.loc[b1, "p_over_sd"].iloc[0] != wide.loc[b1, "p_over_sd"].iloc[0]

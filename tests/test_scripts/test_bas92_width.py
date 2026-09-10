@@ -46,18 +46,22 @@ def test_price_with_forwards_the_width_arm_and_defaults_to_off(monkeypatch):
     seen = {}
 
     def fake_price(closes, batter_ctx, pitcher_ctx, slots, stats=None,
-                   pitcher_bf="fixed", matchup_ctx=None, bayes_width=None):
+                   pitcher_bf="fixed", matchup_ctx=None, bayes_width=None,
+                   draw_streams="shared"):
         seen["bayes_width"] = bayes_width
+        seen["draw_streams"] = draw_streams
         return pd.DataFrame()
 
     monkeypatch.setattr(props_exam.props, "price", fake_price)
     ctx = {"batter_ctx": {}, "pitcher_ctx": {}, "slots": {}, "matchup_ctx": None}
     props_exam.price_with(pd.DataFrame(), ctx, ("hr",), "fixed")
     assert seen["bayes_width"] is None
+    assert seen["draw_streams"] == "shared"
     sentinel = object()
     props_exam.price_with(pd.DataFrame(), ctx, ("hr",), "fixed",
-                          bayes_width=sentinel)
+                          bayes_width=sentinel, draw_streams="isolated")
     assert seen["bayes_width"] is sentinel
+    assert seen["draw_streams"] == "isolated"
 
 
 def _quoted_frame(n=200, seed=3):

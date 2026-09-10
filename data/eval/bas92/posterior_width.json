@@ -1,0 +1,2756 @@
+{
+ "generated_at": "2026-09-10T13:52:32.661588+00:00",
+ "ticket": "BAS-92",
+ "pre_registration": "docs/posterior-width.md",
+ "parent": "docs/posterior-props.md (BAS-70)",
+ "arms": {
+  "beta": "Marcel's Beta behind p_over_bb / p_over_sd (BAS-70, served)",
+  "bayes_width": "the same mean with the bayes_walk posterior sd on K, BB and HR (props.BayesWidth); BABIP, ISO and pitcher strikeouts keep the Beta"
+ },
+ "archive": {
+  "n_priced": 61845,
+  "n_settled": 61738,
+  "n_games": 455,
+  "first_date": "2026-07-31",
+  "last_date": "2026-09-02",
+  "half_split": "2026-08-17",
+  "n_first_half": 31315,
+  "n_second_half": 30423,
+  "by_stat": {
+   "tb": 22607,
+   "hits": 21094,
+   "hr": 11896,
+   "k": 6248
+  }
+ },
+ "tau": {
+  "beta": 0.65,
+  "bayes_width": 0.75,
+  "beta_hr_only": 0.8,
+  "bayes_width_hr_only": 0.75,
+  "grid_beta": [
+   {
+    "tau": 0.55,
+    "n_bets": 26728,
+    "roi": 0.0020007242
+   },
+   {
+    "tau": 0.6,
+    "n_bets": 25721,
+    "roi": 0.0009140208
+   },
+   {
+    "tau": 0.65,
+    "n_bets": 24706,
+    "roi": 0.0031036166
+   },
+   {
+    "tau": 0.7,
+    "n_bets": 23621,
+    "roi": -0.0008685735
+   },
+   {
+    "tau": 0.75,
+    "n_bets": 22424,
+    "roi": 0.0010847298
+   },
+   {
+    "tau": 0.8,
+    "n_bets": 21237,
+    "roi": 0.0022568758
+   },
+   {
+    "tau": 0.85,
+    "n_bets": 19892,
+    "roi": -0.0038393751
+   },
+   {
+    "tau": 0.9,
+    "n_bets": 18306,
+    "roi": -0.0137093718
+   }
+  ],
+  "grid_bayes_width": [
+   {
+    "tau": 0.55,
+    "n_bets": 26567,
+    "roi": 0.0018594339
+   },
+   {
+    "tau": 0.6,
+    "n_bets": 25412,
+    "roi": 0.0002414118
+   },
+   {
+    "tau": 0.65,
+    "n_bets": 24238,
+    "roi": 0.0027043245
+   },
+   {
+    "tau": 0.7,
+    "n_bets": 22977,
+    "roi": -0.0008018297
+   },
+   {
+    "tau": 0.75,
+    "n_bets": 21697,
+    "roi": 0.0046105816
+   },
+   {
+    "tau": 0.8,
+    "n_bets": 20312,
+    "roi": -0.0034252792
+   },
+   {
+    "tau": 0.85,
+    "n_bets": 18845,
+    "roi": -0.0104294431
+   },
+   {
+    "tau": 0.9,
+    "n_bets": 17134,
+    "roi": -0.0153243271
+   }
+  ],
+  "grid_bayes_width_hr_only": [
+   {
+    "tau": 0.55,
+    "n_bets": 4812,
+    "roi": -0.0336049512
+   },
+   {
+    "tau": 0.6,
+    "n_bets": 4402,
+    "roi": -0.0170617602
+   },
+   {
+    "tau": 0.65,
+    "n_bets": 3997,
+    "roi": -0.0125472609
+   },
+   {
+    "tau": 0.7,
+    "n_bets": 3577,
+    "roi": -0.0277795931
+   },
+   {
+    "tau": 0.75,
+    "n_bets": 3150,
+    "roi": 0.0012520532
+   },
+   {
+    "tau": 0.8,
+    "n_bets": 2688,
+    "roi": -0.0093080214
+   },
+   {
+    "tau": 0.85,
+    "n_bets": 2269,
+    "roi": -0.0065531495
+   },
+   {
+    "tau": 0.9,
+    "n_bets": 1807,
+    "roi": -0.017631927
+   }
+  ]
+ },
+ "width_coverage": {
+  "n_batter_contracts": 55597,
+  "n_with_bayes_width": 55597,
+  "n_fell_back_to_the_beta": 0,
+  "n_batters": 477,
+  "n_batters_without_a_bayes_row": 0,
+  "batters_without_a_bayes_row": [],
+  "n_from_the_fitted_population": 1889,
+  "share_from_the_fitted_population": 0.033976653416551254,
+  "by_stat": {
+   "hits": {
+    "n": 21094,
+    "n_with_bayes_width": 21094
+   },
+   "hr": {
+    "n": 11896,
+    "n_with_bayes_width": 11896
+   },
+   "tb": {
+    "n": 22607,
+    "n_with_bayes_width": 22607
+   }
+  }
+ },
+ "bas70_reproduction": {
+  "n_settled": 61738,
+  "n_games": 455,
+  "first_date": "2026-07-31",
+  "last_date": "2026-09-02",
+  "median_p_over_sd": 0.014923484839715652,
+  "median_p_over_sd_by_stat": {
+   "hits": 0.014342375505787014,
+   "hr": 0.016559219649069777,
+   "k": 0.039022900350563834,
+   "tb": 0.013231789520200484
+  },
+  "share_below_0005": 0.191972529074476,
+  "paired_brier_marginal_minus_point": {
+   "n": 61738,
+   "diff": -3.9363208534493665e-05,
+   "se": 5.402283071633105e-06,
+   "t": -7.286402436256308
+  },
+  "paired_brier_by_stat": {
+   "hits": {
+    "n": 21088,
+    "diff": -8.9560528296057e-06,
+    "se": 3.4826169604536963e-06,
+    "t": -2.5716445222959443
+   },
+   "hr": {
+    "n": 11892,
+    "diff": -2.7932420864048214e-06,
+    "se": 2.329029299994031e-06,
+    "t": -1.1993159924660373
+   },
+   "k": {
+    "n": 6156,
+    "diff": -0.00021622792072291405,
+    "se": 4.8721718072189786e-05,
+    "t": -4.438019209473163
+   },
+   "tb": {
+    "n": 22602,
+    "diff": -3.880294715379435e-05,
+    "se": 5.384445808731082e-06,
+    "t": -7.206488565800757
+   }
+  },
+  "tau": 0.65,
+  "second_half_all_stats": [
+   {
+    "rule": "threshold @ 2pt",
+    "n_bets": 16756,
+    "roi_fee_waived": 0.0068314602,
+    "roi_fee_waived_lo": -0.0275595215,
+    "roi_fee_waived_hi": 0.0402309268,
+    "roi_as_quoted": -0.0395364373,
+    "roi_as_quoted_lo": -0.0738767337,
+    "roi_as_quoted_hi": -0.006238752
+   },
+   {
+    "rule": "posterior @ tau=0.65",
+    "n_bets": 23905,
+    "roi_fee_waived": 0.0254055149,
+    "roi_fee_waived_lo": -0.0095668424,
+    "roi_fee_waived_hi": 0.0624373109,
+    "roi_as_quoted": -0.026666385,
+    "roi_as_quoted_lo": -0.0610451884,
+    "roi_as_quoted_hi": 0.0100543072
+   },
+   {
+    "rule": "threshold @ matched (t=0.0043)",
+    "n_bets": 23905,
+    "roi_fee_waived": 0.0232377541,
+    "roi_fee_waived_lo": -0.0114602253,
+    "roi_fee_waived_hi": 0.058252027,
+    "roi_as_quoted": -0.0277998276,
+    "roi_as_quoted_lo": -0.0626186694,
+    "roi_as_quoted_hi": 0.0072492267
+   }
+  ]
+ },
+ "exploratory_hits_after_fee": {
+  "beta": [
+   {
+    "rule": "threshold @ 2pt",
+    "n_bets": 4237,
+    "roi_fee_waived": 0.0953684797,
+    "roi_fee_waived_lo": 0.0346238093,
+    "roi_fee_waived_hi": 0.153737258,
+    "roi_as_quoted": 0.0427754458,
+    "roi_as_quoted_lo": -0.0180840437,
+    "roi_as_quoted_hi": 0.1004738783
+   },
+   {
+    "rule": "posterior @ tau=0.65",
+    "n_bets": 7077,
+    "roi_fee_waived": 0.1210738502,
+    "roi_fee_waived_lo": 0.0580702489,
+    "roi_fee_waived_hi": 0.190494812,
+    "roi_as_quoted": 0.0543071261,
+    "roi_as_quoted_lo": -0.0092228614,
+    "roi_as_quoted_hi": 0.1234606188
+   },
+   {
+    "rule": "threshold @ matched (t=0.0037)",
+    "n_bets": 7077,
+    "roi_fee_waived": 0.1137748523,
+    "roi_fee_waived_lo": 0.050749205,
+    "roi_fee_waived_hi": 0.1785260569,
+    "roi_as_quoted": 0.0495568852,
+    "roi_as_quoted_lo": -0.0126718415,
+    "roi_as_quoted_hi": 0.1139861059
+   }
+  ],
+  "bayes_width": [
+   {
+    "rule": "threshold @ 2pt",
+    "n_bets": 4237,
+    "roi_fee_waived": 0.0953684797,
+    "roi_fee_waived_lo": 0.0346238093,
+    "roi_fee_waived_hi": 0.153737258,
+    "roi_as_quoted": 0.0427754458,
+    "roi_as_quoted_lo": -0.0180840437,
+    "roi_as_quoted_hi": 0.1004738783
+   },
+   {
+    "rule": "posterior @ tau=0.75",
+    "n_bets": 6137,
+    "roi_fee_waived": 0.1021156448,
+    "roi_fee_waived_lo": 0.0380412479,
+    "roi_fee_waived_hi": 0.1713752614,
+    "roi_as_quoted": 0.037340494,
+    "roi_as_quoted_lo": -0.0272173884,
+    "roi_as_quoted_hi": 0.1063399471
+   },
+   {
+    "rule": "threshold @ matched (t=0.0077)",
+    "n_bets": 6137,
+    "roi_fee_waived": 0.1139308818,
+    "roi_fee_waived_lo": 0.0540976809,
+    "roi_fee_waived_hi": 0.1770425122,
+    "roi_as_quoted": 0.0542639895,
+    "roi_as_quoted_lo": -0.005234161,
+    "roi_as_quoted_hi": 0.1171377543
+   }
+  ]
+ },
+ "predictions": {
+  "1_vacuity_the_width_is_different_information": {
+   "threshold_spearman_max": 0.9,
+   "threshold_changed_share_min": 0.25,
+   "change_size": 0.3,
+   "by_stat": {
+    "hits": {
+     "n": 21094,
+     "spearman": 0.9662450987007145,
+     "changed_share": 0.09647293069119181,
+     "median_sd_beta": 0.014342793331228398,
+     "median_sd_bayes": 0.016632976926064934,
+     "mean_sd_beta": 0.013047508421184038,
+     "mean_sd_bayes": 0.01549158305089075,
+     "n_zero_sd_beta": 16,
+     "sd_ratio_median": 1.1620072759260465,
+     "p05_sd_bayes": 0.0036426361757825997,
+     "p95_sd_bayes": 0.028246741739375192,
+     "p05_sd_beta": 0.003076084411106326,
+     "p95_sd_beta": 0.02284857122362225
+    },
+    "hr": {
+     "n": 11896,
+     "spearman": 0.9630990300878288,
+     "changed_share": 0.2883322125084062,
+     "median_sd_beta": 0.016559219649069777,
+     "median_sd_bayes": 0.01897907845011154,
+     "mean_sd_beta": 0.01392132229572067,
+     "mean_sd_bayes": 0.01684092535470751,
+     "n_zero_sd_beta": 10,
+     "sd_ratio_median": 1.2100615818409959,
+     "p05_sd_bayes": 0.0016312222602917015,
+     "p95_sd_bayes": 0.03513007056848992,
+     "p05_sd_beta": 0.0014209864931986817,
+     "p95_sd_beta": 0.02789900015763655
+    },
+    "k": {
+     "n": 6248,
+     "spearman": 1.0,
+     "changed_share": 0.0,
+     "median_sd_beta": 0.039004153863749724,
+     "median_sd_bayes": 0.039004153863749724,
+     "mean_sd_beta": 0.04033867309222641,
+     "mean_sd_bayes": 0.04033867309222641,
+     "n_zero_sd_beta": 0,
+     "sd_ratio_median": 1.0,
+     "p05_sd_bayes": 0.009651726283729423,
+     "p95_sd_bayes": 0.08076521893675215,
+     "p05_sd_beta": 0.009651726283729423,
+     "p95_sd_beta": 0.08076521893675215
+    },
+    "tb": {
+     "n": 22607,
+     "spearman": 0.9913394324259346,
+     "changed_share": 0.038704825938868495,
+     "median_sd_beta": 0.013232013427127707,
+     "median_sd_bayes": 0.014685024242551257,
+     "mean_sd_beta": 0.01265244033273796,
+     "mean_sd_bayes": 0.014208915434894345,
+     "n_zero_sd_beta": 21,
+     "sd_ratio_median": 1.1022864496631968,
+     "p05_sd_bayes": 0.0024327128947430735,
+     "p95_sd_bayes": 0.028590859043742825,
+     "p05_sd_beta": 0.0021672943446553643,
+     "p95_sd_beta": 0.02544330893831822
+    }
+   },
+   "primary": {
+    "stat": "hr",
+    "n": 11896,
+    "spearman": 0.9630990300878288,
+    "changed_share": 0.2883322125084062,
+    "median_sd_beta": 0.016559219649069777,
+    "median_sd_bayes": 0.01897907845011154,
+    "mean_sd_beta": 0.01392132229572067,
+    "mean_sd_bayes": 0.01684092535470751,
+    "n_zero_sd_beta": 10,
+    "sd_ratio_median": 1.2100615818409959,
+    "p05_sd_bayes": 0.0016312222602917015,
+    "p95_sd_bayes": 0.03513007056848992,
+    "p05_sd_beta": 0.0014209864931986817,
+    "p95_sd_beta": 0.02789900015763655
+   },
+   "passes": false
+  },
+  "2_selection_beats_the_matched_threshold": {
+   "threshold_primary": 0.01,
+   "threshold_pooled": 0.005,
+   "hr": {
+    "beta": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 1395,
+      "roi_fee_waived": 0.0597924532,
+      "roi_fee_waived_lo": -0.10974424,
+      "roi_fee_waived_hi": 0.2233077092,
+      "roi_as_quoted": -0.0467876398,
+      "roi_as_quoted_lo": -0.2170893855,
+      "roi_as_quoted_hi": 0.1149650911
+     },
+     {
+      "rule": "posterior @ tau=0.65",
+      "n_bets": 4091,
+      "roi_fee_waived": -0.013571382,
+      "roi_fee_waived_lo": -0.0845219303,
+      "roi_fee_waived_hi": 0.0578098752,
+      "roi_as_quoted": -0.0882218252,
+      "roi_as_quoted_lo": -0.1599384509,
+      "roi_as_quoted_hi": -0.0171133185
+     },
+     {
+      "rule": "threshold @ matched (t=0.0032)",
+      "n_bets": 4091,
+      "roi_fee_waived": -0.0019665027,
+      "roi_fee_waived_lo": -0.0769061948,
+      "roi_fee_waived_hi": 0.0773089349,
+      "roi_as_quoted": -0.0770016049,
+      "roi_as_quoted_lo": -0.1529557506,
+      "roi_as_quoted_hi": 0.0017542693
+     }
+    ],
+    "bayes_width": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 1395,
+      "roi_fee_waived": 0.0597924532,
+      "roi_fee_waived_lo": -0.10974424,
+      "roi_fee_waived_hi": 0.2233077092,
+      "roi_as_quoted": -0.0467876398,
+      "roi_as_quoted_lo": -0.2170893855,
+      "roi_as_quoted_hi": 0.1149650911
+     },
+     {
+      "rule": "posterior @ tau=0.75",
+      "n_bets": 3091,
+      "roi_fee_waived": -0.0333492112,
+      "roi_fee_waived_lo": -0.1139691727,
+      "roi_fee_waived_hi": 0.0493605704,
+      "roi_as_quoted": -0.1036891592,
+      "roi_as_quoted_lo": -0.1852104061,
+      "roi_as_quoted_hi": -0.0221670611
+     },
+     {
+      "rule": "threshold @ matched (t=0.0066)",
+      "n_bets": 3091,
+      "roi_fee_waived": -0.0074124032,
+      "roi_fee_waived_lo": -0.1013817981,
+      "roi_fee_waived_hi": 0.0910169771,
+      "roi_as_quoted": -0.0936877583,
+      "roi_as_quoted_lo": -0.1881312972,
+      "roi_as_quoted_hi": 0.0047950811
+     }
+    ],
+    "tau_beta": 0.65,
+    "tau_bayes": 0.75,
+    "gain_vs_matched_bayes": -0.02593680798864156,
+    "gain_vs_matched_beta": -0.011604879350987612,
+    "posterior_interval_excludes_zero_bayes": false
+   },
+   "pooled_hr_hits_tb": {
+    "beta": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 14634,
+      "roi_fee_waived": 0.0253444919,
+      "roi_fee_waived_lo": -0.0122165388,
+      "roi_fee_waived_hi": 0.0607303197,
+      "roi_as_quoted": -0.0212926009,
+      "roi_as_quoted_lo": -0.0590909361,
+      "roi_as_quoted_hi": 0.014267578
+     },
+     {
+      "rule": "posterior @ tau=0.65",
+      "n_bets": 21563,
+      "roi_fee_waived": 0.0394545347,
+      "roi_fee_waived_lo": 0.0028032013,
+      "roi_fee_waived_hi": 0.0785074268,
+      "roi_as_quoted": -0.0135117736,
+      "roi_as_quoted_lo": -0.049764102,
+      "roi_as_quoted_hi": 0.025868387
+     },
+     {
+      "rule": "threshold @ matched (t=0.0038)",
+      "n_bets": 21563,
+      "roi_fee_waived": 0.0373384676,
+      "roi_fee_waived_lo": 0.0005826891,
+      "roi_fee_waived_hi": 0.0746309511,
+      "roi_as_quoted": -0.0146684936,
+      "roi_as_quoted_lo": -0.0511503907,
+      "roi_as_quoted_hi": 0.0224776919
+     }
+    ],
+    "bayes_width": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 14634,
+      "roi_fee_waived": 0.0253444919,
+      "roi_fee_waived_lo": -0.0122165388,
+      "roi_fee_waived_hi": 0.0607303197,
+      "roi_as_quoted": -0.0212926009,
+      "roi_as_quoted_lo": -0.0590909361,
+      "roi_as_quoted_hi": 0.014267578
+     },
+     {
+      "rule": "posterior @ tau=0.75",
+      "n_bets": 19184,
+      "roi_fee_waived": 0.0252171547,
+      "roi_fee_waived_lo": -0.0099503443,
+      "roi_fee_waived_hi": 0.0613801899,
+      "roi_as_quoted": -0.0246938767,
+      "roi_as_quoted_lo": -0.0593007348,
+      "roi_as_quoted_hi": 0.0113280182
+     },
+     {
+      "rule": "threshold @ matched (t=0.0076)",
+      "n_bets": 19184,
+      "roi_fee_waived": 0.0366713971,
+      "roi_fee_waived_lo": 0.0004803807,
+      "roi_fee_waived_hi": 0.0748114274,
+      "roi_as_quoted": -0.0145291599,
+      "roi_as_quoted_lo": -0.0510246303,
+      "roi_as_quoted_hi": 0.0235862899
+     }
+    ],
+    "tau_beta": 0.65,
+    "tau_bayes": 0.75,
+    "gain_vs_matched_bayes": -0.011454242367816291,
+    "gain_vs_matched_beta": 0.0021160671292907787,
+    "posterior_interval_excludes_zero_bayes": false
+   },
+   "all_stats": {
+    "beta": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 16756,
+      "roi_fee_waived": 0.0068314602,
+      "roi_fee_waived_lo": -0.0275595215,
+      "roi_fee_waived_hi": 0.0402309268,
+      "roi_as_quoted": -0.0395364373,
+      "roi_as_quoted_lo": -0.0738767337,
+      "roi_as_quoted_hi": -0.006238752
+     },
+     {
+      "rule": "posterior @ tau=0.65",
+      "n_bets": 23905,
+      "roi_fee_waived": 0.0254055149,
+      "roi_fee_waived_lo": -0.0095668424,
+      "roi_fee_waived_hi": 0.0624373109,
+      "roi_as_quoted": -0.026666385,
+      "roi_as_quoted_lo": -0.0610451884,
+      "roi_as_quoted_hi": 0.0100543072
+     },
+     {
+      "rule": "threshold @ matched (t=0.0043)",
+      "n_bets": 23905,
+      "roi_fee_waived": 0.0232377541,
+      "roi_fee_waived_lo": -0.0114602253,
+      "roi_fee_waived_hi": 0.058252027,
+      "roi_as_quoted": -0.0277998276,
+      "roi_as_quoted_lo": -0.0626186694,
+      "roi_as_quoted_hi": 0.0072492267
+     }
+    ],
+    "bayes_width": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 16756,
+      "roi_fee_waived": 0.0068314602,
+      "roi_fee_waived_lo": -0.0275595215,
+      "roi_fee_waived_hi": 0.0402309268,
+      "roi_as_quoted": -0.0395364373,
+      "roi_as_quoted_lo": -0.0738767337,
+      "roi_as_quoted_hi": -0.006238752
+     },
+     {
+      "rule": "posterior @ tau=0.75",
+      "n_bets": 21192,
+      "roi_fee_waived": 0.0130034424,
+      "roi_fee_waived_lo": -0.019872645,
+      "roi_fee_waived_hi": 0.0471124604,
+      "roi_as_quoted": -0.0362074765,
+      "roi_as_quoted_lo": -0.0688067848,
+      "roi_as_quoted_hi": -0.0026572908
+     },
+     {
+      "rule": "threshold @ matched (t=0.0086)",
+      "n_bets": 21192,
+      "roi_fee_waived": 0.0189642846,
+      "roi_fee_waived_lo": -0.0132995913,
+      "roi_fee_waived_hi": 0.0535693044,
+      "roi_as_quoted": -0.0309839261,
+      "roi_as_quoted_lo": -0.0633449446,
+      "roi_as_quoted_hi": 0.0032489002
+     }
+    ],
+    "tau_beta": 0.65,
+    "tau_bayes": 0.75,
+    "gain_vs_matched_bayes": -0.005960842174788457,
+    "gain_vs_matched_beta": 0.002167760726267596,
+    "posterior_interval_excludes_zero_bayes": false
+   },
+   "passes_primary": false,
+   "passes_pooled": false,
+   "passes": false,
+   "hr_at_hr_chosen_tau": {
+    "beta": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 1395,
+      "roi_fee_waived": 0.0597924532,
+      "roi_fee_waived_lo": -0.10974424,
+      "roi_fee_waived_hi": 0.2233077092,
+      "roi_as_quoted": -0.0467876398,
+      "roi_as_quoted_lo": -0.2170893855,
+      "roi_as_quoted_hi": 0.1149650911
+     },
+     {
+      "rule": "posterior @ tau=0.80",
+      "n_bets": 3008,
+      "roi_fee_waived": -0.0247503851,
+      "roi_fee_waived_lo": -0.1026196771,
+      "roi_fee_waived_hi": 0.0579617917,
+      "roi_as_quoted": -0.0940939452,
+      "roi_as_quoted_lo": -0.1739260378,
+      "roi_as_quoted_hi": -0.0113203016
+     },
+     {
+      "rule": "threshold @ matched (t=0.0069)",
+      "n_bets": 3008,
+      "roi_fee_waived": -0.003050657,
+      "roi_fee_waived_lo": -0.1005003187,
+      "roi_fee_waived_hi": 0.0971577781,
+      "roi_as_quoted": -0.0905515695,
+      "roi_as_quoted_lo": -0.1884304836,
+      "roi_as_quoted_hi": 0.0090441111
+     }
+    ],
+    "bayes_width": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 1395,
+      "roi_fee_waived": 0.0597924532,
+      "roi_fee_waived_lo": -0.10974424,
+      "roi_fee_waived_hi": 0.2233077092,
+      "roi_as_quoted": -0.0467876398,
+      "roi_as_quoted_lo": -0.2170893855,
+      "roi_as_quoted_hi": 0.1149650911
+     },
+     {
+      "rule": "posterior @ tau=0.75",
+      "n_bets": 3091,
+      "roi_fee_waived": -0.0333492112,
+      "roi_fee_waived_lo": -0.1139691727,
+      "roi_fee_waived_hi": 0.0493605704,
+      "roi_as_quoted": -0.1036891592,
+      "roi_as_quoted_lo": -0.1852104061,
+      "roi_as_quoted_hi": -0.0221670611
+     },
+     {
+      "rule": "threshold @ matched (t=0.0066)",
+      "n_bets": 3091,
+      "roi_fee_waived": -0.0074124032,
+      "roi_fee_waived_lo": -0.1013817981,
+      "roi_fee_waived_hi": 0.0910169771,
+      "roi_as_quoted": -0.0936877583,
+      "roi_as_quoted_lo": -0.1881312972,
+      "roi_as_quoted_hi": 0.0047950811
+     }
+    ],
+    "tau_beta": 0.8,
+    "tau_bayes": 0.75,
+    "gain_vs_matched_bayes": -0.02593680798864156,
+    "gain_vs_matched_beta": -0.021699728132929412,
+    "posterior_interval_excludes_zero_bayes": false
+   }
+  },
+  "3_winners_curse_the_width_ranks_the_edges": {
+   "threshold": 0.02,
+   "edge_threshold": 0.02,
+   "hr": {
+    "beta": {
+     "n": 1395,
+     "terciles": [
+      {
+       "rule": "bottom",
+       "n_bets": 465,
+       "hit_rate": 0.23655913978494625,
+       "roi_fee_waived": 0.30562554415364196,
+       "roi_fee_waived_lo": -0.0015204693430416133,
+       "roi_fee_waived_hi": 0.6223305261505232,
+       "roi_as_quoted": 0.20351113140206792,
+       "roi_as_quoted_lo": -0.10419967610394704,
+       "roi_as_quoted_hi": 0.5204696805059882,
+       "p_edge_lo": 0.7220493462637425,
+       "p_edge_hi": 0.9024880208133843
+      },
+      {
+       "rule": "mid",
+       "n_bets": 465,
+       "hit_rate": 0.23225806451612904,
+       "roi_fee_waived": 0.02426668390650838,
+       "roi_fee_waived_lo": -0.2661976875485564,
+       "roi_fee_waived_hi": 0.36448645588272444,
+       "roi_as_quoted": -0.08459863012418714,
+       "roi_as_quoted_lo": -0.3734208032781477,
+       "roi_as_quoted_hi": 0.2527670668532873,
+       "p_edge_lo": 0.9025172132329584,
+       "p_edge_hi": 0.9571075721282155
+      },
+      {
+       "rule": "top",
+       "n_bets": 465,
+       "hit_rate": 0.2623655913978495,
+       "roi_fee_waived": -0.15051486832410632,
+       "roi_fee_waived_lo": -0.3969331136597641,
+       "roi_fee_waived_hi": 0.12761751477655714,
+       "roi_as_quoted": -0.25927542074188503,
+       "roi_as_quoted_lo": -0.5065543403768755,
+       "roi_as_quoted_hi": 0.021320965635990688,
+       "p_edge_lo": 0.9571426274559317,
+       "p_edge_hi": 1.0
+      }
+     ],
+     "top_minus_bottom": -0.4561404124777483
+    },
+    "bayes_width": {
+     "n": 1395,
+     "terciles": [
+      {
+       "rule": "bottom",
+       "n_bets": 465,
+       "hit_rate": 0.25806451612903225,
+       "roi_fee_waived": 0.3738741893541026,
+       "roi_fee_waived_lo": 0.05657310007691089,
+       "roi_fee_waived_hi": 0.6913306352087035,
+       "roi_as_quoted": 0.27956934863647903,
+       "roi_as_quoted_lo": -0.03965068680440649,
+       "roi_as_quoted_hi": 0.5973541104873158,
+       "p_edge_lo": 0.6306984996877676,
+       "p_edge_hi": 0.8589231541455242
+      },
+      {
+       "rule": "mid",
+       "n_bets": 465,
+       "hit_rate": 0.210752688172043,
+       "roi_fee_waived": -0.09167536479548784,
+       "roi_fee_waived_lo": -0.3725867704424342,
+       "roi_fee_waived_hi": 0.2228959370335291,
+       "roi_as_quoted": -0.20058744450744587,
+       "roi_as_quoted_lo": -0.48106241433747887,
+       "roi_as_quoted_hi": 0.11531572609334792,
+       "p_edge_lo": 0.8589373071108619,
+       "p_edge_hi": 0.9265771824680286
+      },
+      {
+       "rule": "top",
+       "n_bets": 465,
+       "hit_rate": 0.2623655913978495,
+       "roi_fee_waived": -0.10282146482257075,
+       "roi_fee_waived_lo": -0.3560085809264795,
+       "roi_fee_waived_hi": 0.17673104038873846,
+       "roi_as_quoted": -0.21934482359303747,
+       "roi_as_quoted_lo": -0.47193726699900135,
+       "roi_as_quoted_hi": 0.06009955819605229,
+       "p_edge_lo": 0.9269821116045074,
+       "p_edge_hi": 0.9999999999998581
+      }
+     ],
+     "top_minus_bottom": -0.47669565417667337
+    }
+   },
+   "pooled_hr_hits_tb": {
+    "beta": {
+     "n": 14634,
+     "terciles": [
+      {
+       "rule": "bottom",
+       "n_bets": 4878,
+       "hit_rate": 0.3931939319393194,
+       "roi_fee_waived": 0.0766369740842061,
+       "roi_fee_waived_lo": 0.003953370673550873,
+       "roi_fee_waived_hi": 0.15118921945085426,
+       "roi_as_quoted": 0.00831494328667451,
+       "roi_as_quoted_lo": -0.06454005178930593,
+       "roi_as_quoted_hi": 0.08239842534697107,
+       "p_edge_lo": 0.7220493462637425,
+       "p_edge_hi": 0.9965376993547275
+      },
+      {
+       "rule": "mid",
+       "n_bets": 4878,
+       "hit_rate": 0.47314473144731445,
+       "roi_fee_waived": 0.03965460459070172,
+       "roi_fee_waived_lo": -0.013985620977686141,
+       "roi_fee_waived_hi": 0.09141736450869047,
+       "roi_as_quoted": -0.010465150520794816,
+       "roi_as_quoted_lo": -0.06402650915134085,
+       "roi_as_quoted_hi": 0.04154659062038798,
+       "p_edge_lo": 0.9965443191156452,
+       "p_edge_hi": 0.999999996971523
+      },
+      {
+       "rule": "top",
+       "n_bets": 4878,
+       "hit_rate": 0.7498974989749897,
+       "roi_fee_waived": -0.04025810310979463,
+       "roi_fee_waived_lo": -0.06225830562152534,
+       "roi_fee_waived_hi": -0.018556648912259086,
+       "roi_as_quoted": -0.06172759559567617,
+       "roi_as_quoted_lo": -0.08362492193731533,
+       "roi_as_quoted_hi": -0.03997881602429107,
+       "p_edge_lo": 0.9999999969887324,
+       "p_edge_hi": 1.0
+      }
+     ],
+     "top_minus_bottom": -0.11689507719400072
+    },
+    "bayes_width": {
+     "n": 14634,
+     "terciles": [
+      {
+       "rule": "bottom",
+       "n_bets": 4878,
+       "hit_rate": 0.3950389503895039,
+       "roi_fee_waived": 0.08045804127075638,
+       "roi_fee_waived_lo": 0.0035935828769147883,
+       "roi_fee_waived_hi": 0.1601870889146751,
+       "roi_as_quoted": 0.012490043749812446,
+       "roi_as_quoted_lo": -0.0642880986710038,
+       "roi_as_quoted_hi": 0.09229280552891123,
+       "p_edge_lo": 0.6306984996877676,
+       "p_edge_hi": 0.9906630000603236
+      },
+      {
+       "rule": "mid",
+       "n_bets": 4878,
+       "hit_rate": 0.47191471914719146,
+       "roi_fee_waived": 0.03133072324850675,
+       "roi_fee_waived_lo": -0.01695471904606853,
+       "roi_fee_waived_hi": 0.07778200759210441,
+       "roi_as_quoted": -0.018979937431543244,
+       "roi_as_quoted_lo": -0.06762643526944774,
+       "roi_as_quoted_hi": 0.02744195651993996,
+       "p_edge_lo": 0.990664887899869,
+       "p_edge_hi": 0.9999999074445953
+      },
+      {
+       "rule": "top",
+       "n_bets": 4878,
+       "hit_rate": 0.7492824928249282,
+       "roi_fee_waived": -0.035755288954149936,
+       "roi_fee_waived_lo": -0.05769827320458544,
+       "roi_fee_waived_hi": -0.01505973956641218,
+       "roi_as_quoted": -0.05738790914806567,
+       "roi_as_quoted_lo": -0.07894036444842718,
+       "roi_as_quoted_hi": -0.03661439899783951,
+       "p_edge_lo": 0.9999999076366244,
+       "p_edge_hi": 1.0
+      }
+     ],
+     "top_minus_bottom": -0.11621333022490632
+    }
+   },
+   "passes_primary": false,
+   "passes_pooled": false,
+   "passes": false
+  },
+  "4_null_the_marginal_price_does_not_move": {
+   "tolerance": 0.0001,
+   "by_stat": {
+    "hits": {
+     "n": 21088,
+     "diff": -6.255332401437958e-06,
+     "se": 2.3472777067403277e-06,
+     "t": -2.66493069118982
+    },
+    "hr": {
+     "n": 11892,
+     "diff": 2.517097749926182e-06,
+     "se": 2.1506335154805793e-06,
+     "t": 1.1703982718616346
+    },
+    "k": {
+     "n": 6156,
+     "diff": 0.0,
+     "se": 0.0,
+     "t": NaN
+    },
+    "tb": {
+     "n": 22602,
+     "diff": -8.56053801658764e-06,
+     "se": 5.835036147392279e-06,
+     "t": -1.4670925424195373
+    },
+    "all": {
+     "n": 61738,
+     "diff": -4.785778669382153e-06,
+     "se": 2.3401852803044143e-06,
+     "t": -2.0450426338719696
+    }
+   },
+   "worst_abs_diff": 8.56053801658764e-06,
+   "passes": true,
+   "vs_point_price": {
+    "hits": {
+     "n": 21088,
+     "diff": -1.5211385231043656e-05,
+     "se": 4.30604770237068e-06,
+     "t": -3.532563102510239
+    },
+    "hr": {
+     "n": 11892,
+     "diff": -2.7614433647863867e-07,
+     "se": 3.1586245332316064e-06,
+     "t": -0.08742550232651865
+    },
+    "k": {
+     "n": 6156,
+     "diff": -0.00021622792072291405,
+     "se": 4.8721718072189786e-05,
+     "t": -4.438019209473163
+    },
+    "tb": {
+     "n": 22602,
+     "diff": -4.7363485170382e-05,
+     "se": 9.877496118683365e-06,
+     "t": -4.795090233525233
+    },
+    "all": {
+     "n": 61738,
+     "diff": -4.414898720387583e-05,
+     "se": 6.226784677619747e-06,
+     "t": -7.090174060868961
+    }
+   }
+  },
+  "5_negative_control_strikeouts_unchanged": {
+   "n": 6248,
+   "p_over_bb_identical": true,
+   "p_over_sd_identical": true,
+   "max_abs_diff_p_over_bb": 0.0,
+   "max_abs_diff_p_over_sd": 0.0,
+   "second_half_beta": [
+    {
+     "rule": "threshold @ 2pt",
+     "n_bets": 2122,
+     "roi_fee_waived": -0.1208404085,
+     "roi_fee_waived_lo": -0.196148025,
+     "roi_fee_waived_hi": -0.0402192525,
+     "roi_as_quoted": -0.1653518482,
+     "roi_as_quoted_lo": -0.2401952884,
+     "roi_as_quoted_hi": -0.0849005231
+    },
+    {
+     "rule": "posterior @ tau=0.65",
+     "n_bets": 2342,
+     "roi_fee_waived": -0.103945047,
+     "roi_fee_waived_lo": -0.1834809365,
+     "roi_fee_waived_hi": -0.0155242193,
+     "roi_as_quoted": -0.1477820499,
+     "roi_as_quoted_lo": -0.2274597949,
+     "roi_as_quoted_hi": -0.0596901673
+    },
+    {
+     "rule": "threshold @ matched (t=0.0131)",
+     "n_bets": 2342,
+     "roi_fee_waived": -0.1030608008,
+     "roi_fee_waived_lo": -0.1792222,
+     "roi_fee_waived_hi": -0.020763884,
+     "roi_as_quoted": -0.1473402035,
+     "roi_as_quoted_lo": -0.2233484697,
+     "roi_as_quoted_hi": -0.0644828641
+    }
+   ],
+   "second_half_bayes_width": [
+    {
+     "rule": "threshold @ 2pt",
+     "n_bets": 2122,
+     "roi_fee_waived": -0.1208404085,
+     "roi_fee_waived_lo": -0.196148025,
+     "roi_fee_waived_hi": -0.0402192525,
+     "roi_as_quoted": -0.1653518482,
+     "roi_as_quoted_lo": -0.2401952884,
+     "roi_as_quoted_hi": -0.0849005231
+    },
+    {
+     "rule": "posterior @ tau=0.75",
+     "n_bets": 2008,
+     "roi_fee_waived": -0.1036837376,
+     "roi_fee_waived_lo": -0.189647648,
+     "roi_fee_waived_hi": -0.0039916039,
+     "roi_as_quoted": -0.1462059312,
+     "roi_as_quoted_lo": -0.2321928687,
+     "roi_as_quoted_hi": -0.0461562166
+    },
+    {
+     "rule": "threshold @ matched (t=0.0234)",
+     "n_bets": 2008,
+     "roi_fee_waived": -0.1375660002,
+     "roi_fee_waived_lo": -0.2125718735,
+     "roi_fee_waived_hi": -0.0611957473,
+     "roi_as_quoted": -0.1820095449,
+     "roi_as_quoted_lo": -0.2564583024,
+     "roi_as_quoted_hi": -0.1051189694
+    }
+   ],
+   "passes": true
+  }
+ },
+ "verdict": {
+  "vacuous": true,
+  "width_is_different_information": false,
+  "selection_beats_matched_threshold": false,
+  "selection_beats_matched_threshold_hr": false,
+  "hr_interval_excludes_zero": false,
+  "width_separates_real_from_spurious_edges": false,
+  "marginal_price_is_still_a_null": true,
+  "negative_control_clean": true,
+  "retire_p_edge_as_a_selection_rule": false,
+  "wait_for_the_joint_and_measurement_posteriors": true,
+  "ships": false
+ },
+ "shared_draw_streams": {
+  "tau": 0.65,
+  "tau_bayes": 0.75,
+  "predictions": {
+   "1_vacuity_the_width_is_different_information": {
+    "passes": false
+   },
+   "2_selection_beats_the_matched_threshold": {
+    "passes_primary": false,
+    "passes_pooled": false,
+    "passes": false
+   },
+   "3_winners_curse_the_width_ranks_the_edges": {
+    "passes_primary": false,
+    "passes_pooled": false,
+    "passes": false
+   },
+   "4_null_the_marginal_price_does_not_move": {
+    "worst_abs_diff": 1.4589243797303425e-05,
+    "passes": true
+   },
+   "5_negative_control_strikeouts_unchanged": {
+    "p_over_bb_identical": false,
+    "p_over_sd_identical": false,
+    "max_abs_diff_p_over_bb": 0.008327990876341063,
+    "passes": false
+   }
+  },
+  "spearman_hr": 0.962222643772026,
+  "changed_share_hr": 0.2937962340282448,
+  "gain_vs_matched_hr": -0.020334399722228683,
+  "verdict": {
+   "vacuous": true,
+   "width_is_different_information": false,
+   "selection_beats_matched_threshold": false,
+   "selection_beats_matched_threshold_hr": false,
+   "hr_interval_excludes_zero": false,
+   "width_separates_real_from_spurious_edges": false,
+   "marginal_price_is_still_a_null": true,
+   "negative_control_clean": false,
+   "retire_p_edge_as_a_selection_rule": false,
+   "wait_for_the_joint_and_measurement_posteriors": true,
+   "ships": false
+  },
+  "full": {
+   "1_vacuity_the_width_is_different_information": {
+    "threshold_spearman_max": 0.9,
+    "threshold_changed_share_min": 0.25,
+    "change_size": 0.3,
+    "by_stat": {
+     "hits": {
+      "n": 21094,
+      "spearman": 0.9647537847554313,
+      "changed_share": 0.1032047027590784,
+      "median_sd_beta": 0.014341472021259336,
+      "median_sd_bayes": 0.016643275386130335,
+      "mean_sd_beta": 0.013044627370201296,
+      "mean_sd_bayes": 0.015497089797727846,
+      "n_zero_sd_beta": 16,
+      "sd_ratio_median": 1.1633157082885264,
+      "p05_sd_bayes": 0.0036325356478774666,
+      "p95_sd_bayes": 0.028277235200768226,
+      "p05_sd_beta": 0.0030848804216073397,
+      "p95_sd_beta": 0.022818224349217205
+     },
+     "hr": {
+      "n": 11896,
+      "spearman": 0.962222643772026,
+      "changed_share": 0.2937962340282448,
+      "median_sd_beta": 0.0165654415322544,
+      "median_sd_bayes": 0.018976346828223384,
+      "mean_sd_beta": 0.013920300509357598,
+      "mean_sd_bayes": 0.016836416556807458,
+      "n_zero_sd_beta": 10,
+      "sd_ratio_median": 1.21222562104728,
+      "p05_sd_bayes": 0.001633419039406035,
+      "p95_sd_bayes": 0.03514416362192781,
+      "p05_sd_beta": 0.0014171225191372521,
+      "p95_sd_beta": 0.027866385689241997
+     },
+     "k": {
+      "n": 6248,
+      "spearman": 0.9990517196717534,
+      "changed_share": 0.0,
+      "median_sd_beta": 0.039047829781972375,
+      "median_sd_bayes": 0.03891989089918202,
+      "mean_sd_beta": 0.040361369775031485,
+      "mean_sd_bayes": 0.04034078597709274,
+      "n_zero_sd_beta": 0,
+      "sd_ratio_median": 0.9990381755266142,
+      "p05_sd_bayes": 0.009686210177798676,
+      "p95_sd_bayes": 0.08126557090053059,
+      "p05_sd_beta": 0.009686077707467444,
+      "p95_sd_beta": 0.08128188861889944
+     },
+     "tb": {
+      "n": 22607,
+      "spearman": 0.9906111818213617,
+      "changed_share": 0.03994338036891228,
+      "median_sd_beta": 0.013225439642197096,
+      "median_sd_bayes": 0.014669011567752833,
+      "mean_sd_beta": 0.012651918831715774,
+      "mean_sd_bayes": 0.014215479388375574,
+      "n_zero_sd_beta": 21,
+      "sd_ratio_median": 1.1052604050781327,
+      "p05_sd_bayes": 0.002429341917613407,
+      "p95_sd_bayes": 0.028585353097974477,
+      "p05_sd_beta": 0.0021702583730766655,
+      "p95_sd_beta": 0.025520183226405566
+     }
+    },
+    "primary": {
+     "stat": "hr",
+     "n": 11896,
+     "spearman": 0.962222643772026,
+     "changed_share": 0.2937962340282448,
+     "median_sd_beta": 0.0165654415322544,
+     "median_sd_bayes": 0.018976346828223384,
+     "mean_sd_beta": 0.013920300509357598,
+     "mean_sd_bayes": 0.016836416556807458,
+     "n_zero_sd_beta": 10,
+     "sd_ratio_median": 1.21222562104728,
+     "p05_sd_bayes": 0.001633419039406035,
+     "p95_sd_bayes": 0.03514416362192781,
+     "p05_sd_beta": 0.0014171225191372521,
+     "p95_sd_beta": 0.027866385689241997
+    },
+    "passes": false
+   },
+   "2_selection_beats_the_matched_threshold": {
+    "threshold_primary": 0.01,
+    "threshold_pooled": 0.005,
+    "hr": {
+     "beta": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 1395,
+       "roi_fee_waived": 0.0597924532,
+       "roi_fee_waived_lo": -0.10974424,
+       "roi_fee_waived_hi": 0.2233077092,
+       "roi_as_quoted": -0.0467876398,
+       "roi_as_quoted_lo": -0.2170893855,
+       "roi_as_quoted_hi": 0.1149650911
+      },
+      {
+       "rule": "posterior @ tau=0.65",
+       "n_bets": 4096,
+       "roi_fee_waived": -0.0131413583,
+       "roi_fee_waived_lo": -0.0842568197,
+       "roi_fee_waived_hi": 0.0589224282,
+       "roi_as_quoted": -0.0877788651,
+       "roi_as_quoted_lo": -0.1589886797,
+       "roi_as_quoted_hi": -0.0159132009
+      },
+      {
+       "rule": "threshold @ matched (t=0.0032)",
+       "n_bets": 4096,
+       "roi_fee_waived": -0.0021543416,
+       "roi_fee_waived_lo": -0.077045516,
+       "roi_fee_waived_hi": 0.0770727467,
+       "roi_as_quoted": -0.0771325669,
+       "roi_as_quoted_lo": -0.1531834923,
+       "roi_as_quoted_hi": 0.0014456414
+      }
+     ],
+     "bayes_width": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 1395,
+       "roi_fee_waived": 0.0597924532,
+       "roi_fee_waived_lo": -0.10974424,
+       "roi_fee_waived_hi": 0.2233077092,
+       "roi_as_quoted": -0.0467876398,
+       "roi_as_quoted_lo": -0.2170893855,
+       "roi_as_quoted_hi": 0.1149650911
+      },
+      {
+       "rule": "posterior @ tau=0.75",
+       "n_bets": 3096,
+       "roi_fee_waived": -0.0282973555,
+       "roi_fee_waived_lo": -0.1090672153,
+       "roi_fee_waived_hi": 0.0542205004,
+       "roi_as_quoted": -0.0984923103,
+       "roi_as_quoted_lo": -0.1803481002,
+       "roi_as_quoted_hi": -0.0169267116
+      },
+      {
+       "rule": "threshold @ matched (t=0.0066)",
+       "n_bets": 3096,
+       "roi_fee_waived": -0.0079629558,
+       "roi_fee_waived_lo": -0.1014190635,
+       "roi_fee_waived_hi": 0.0906303589,
+       "roi_as_quoted": -0.0941566057,
+       "roi_as_quoted_lo": -0.1881630117,
+       "roi_as_quoted_hi": 0.0043362912
+      }
+     ],
+     "tau_beta": 0.65,
+     "tau_bayes": 0.75,
+     "gain_vs_matched_bayes": -0.020334399722228683,
+     "gain_vs_matched_beta": -0.01098701668655879,
+     "posterior_interval_excludes_zero_bayes": false
+    },
+    "pooled_hr_hits_tb": {
+     "beta": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 14634,
+       "roi_fee_waived": 0.0253444919,
+       "roi_fee_waived_lo": -0.0122165388,
+       "roi_fee_waived_hi": 0.0607303197,
+       "roi_as_quoted": -0.0212926009,
+       "roi_as_quoted_lo": -0.0590909361,
+       "roi_as_quoted_hi": 0.014267578
+      },
+      {
+       "rule": "posterior @ tau=0.65",
+       "n_bets": 21570,
+       "roi_fee_waived": 0.0388665829,
+       "roi_fee_waived_lo": 0.0025246383,
+       "roi_fee_waived_hi": 0.0780783777,
+       "roi_as_quoted": -0.0140997771,
+       "roi_as_quoted_lo": -0.0501665248,
+       "roi_as_quoted_hi": 0.0254703058
+      },
+      {
+       "rule": "threshold @ matched (t=0.0038)",
+       "n_bets": 21570,
+       "roi_fee_waived": 0.0370486545,
+       "roi_fee_waived_lo": 0.0004404031,
+       "roi_fee_waived_hi": 0.0744051555,
+       "roi_as_quoted": -0.0149691927,
+       "roi_as_quoted_lo": -0.0513591756,
+       "roi_as_quoted_hi": 0.0220039085
+      }
+     ],
+     "bayes_width": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 14634,
+       "roi_fee_waived": 0.0253444919,
+       "roi_fee_waived_lo": -0.0122165388,
+       "roi_fee_waived_hi": 0.0607303197,
+       "roi_as_quoted": -0.0212926009,
+       "roi_as_quoted_lo": -0.0590909361,
+       "roi_as_quoted_hi": 0.014267578
+      },
+      {
+       "rule": "posterior @ tau=0.75",
+       "n_bets": 19191,
+       "roi_fee_waived": 0.0262917156,
+       "roi_fee_waived_lo": -0.0088516749,
+       "roi_fee_waived_hi": 0.0622358976,
+       "roi_as_quoted": -0.023609396,
+       "roi_as_quoted_lo": -0.0583825246,
+       "roi_as_quoted_hi": 0.0120555015
+      },
+      {
+       "rule": "threshold @ matched (t=0.0076)",
+       "n_bets": 19191,
+       "roi_fee_waived": 0.0367891586,
+       "roi_fee_waived_lo": 0.000588422,
+       "roi_fee_waived_hi": 0.0749795088,
+       "roi_as_quoted": -0.0143999068,
+       "roi_as_quoted_lo": -0.0508953009,
+       "roi_as_quoted_hi": 0.0238103845
+      }
+     ],
+     "tau_beta": 0.65,
+     "tau_bayes": 0.75,
+     "gain_vs_matched_bayes": -0.010497443036151216,
+     "gain_vs_matched_beta": 0.0018179283594915024,
+     "posterior_interval_excludes_zero_bayes": false
+    },
+    "all_stats": {
+     "beta": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 16756,
+       "roi_fee_waived": 0.0068314602,
+       "roi_fee_waived_lo": -0.0275595215,
+       "roi_fee_waived_hi": 0.0402309268,
+       "roi_as_quoted": -0.0395364373,
+       "roi_as_quoted_lo": -0.0738767337,
+       "roi_as_quoted_hi": -0.006238752
+      },
+      {
+       "rule": "posterior @ tau=0.65",
+       "n_bets": 23912,
+       "roi_fee_waived": 0.0247979424,
+       "roi_fee_waived_lo": -0.0095264891,
+       "roi_fee_waived_hi": 0.0618413182,
+       "roi_as_quoted": -0.0272814438,
+       "roi_as_quoted_lo": -0.0617292288,
+       "roi_as_quoted_hi": 0.0095330819
+      },
+      {
+       "rule": "threshold @ matched (t=0.0042)",
+       "n_bets": 23912,
+       "roi_fee_waived": 0.0231498547,
+       "roi_fee_waived_lo": -0.0115423099,
+       "roi_fee_waived_hi": 0.0581506859,
+       "roi_as_quoted": -0.0278958128,
+       "roi_as_quoted_lo": -0.0627472871,
+       "roi_as_quoted_hi": 0.0070188715
+      }
+     ],
+     "bayes_width": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 16756,
+       "roi_fee_waived": 0.0068314602,
+       "roi_fee_waived_lo": -0.0275595215,
+       "roi_fee_waived_hi": 0.0402309268,
+       "roi_as_quoted": -0.0395364373,
+       "roi_as_quoted_lo": -0.0738767337,
+       "roi_as_quoted_hi": -0.006238752
+      },
+      {
+       "rule": "posterior @ tau=0.75",
+       "n_bets": 21200,
+       "roi_fee_waived": 0.013767986,
+       "roi_fee_waived_lo": -0.0188178123,
+       "roi_fee_waived_hi": 0.0472098739,
+       "roi_as_quoted": -0.0354376991,
+       "roi_as_quoted_lo": -0.0682707324,
+       "roi_as_quoted_hi": -0.0018798904
+      },
+      {
+       "rule": "threshold @ matched (t=0.0086)",
+       "n_bets": 21200,
+       "roi_fee_waived": 0.018788094,
+       "roi_fee_waived_lo": -0.0134107343,
+       "roi_fee_waived_hi": 0.0533686722,
+       "roi_as_quoted": -0.0311725306,
+       "roi_as_quoted_lo": -0.0633909026,
+       "roi_as_quoted_hi": 0.0031063531
+      }
+     ],
+     "tau_beta": 0.65,
+     "tau_bayes": 0.75,
+     "gain_vs_matched_bayes": -0.005020107959708569,
+     "gain_vs_matched_beta": 0.0016480877732025188,
+     "posterior_interval_excludes_zero_bayes": false
+    },
+    "passes_primary": false,
+    "passes_pooled": false,
+    "passes": false,
+    "hr_at_hr_chosen_tau": {
+     "beta": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 1395,
+       "roi_fee_waived": 0.0597924532,
+       "roi_fee_waived_lo": -0.10974424,
+       "roi_fee_waived_hi": 0.2233077092,
+       "roi_as_quoted": -0.0467876398,
+       "roi_as_quoted_lo": -0.2170893855,
+       "roi_as_quoted_hi": 0.1149650911
+      },
+      {
+       "rule": "posterior @ tau=0.75",
+       "n_bets": 3380,
+       "roi_fee_waived": 0.0009260475,
+       "roi_fee_waived_lo": -0.077564591,
+       "roi_fee_waived_hi": 0.0819190849,
+       "roi_as_quoted": -0.070465297,
+       "roi_as_quoted_lo": -0.1503358128,
+       "roi_as_quoted_hi": 0.010380225
+      },
+      {
+       "rule": "threshold @ matched (t=0.0056)",
+       "n_bets": 3380,
+       "roi_fee_waived": -0.0086284997,
+       "roi_fee_waived_lo": -0.0971531466,
+       "roi_fee_waived_hi": 0.0827143172,
+       "roi_as_quoted": -0.0907754437,
+       "roi_as_quoted_lo": -0.1798598589,
+       "roi_as_quoted_hi": -0.0006086428
+      }
+     ],
+     "bayes_width": [
+      {
+       "rule": "threshold @ 2pt",
+       "n_bets": 1395,
+       "roi_fee_waived": 0.0597924532,
+       "roi_fee_waived_lo": -0.10974424,
+       "roi_fee_waived_hi": 0.2233077092,
+       "roi_as_quoted": -0.0467876398,
+       "roi_as_quoted_lo": -0.2170893855,
+       "roi_as_quoted_hi": 0.1149650911
+      },
+      {
+       "rule": "posterior @ tau=0.75",
+       "n_bets": 3096,
+       "roi_fee_waived": -0.0282973555,
+       "roi_fee_waived_lo": -0.1090672153,
+       "roi_fee_waived_hi": 0.0542205004,
+       "roi_as_quoted": -0.0984923103,
+       "roi_as_quoted_lo": -0.1803481002,
+       "roi_as_quoted_hi": -0.0169267116
+      },
+      {
+       "rule": "threshold @ matched (t=0.0066)",
+       "n_bets": 3096,
+       "roi_fee_waived": -0.0079629558,
+       "roi_fee_waived_lo": -0.1014190635,
+       "roi_fee_waived_hi": 0.0906303589,
+       "roi_as_quoted": -0.0941566057,
+       "roi_as_quoted_lo": -0.1881630117,
+       "roi_as_quoted_hi": 0.0043362912
+      }
+     ],
+     "tau_beta": 0.75,
+     "tau_bayes": 0.75,
+     "gain_vs_matched_bayes": -0.020334399722228683,
+     "gain_vs_matched_beta": 0.009554547147471894,
+     "posterior_interval_excludes_zero_bayes": false
+    }
+   },
+   "3_winners_curse_the_width_ranks_the_edges": {
+    "threshold": 0.02,
+    "edge_threshold": 0.02,
+    "hr": {
+     "beta": {
+      "n": 1395,
+      "terciles": [
+       {
+        "rule": "bottom",
+        "n_bets": 465,
+        "hit_rate": 0.23225806451612904,
+        "roi_fee_waived": 0.2824537103548443,
+        "roi_fee_waived_lo": -0.029122276050940574,
+        "roi_fee_waived_hi": 0.5913623175514701,
+        "roi_as_quoted": 0.18056938402008996,
+        "roi_as_quoted_lo": -0.13354982880113936,
+        "roi_as_quoted_hi": 0.4891133562414483,
+        "p_edge_lo": 0.7171624256669354,
+        "p_edge_hi": 0.9025615048144711
+       },
+       {
+        "rule": "mid",
+        "n_bets": 465,
+        "hit_rate": 0.23440860215053763,
+        "roi_fee_waived": 0.020645532502088372,
+        "roi_fee_waived_lo": -0.2777758785655614,
+        "roi_fee_waived_hi": 0.3557504486685134,
+        "roi_as_quoted": -0.08851623902811485,
+        "roi_as_quoted_lo": -0.3909358636467944,
+        "roi_as_quoted_hi": 0.2432502417244481,
+        "p_edge_lo": 0.9026453229348026,
+        "p_edge_hi": 0.9564675859555636
+       },
+       {
+        "rule": "top",
+        "n_bets": 465,
+        "hit_rate": 0.2645161290322581,
+        "roi_fee_waived": -0.12372188312088865,
+        "roi_fee_waived_lo": -0.3744851144719779,
+        "roi_fee_waived_hi": 0.14217566966898737,
+        "roi_as_quoted": -0.23241606445597937,
+        "roi_as_quoted_lo": -0.4881939355315383,
+        "roi_as_quoted_hi": 0.03658561452190513,
+        "p_edge_lo": 0.9566214188942639,
+        "p_edge_hi": 1.0
+       }
+      ],
+      "top_minus_bottom": -0.40617559347573295
+     },
+     "bayes_width": {
+      "n": 1395,
+      "terciles": [
+       {
+        "rule": "bottom",
+        "n_bets": 465,
+        "hit_rate": 0.25806451612903225,
+        "roi_fee_waived": 0.35979261189224315,
+        "roi_fee_waived_lo": 0.05309706502400106,
+        "roi_fee_waived_hi": 0.6680780342763876,
+        "roi_as_quoted": 0.2659238935526577,
+        "roi_as_quoted_lo": -0.04011404329168195,
+        "roi_as_quoted_hi": 0.5729686381995418,
+        "p_edge_lo": 0.6283263773971584,
+        "p_edge_hi": 0.8576316882091046
+       },
+       {
+        "rule": "mid",
+        "n_bets": 465,
+        "hit_rate": 0.2086021505376344,
+        "roi_fee_waived": -0.10486987829278502,
+        "roi_fee_waived_lo": -0.3908224418402748,
+        "roi_fee_waived_hi": 0.2186998863548931,
+        "roi_as_quoted": -0.2149430022249336,
+        "roi_as_quoted_lo": -0.49893413617851196,
+        "roi_as_quoted_hi": 0.10614503983400358,
+        "p_edge_lo": 0.8576902699627169,
+        "p_edge_hi": 0.9278012542748565
+       },
+       {
+        "rule": "top",
+        "n_bets": 465,
+        "hit_rate": 0.2645161290322581,
+        "roi_fee_waived": -0.07554537386341413,
+        "roi_fee_waived_lo": -0.33158620401127603,
+        "roi_fee_waived_hi": 0.1997992169875019,
+        "roi_as_quoted": -0.19134381079172844,
+        "roi_as_quoted_lo": -0.44954995936065745,
+        "roi_as_quoted_hi": 0.08263529631445764,
+        "p_edge_lo": 0.9278040129998747,
+        "p_edge_hi": 0.9999999999998489
+       }
+      ],
+      "top_minus_bottom": -0.4353379857556573
+     }
+    },
+    "pooled_hr_hits_tb": {
+     "beta": {
+      "n": 14634,
+      "terciles": [
+       {
+        "rule": "bottom",
+        "n_bets": 4878,
+        "hit_rate": 0.3925789257892579,
+        "roi_fee_waived": 0.07393715533980992,
+        "roi_fee_waived_lo": 8.283055884670375e-05,
+        "roi_fee_waived_hi": 0.14958720526338398,
+        "roi_as_quoted": 0.0055312171099487235,
+        "roi_as_quoted_lo": -0.0682467703476547,
+        "roi_as_quoted_hi": 0.0811116588831259,
+        "p_edge_lo": 0.7171624256669354,
+        "p_edge_hi": 0.9964743040730553
+       },
+       {
+        "rule": "mid",
+        "n_bets": 4878,
+        "hit_rate": 0.474579745797458,
+        "roi_fee_waived": 0.04270552684013276,
+        "roi_fee_waived_lo": -0.012478579850434324,
+        "roi_fee_waived_hi": 0.0940582475159616,
+        "roi_as_quoted": -0.00729190830551298,
+        "roi_as_quoted_lo": -0.0618959523734625,
+        "roi_as_quoted_hi": 0.044403796524024444,
+        "p_edge_lo": 0.996478855176093,
+        "p_edge_hi": 0.9999999969383124
+       },
+       {
+        "rule": "top",
+        "n_bets": 4878,
+        "hit_rate": 0.7490774907749077,
+        "roi_fee_waived": -0.0406092066148295,
+        "roi_fee_waived_lo": -0.06179363404348022,
+        "roi_fee_waived_hi": -0.01953991686595807,
+        "roi_as_quoted": -0.06211711163423222,
+        "roi_as_quoted_lo": -0.08338727031382176,
+        "roi_as_quoted_hi": -0.04112272987362945,
+        "p_edge_lo": 0.9999999969424267,
+        "p_edge_hi": 1.0
+       }
+      ],
+      "top_minus_bottom": -0.11454636195463942
+     },
+     "bayes_width": {
+      "n": 14634,
+      "terciles": [
+       {
+        "rule": "bottom",
+        "n_bets": 4878,
+        "hit_rate": 0.3956539565395654,
+        "roi_fee_waived": 0.08492224597784671,
+        "roi_fee_waived_lo": 0.007722523834310997,
+        "roi_fee_waived_hi": 0.1659390953489384,
+        "roi_as_quoted": 0.016829435258198824,
+        "roi_as_quoted_lo": -0.06080182124140338,
+        "roi_as_quoted_hi": 0.09770902702398873,
+        "p_edge_lo": 0.6283263773971584,
+        "p_edge_hi": 0.9905020956574184
+       },
+       {
+        "rule": "mid",
+        "n_bets": 4878,
+        "hit_rate": 0.47293972939729395,
+        "roi_fee_waived": 0.028445647590965437,
+        "roi_fee_waived_lo": -0.019299302541746246,
+        "roi_fee_waived_hi": 0.07465147312626357,
+        "roi_as_quoted": -0.021665979228571285,
+        "roi_as_quoted_lo": -0.06952323233002258,
+        "roi_as_quoted_hi": 0.024565257549703977,
+        "p_edge_lo": 0.9905042648384127,
+        "p_edge_hi": 0.9999999102591274
+       },
+       {
+        "rule": "top",
+        "n_bets": 4878,
+        "hit_rate": 0.7476424764247642,
+        "roi_fee_waived": -0.03733441800369895,
+        "roi_fee_waived_lo": -0.05945198989099097,
+        "roi_fee_waived_hi": -0.015588400013724338,
+        "roi_as_quoted": -0.05904125885942404,
+        "roi_as_quoted_lo": -0.08105879165175262,
+        "roi_as_quoted_hi": -0.03739968640330114,
+        "p_edge_lo": 0.9999999113420368,
+        "p_edge_hi": 1.0
+       }
+      ],
+      "top_minus_bottom": -0.12225666398154567
+     }
+    },
+    "passes_primary": false,
+    "passes_pooled": false,
+    "passes": false
+   },
+   "4_null_the_marginal_price_does_not_move": {
+    "tolerance": 0.0001,
+    "by_stat": {
+     "hits": {
+      "n": 21088,
+      "diff": -9.894906809897758e-06,
+      "se": 3.761337360727962e-06,
+      "t": -2.630688465546924
+     },
+     "hr": {
+      "n": 11892,
+      "diff": -4.173774784932645e-06,
+      "se": 3.395412842609519e-06,
+      "t": -1.2292392643849817
+     },
+     "k": {
+      "n": 6156,
+      "diff": 1.4589243797303425e-05,
+      "se": 2.8846086007538942e-05,
+      "t": 0.505761641059051
+     },
+     "tb": {
+      "n": 22602,
+      "diff": -6.618383103745926e-06,
+      "se": 7.1243283634918434e-06,
+      "t": -0.9289834446235521
+     },
+     "all": {
+      "n": 61738,
+      "diff": -5.152023626359916e-06,
+      "se": 4.466146212708801e-06,
+      "t": -1.1535725390493021
+     }
+    },
+    "worst_abs_diff": 1.4589243797303425e-05,
+    "passes": true,
+    "vs_point_price": {
+     "hits": {
+      "n": 21088,
+      "diff": -1.5553111578134886e-05,
+      "se": 4.23082850020945e-06,
+      "t": -3.676138509836766
+     },
+     "hr": {
+      "n": 11892,
+      "diff": -5.130078217894904e-06,
+      "se": 3.1220699793424493e-06,
+      "t": -1.6431656727231236
+     },
+     "k": {
+      "n": 6156,
+      "diff": -0.00016000411459260466,
+      "se": 4.680908177451102e-05,
+      "t": -3.4182280131743963
+     },
+     "tb": {
+      "n": 22602,
+      "diff": -4.8519979421422654e-05,
+      "se": 1.0205706557508572e-05,
+      "t": -4.754200911814909
+     },
+     "all": {
+      "n": 61738,
+      "diff": -4.001789516087311e-05,
+      "se": 6.098165320178309e-06,
+      "t": -6.562284401909753
+     }
+    }
+   },
+   "5_negative_control_strikeouts_unchanged": {
+    "n": 6248,
+    "p_over_bb_identical": false,
+    "p_over_sd_identical": false,
+    "max_abs_diff_p_over_bb": 0.008327990876341063,
+    "max_abs_diff_p_over_sd": 0.00542379962307761,
+    "second_half_beta": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 2122,
+      "roi_fee_waived": -0.1208404085,
+      "roi_fee_waived_lo": -0.196148025,
+      "roi_fee_waived_hi": -0.0402192525,
+      "roi_as_quoted": -0.1653518482,
+      "roi_as_quoted_lo": -0.2401952884,
+      "roi_as_quoted_hi": -0.0849005231
+     },
+     {
+      "rule": "posterior @ tau=0.65",
+      "n_bets": 2342,
+      "roi_fee_waived": -0.1047753174,
+      "roi_fee_waived_lo": -0.1848701698,
+      "roi_fee_waived_hi": -0.0167993902,
+      "roi_as_quoted": -0.1486856066,
+      "roi_as_quoted_lo": -0.2282853107,
+      "roi_as_quoted_hi": -0.0604211762
+     },
+     {
+      "rule": "threshold @ matched (t=0.0131)",
+      "n_bets": 2342,
+      "roi_fee_waived": -0.1030608008,
+      "roi_fee_waived_lo": -0.1792222,
+      "roi_fee_waived_hi": -0.020763884,
+      "roi_as_quoted": -0.1473402035,
+      "roi_as_quoted_lo": -0.2233484697,
+      "roi_as_quoted_hi": -0.0644828641
+     }
+    ],
+    "second_half_bayes_width": [
+     {
+      "rule": "threshold @ 2pt",
+      "n_bets": 2122,
+      "roi_fee_waived": -0.1208404085,
+      "roi_fee_waived_lo": -0.196148025,
+      "roi_fee_waived_hi": -0.0402192525,
+      "roi_as_quoted": -0.1653518482,
+      "roi_as_quoted_lo": -0.2401952884,
+      "roi_as_quoted_hi": -0.0849005231
+     },
+     {
+      "rule": "posterior @ tau=0.75",
+      "n_bets": 2009,
+      "roi_fee_waived": -0.1058651118,
+      "roi_fee_waived_lo": -0.1925087455,
+      "roi_fee_waived_hi": -0.0057713052,
+      "roi_as_quoted": -0.1484277266,
+      "roi_as_quoted_lo": -0.2356351639,
+      "roi_as_quoted_hi": -0.0488592686
+     },
+     {
+      "rule": "threshold @ matched (t=0.0233)",
+      "n_bets": 2009,
+      "roi_fee_waived": -0.1346768849,
+      "roi_fee_waived_lo": -0.209721744,
+      "roi_fee_waived_hi": -0.0577150126,
+      "roi_as_quoted": -0.1791314914,
+      "roi_as_quoted_lo": -0.2534989877,
+      "roi_as_quoted_hi": -0.101881489
+     }
+    ],
+    "passes": false
+   }
+  }
+ },
+ "fits": [
+  {
+   "component": "k_rate",
+   "cutoff": "2026-07-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "k_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 138.9,
+   "diagnostics": {
+    "max_rhat": 1.0305707616712851,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 144.35150621719748,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6495014464808831,
+     0.7254923174216283
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 723,
+   "n_unseen": 232,
+   "sd_median": 0.03350035616533248,
+   "sd_median_seen": 0.027699821049152296,
+   "sd_median_unseen": 0.06144958296985759,
+   "partial_season": 2026,
+   "partial_pa": 109301,
+   "partial_batters": 597,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-12",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -1.27,
+   "n_cells": 2133,
+   "n_pa": 471597,
+   "n_batters": 723,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.13411364137371812,
+    "sd": 0.008775883885268664,
+    "q05": 0.11971583474902353,
+    "q95": 0.14800542699453867
+   }
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-07-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "bb_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 100.3,
+   "diagnostics": {
+    "max_rhat": 1.0277904562090159,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 242.6187644624497,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6604725926952384,
+     0.7148991370622874
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 723,
+   "n_unseen": 232,
+   "sd_median": 0.01753526251718503,
+   "sd_median_seen": 0.01509311286812356,
+   "sd_median_unseen": 0.022341350713876475,
+   "partial_season": 2026,
+   "partial_pa": 109301,
+   "partial_batters": 597,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-12",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -2.4170002699271924,
+   "n_cells": 2133,
+   "n_pa": 471597,
+   "n_batters": 723,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.15284780427625394,
+    "sd": 0.012864119918036385,
+    "q05": 0.13133598561402426,
+    "q95": 0.17434391434279223
+   }
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-07-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 74.9,
+   "diagnostics": {
+    "max_rhat": 1.0250670046583237,
+    "max_rhat_var": "sigma_step",
+    "min_ess_bulk": 97.70676065689115,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.678133913047865,
+     0.7395329297675654
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 723,
+   "n_unseen": 232,
+   "sd_median": 0.008044788729867289,
+   "sd_median_seen": 0.007095574001998671,
+   "sd_median_unseen": 0.011522858025104755,
+   "partial_season": 2026,
+   "partial_pa": 109301,
+   "partial_batters": 597,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-12",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -3.4760816260565557,
+   "n_cells": 2133,
+   "n_pa": 471597,
+   "n_batters": 723,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.14796463032081208,
+    "sd": 0.027510166705384184,
+    "q05": 0.09923691353799165,
+    "q95": 0.19135693738571127
+   }
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "k_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 139.2,
+   "diagnostics": {
+    "max_rhat": 1.0317484331478868,
+    "max_rhat_var": "sigma_ability",
+    "min_ess_bulk": 120.83767410174731,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.6484893064832279,
+     0.7101588783442767
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.032170444525187455,
+   "sd_median_seen": 0.026637724296234625,
+   "sd_median_unseen": 0.06157503622560778,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -1.27,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.12917758123932005,
+    "sd": 0.009048060367866928,
+    "q05": 0.1143850025240009,
+    "q95": 0.14431846429370512
+   }
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "bb_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 101.1,
+   "diagnostics": {
+    "max_rhat": 1.0223912604303012,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 189.16737200640034,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7729277786081034,
+     0.6539079754966636
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.017290238880947998,
+   "sd_median_seen": 0.014757530009627564,
+   "sd_median_unseen": 0.022312569916692965,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -2.4170002699271924,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1564436296974994,
+    "sd": 0.012847026711070665,
+    "q05": 0.13484579424349577,
+    "q95": 0.177560616834854
+   }
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 89.9,
+   "diagnostics": {
+    "max_rhat": 1.0257475782533403,
+    "max_rhat_var": "z_ability",
+    "min_ess_bulk": 133.29704611562377,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.5895452200832715,
+     0.664669335519272
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.008014245712286306,
+   "sd_median_seen": 0.00696353660789065,
+   "sd_median_unseen": 0.011444470958712951,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -3.4760816260565557,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1510397228662292,
+    "sd": 0.026389510298859543,
+    "q05": 0.1074936923571254,
+    "q95": 0.19484641567665784
+   }
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "k_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 137.7,
+   "diagnostics": {
+    "max_rhat": 1.0234439117223542,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 259.2000201548293,
+    "min_ess_var": "beta_age2",
+    "divergences": 0,
+    "bfmi": [
+     0.7275500546258591,
+     0.7296631826862393
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 738,
+   "n_unseen": 221,
+   "sd_median": 0.03158855895760143,
+   "sd_median_seen": 0.02599723973967141,
+   "sd_median_unseen": 0.06131302109905822,
+   "partial_season": 2026,
+   "partial_pa": 139126,
+   "partial_batters": 632,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-14",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -1.27,
+   "n_cells": 2201,
+   "n_pa": 501361,
+   "n_batters": 738,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.12900077880722552,
+    "sd": 0.008776180136264845,
+    "q05": 0.11391221581571645,
+    "q95": 0.143437509170706
+   }
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "bb_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 99.9,
+   "diagnostics": {
+    "max_rhat": 1.0177338539535588,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 200.36137885383422,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.668092008111661,
+     0.7453219521337874
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 738,
+   "n_unseen": 221,
+   "sd_median": 0.01691999325823743,
+   "sd_median_seen": 0.014424045810099723,
+   "sd_median_unseen": 0.02249749413704985,
+   "partial_season": 2026,
+   "partial_pa": 139126,
+   "partial_batters": 632,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-14",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -2.4170002699271924,
+   "n_cells": 2201,
+   "n_pa": 501361,
+   "n_batters": 738,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1516676247516534,
+    "sd": 0.013611381302955613,
+    "q05": 0.1289529381215895,
+    "q95": 0.17414138531813514
+   }
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-15",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 89.2,
+   "diagnostics": {
+    "max_rhat": 1.0239795574535548,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 183.21480460863697,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6112685350318854,
+     0.7145864403759625
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 738,
+   "n_unseen": 221,
+   "sd_median": 0.007698368478854005,
+   "sd_median_seen": 0.006751792480967776,
+   "sd_median_unseen": 0.011587479440838665,
+   "partial_season": 2026,
+   "partial_pa": 139126,
+   "partial_batters": 632,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-14",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -3.4760816260565557,
+   "n_cells": 2201,
+   "n_pa": 501361,
+   "n_batters": 738,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.13831159935886841,
+    "sd": 0.028451653050775967,
+    "q05": 0.08690940112816757,
+    "q95": 0.18125917328943988
+   }
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-09-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "k_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 140.6,
+   "diagnostics": {
+    "max_rhat": 1.0244395027716906,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 241.5379968312459,
+    "min_ess_var": "sigma_ability",
+    "divergences": 0,
+    "bfmi": [
+     0.7053053008656143,
+     0.8563474976474806
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 751,
+   "n_unseen": 208,
+   "sd_median": 0.030947876232700632,
+   "sd_median_seen": 0.025634809794769245,
+   "sd_median_unseen": 0.06163457635486605,
+   "partial_season": 2026,
+   "partial_pa": 156555,
+   "partial_batters": 641,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -1.27,
+   "n_cells": 2234,
+   "n_pa": 519014,
+   "n_batters": 751,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.12809059884210872,
+    "sd": 0.008720556808834774,
+    "q05": 0.11392905505590402,
+    "q95": 0.1423408848576829
+   }
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-09-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "bb_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 106.5,
+   "diagnostics": {
+    "max_rhat": 1.0301537085864623,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 178.56070497525067,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7037814845949647,
+     0.7593554058049231
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 751,
+   "n_unseen": 208,
+   "sd_median": 0.016229479727994784,
+   "sd_median_seen": 0.014075838713211922,
+   "sd_median_unseen": 0.022417950547734683,
+   "partial_season": 2026,
+   "partial_pa": 156555,
+   "partial_batters": 641,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -2.417060362289171,
+   "n_cells": 2234,
+   "n_pa": 519014,
+   "n_batters": 751,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.14538442347130423,
+    "sd": 0.012159221501317896,
+    "q05": 0.1249566273247022,
+    "q95": 0.1657997109663515
+   }
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-09-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": true,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 91.9,
+   "diagnostics": {
+    "max_rhat": 1.0230183322745947,
+    "max_rhat_var": "player_ability",
+    "min_ess_bulk": 196.18797573521275,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6839938324571441,
+     0.7272524556242489
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 751,
+   "n_unseen": 208,
+   "sd_median": 0.0075416013135486395,
+   "sd_median_seen": 0.006714916716675257,
+   "sd_median_unseen": 0.011431500131189876,
+   "partial_season": 2026,
+   "partial_pa": 156555,
+   "partial_batters": 641,
+   "first_game": "2026-03-25",
+   "last_game": "2026-08-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -3.4761385041866455,
+   "n_cells": 2234,
+   "n_pa": 519014,
+   "n_batters": 751,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.13849609703009705,
+    "sd": 0.022616554825162116,
+    "q05": 0.09954244827820997,
+    "q95": 0.17368366059367188
+   }
+  }
+ ],
+ "checkpoint_check": [
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-07-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 175,
+   "n_matched": 175,
+   "max_abs_diff": 0.005472932655573914,
+   "mean_abs_diff": 0.0013305152960277494,
+   "note": null
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-09-01",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-07-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 175,
+   "n_matched": 175,
+   "max_abs_diff": 0.006563416943242431,
+   "mean_abs_diff": 0.001408130766258717,
+   "note": null
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-09-01",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-07-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 131,
+   "n_matched": 131,
+   "max_abs_diff": 0.012315219836115499,
+   "mean_abs_diff": 0.0036214316683978024,
+   "note": null
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-15",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-09-01",
+   "n_checkpoint": 0,
+   "n_matched": 0,
+   "max_abs_diff": null,
+   "mean_abs_diff": null,
+   "note": "cutoff not in the dense harness's biweekly grid"
+  }
+ ],
+ "neutral_park_checkpoint_check": [
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 175,
+   "n_matched": 175,
+   "max_abs_diff": 0.0,
+   "mean_abs_diff": 0.0,
+   "note": null
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 175,
+   "n_matched": 175,
+   "max_abs_diff": 0.0,
+   "mean_abs_diff": 0.0,
+   "note": null
+  },
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-01",
+   "n_checkpoint": 131,
+   "n_matched": 131,
+   "max_abs_diff": 0.0,
+   "mean_abs_diff": 0.0,
+   "note": null
+  }
+ ],
+ "neutral_park_fits": [
+  {
+   "component": "k_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "k_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": false,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 142.4,
+   "diagnostics": {
+    "max_rhat": 1.0295216236032119,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 184.19866487294306,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.6030956788220002,
+     0.7161710582421681
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.03206397440416234,
+   "sd_median_seen": 0.026439429786683878,
+   "sd_median_unseen": 0.06090088519597807,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -1.27,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1297696499523271,
+    "sd": 0.0094444121295293,
+    "q05": 0.11410902649314646,
+    "q95": 0.1463981166424399
+   }
+  },
+  {
+   "component": "bb_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "bb_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": false,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 97.6,
+   "diagnostics": {
+    "max_rhat": 1.0199563184027312,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 162.05593825503342,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.7621172812584571,
+     0.681788793241286
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.01707250002477325,
+   "sd_median_seen": 0.014654593047199502,
+   "sd_median_unseen": 0.022296258940728134,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -2.4170002699271924,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1521327644667603,
+    "sd": 0.012979139983361572,
+    "q05": 0.12968349695695847,
+    "q95": 0.17328074157005985
+   }
+  },
+  {
+   "component": "hr_rate",
+   "cutoff": "2026-08-01",
+   "variant": "ability_walk",
+   "arm": "bayes_walk",
+   "scale": "hr_rate, 2x500 draws (tune 500), numpyro, no-pitcher, ability=walk, age=quadratic",
+   "park_factors": false,
+   "seasons": [
+    2024,
+    2025,
+    2026
+   ],
+   "elapsed_s": 88.5,
+   "diagnostics": {
+    "max_rhat": 1.0269689288425765,
+    "max_rhat_var": "z_step",
+    "min_ess_bulk": 179.32558752145636,
+    "min_ess_var": "sigma_step",
+    "divergences": 0,
+    "bfmi": [
+     0.621771725995928,
+     0.6229234666156259
+    ],
+    "bfmi_ok": true,
+    "healthy": false
+   },
+   "n_seen": 732,
+   "n_unseen": 226,
+   "sd_median": 0.007746463802586586,
+   "sd_median_seen": 0.006810329565220249,
+   "sd_median_unseen": 0.011276492243444076,
+   "partial_season": 2026,
+   "partial_pa": 125041,
+   "partial_batters": 611,
+   "first_game": "2026-03-25",
+   "last_game": "2026-07-31",
+   "prior_pa": 365222,
+   "covariates": null,
+   "league_init_mu": -3.4760816260565557,
+   "n_cells": 2156,
+   "n_pa": 487422,
+   "n_batters": 732,
+   "n_pitchers": 0,
+   "n_seasons": 3,
+   "sigma_step": {
+    "mean": 0.1400255032933355,
+    "sd": 0.027288412666896803,
+    "q05": 0.09100579298950355,
+    "q95": 0.1813281097731041
+   }
+  }
+ ],
+ "width_audit": {
+  "dates": 34,
+  "dates_without_cutoff": 0,
+  "player_dates": 34533,
+  "player_component_applied": 78096,
+  "player_component_missing": 25503,
+  "players_without_row": 8501,
+  "floor_bound": 0,
+  "cutoff_used": {
+   "2026-07-31": "2026-07-15",
+   "2026-08-01": "2026-08-01",
+   "2026-08-02": "2026-08-01",
+   "2026-08-03": "2026-08-01",
+   "2026-08-04": "2026-08-01",
+   "2026-08-05": "2026-08-01",
+   "2026-08-06": "2026-08-01",
+   "2026-08-07": "2026-08-01",
+   "2026-08-08": "2026-08-01",
+   "2026-08-09": "2026-08-01",
+   "2026-08-10": "2026-08-01",
+   "2026-08-11": "2026-08-01",
+   "2026-08-12": "2026-08-01",
+   "2026-08-13": "2026-08-01",
+   "2026-08-14": "2026-08-01",
+   "2026-08-15": "2026-08-15",
+   "2026-08-16": "2026-08-15",
+   "2026-08-17": "2026-08-15",
+   "2026-08-18": "2026-08-15",
+   "2026-08-19": "2026-08-15",
+   "2026-08-20": "2026-08-15",
+   "2026-08-21": "2026-08-15",
+   "2026-08-22": "2026-08-15",
+   "2026-08-23": "2026-08-15",
+   "2026-08-24": "2026-08-15",
+   "2026-08-25": "2026-08-15",
+   "2026-08-26": "2026-08-15",
+   "2026-08-27": "2026-08-15",
+   "2026-08-28": "2026-08-15",
+   "2026-08-29": "2026-08-15",
+   "2026-08-30": "2026-08-15",
+   "2026-08-31": "2026-08-15",
+   "2026-09-01": "2026-09-01",
+   "2026-09-02": "2026-09-01"
+  }
+ }
+}
