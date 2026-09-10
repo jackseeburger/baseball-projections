@@ -1,0 +1,29 @@
+[
+ {
+  "component": "bb_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 175,
+  "n_matched": 175,
+  "max_abs_diff": 0.0,
+  "mean_abs_diff": 0.0,
+  "note": null
+ },
+ {
+  "component": "hr_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 175,
+  "n_matched": 175,
+  "max_abs_diff": 0.0,
+  "mean_abs_diff": 0.0,
+  "note": null
+ },
+ {
+  "component": "k_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 131,
+  "n_matched": 131,
+  "max_abs_diff": 0.0,
+  "mean_abs_diff": 0.0,
+  "note": null
+ }
+]

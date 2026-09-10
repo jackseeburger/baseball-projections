@@ -570,7 +570,21 @@ def build(as_of: str, *, out_dir: Path = OUT_DIR, seasons_path: Path = SEASONS_P
     from src.data.pa_outcomes import load_pa_outcomes
 
     previous, previous_name = newest_previous(out_dir)
-    ensure_training_pa_outcomes(training_pa_seasons(), PA_OUTCOMES_DIR)
+    missing = ensure_training_pa_outcomes(training_pa_seasons(), PA_OUTCOMES_DIR)
+    if missing:
+        # Without the cells the live engines train on, the only thing this
+        # build could publish is tuned Marcel wearing the live engine's
+        # document, which is exactly what the site test forbids
+        # (tests/test_site/test_ros_json.py). Carry the last real projection
+        # forward and say why, the same way any other missing input is
+        # handled; the page shows the reason and the freshness check counts
+        # the days.
+        reason = (f"training PA outcomes for {missing} are not in R2, so the "
+                  f"live engines ({ENGINE}, {PITCHER_ENGINE}) cannot be fitted")
+        logger.error(reason)
+        if previous is not None:
+            return stale_document(previous, previous_name, reason, as_of)
+        return empty_document(reason, as_of)
     try:
         import build_playing_time as bpt
 

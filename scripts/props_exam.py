@@ -33,10 +33,14 @@ Usage:
     python scripts/props_exam.py --matchup on --markdown
     python scripts/props_exam.py --maker --matchup on --markdown
     python scripts/props_exam.py --stats hits hr --thresholds 0.02 0.04
+    # the posterior columns widened by the hierarchical model (BAS-92)
+    python scripts/props_exam.py --matchup on --posterior \\
+        --bayes-width data/eval/bas92
 """
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import sys
 from pathlib import Path
@@ -138,13 +142,21 @@ def contexts(closes: pd.DataFrame, season: int, stats: tuple,
 
 
 def price_with(closes: pd.DataFrame, ctx: dict, stats: tuple,
-               pitcher_bf: str, weight: float | None = None) -> pd.DataFrame:
-    """One priced frame, optionally at a different matchup weight."""
+               pitcher_bf: str, weight: float | None = None,
+               bayes_width=None, draw_streams: str = "shared") -> pd.DataFrame:
+    """One priced frame, optionally at a different matchup weight.
+
+    `bayes_width` is BAS-92's `props.BayesWidth` (docs/posterior-width.md) or
+    `None`, which is the served arm. It changes `p_over_bb`/`p_over_sd` and
+    nothing else, so the matchup weight search above never passes one: the
+    weight is chosen on `p_matchup`, which the arm cannot move.
+    """
     if weight is not None and ctx["matchup_ctx"] is not None:
         ctx["matchup_ctx"]["weight"] = float(weight)
     return props.price(closes, ctx["batter_ctx"], ctx["pitcher_ctx"],
                        ctx["slots"], stats=stats, pitcher_bf=pitcher_bf,
-                       matchup_ctx=ctx["matchup_ctx"])
+                       matchup_ctx=ctx["matchup_ctx"],
+                       bayes_width=bayes_width, draw_streams=draw_streams)
 
 
 def choose_weight(closes: pd.DataFrame, ctx: dict, stats: tuple,
@@ -573,6 +585,22 @@ def main() -> None:
                     help="also run the P(edge>0) selection rule and the "
                          "matched-bet-count comparison table (BAS-70); needs "
                          f"a {SD_COL!r} column on the priced frame")
+    ap.add_argument("--bayes-width", type=Path, default=None,
+                    help="directory of bayes_width_<cutoff>.parquet files "
+                         "(scripts/run_bayes_width.py): price the posterior "
+                         "columns with the hierarchical model's width on K, "
+                         "BB and HR instead of Marcel's Beta (BAS-92, "
+                         "docs/posterior-width.md). Off by default; the mean "
+                         "price is unchanged either way")
+    ap.add_argument("--width-audit", type=Path, default=None,
+                    help="write the bayes-width fallback / floor counters here")
+    ap.add_argument("--draw-streams", choices=list(props.DRAW_STREAMS),
+                    default="shared",
+                    help="'shared' is the one advancing generator the "
+                         "committed archive was priced under; 'isolated' "
+                         "seeds each (date, player) separately so a change to "
+                         "one player's Beta cannot move another player's "
+                         "Monte Carlo draws (props.DRAW_STREAMS)")
     ap.add_argument("--tau", type=float, default=None,
                     help="skip the walk-forward search and use this tau")
     ap.add_argument("--tau-grid", nargs="+", type=float, default=list(TAU_GRID))
@@ -595,22 +623,39 @@ def main() -> None:
     cut = all_dates[len(all_dates) // 2] if all_dates else ""
 
     weight_table = None
+    bayes_width = (props.BayesWidth.load(args.bayes_width)
+                   if args.bayes_width else None)
     if args.priced_in:
         priced = pd.read_parquet(args.priced_in)
         with_matchup = "p_matchup" in priced.columns
         weight = args.matchup_weight
+        if bayes_width is not None:
+            ap.error("--bayes-width re-prices the posterior columns, so it "
+                     "cannot be combined with --priced-in")
     else:
         weight = args.matchup_weight if args.matchup_weight is not None \
             else props.MATCHUP_WEIGHT
         ctx = contexts(closes, args.season, stats, with_matchup, weight)
         if with_matchup and args.matchup_weight is None:
+            # The weight is chosen on `p_matchup`, which the width arm does
+            # not touch, so the search runs on the served Beta either way and
+            # the chosen weight is the same number both arms are scored at.
             weight, weight_table = choose_weight(closes, ctx, stats,
                                                  args.pitcher_bf, cut,
                                                  tuple(args.matchup_weights))
             logger.info("matchup weight chosen on the first half: %.2f", weight)
-        priced = price_with(closes, ctx, stats, args.pitcher_bf, weight=weight)
+        priced = price_with(closes, ctx, stats, args.pitcher_bf, weight=weight,
+                            bayes_width=bayes_width,
+                            draw_streams=args.draw_streams)
     if args.priced_out:
         priced.to_parquet(args.priced_out, index=False)
+    if bayes_width is not None:
+        print("\n== bayes width coverage ==")
+        print(json.dumps({k: v for k, v in bayes_width.audit.items()
+                          if k != "cutoff_used"}, indent=1))
+        if args.width_audit:
+            args.width_audit.parent.mkdir(parents=True, exist_ok=True)
+            args.width_audit.write_text(json.dumps(bayes_width.audit, indent=1))
 
     models = ["p_model"] + (["p_matchup"] if with_matchup else []) \
         + ["p_market", "p_league"]

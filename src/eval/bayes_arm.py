@@ -176,6 +176,19 @@ class BayesArmConfig:
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
 
 
+def _quantile_kwargs(config: BayesArmConfig) -> dict:
+    """`extra_quantiles=...` only when some are actually asked for.
+
+    The projection functions in `src.models.pa_rate` on this branch take no
+    such argument — only the arms that score a posterior interval want one —
+    so forwarding an empty tuple unconditionally turns every fit into a
+    TypeError. Empty means "the frame every other arm has always written",
+    which is exactly what omitting the argument produces.
+    """
+    return ({"extra_quantiles": config.extra_quantiles}
+            if config.extra_quantiles else {})
+
+
 @dataclass
 class BayesFit:
     """One fitted model plus everything needed to score and to label it."""
@@ -213,13 +226,13 @@ class BayesFit:
             self.projections = generate_joint_projections(
                 self.trace, self.joint_data, self.component,
                 projection_year=self.predict_year, unseen=unseen,
-                extra_quantiles=self.config.extra_quantiles,
+                **_quantile_kwargs(self.config),
             )
             return self.projections
         self.projections = generate_projections(
             self.trace, self.model_data,
             projection_year=self.predict_year, unseen=unseen,
-            extra_quantiles=self.config.extra_quantiles,
+            **_quantile_kwargs(self.config),
         )
         return self.projections
 
@@ -297,7 +310,7 @@ def fit_bayes_k_rate(
 
     projections = generate_projections(
         trace, data, projection_year=predict_year, unseen=unseen,
-        extra_quantiles=config.extra_quantiles,
+        **_quantile_kwargs(config),
     )
     return BayesFit(
         cutoff_date=str(cutoff_date),
@@ -458,7 +471,7 @@ def fit_joint_rate(
         cutoff_date, predict_year, config)
     projections = generate_joint_projections(
         trace, data, comp.name, projection_year=predict_year, unseen=unseen,
-        extra_quantiles=config.extra_quantiles)
+        **_quantile_kwargs(config))
     return BayesFit(
         cutoff_date=str(cutoff_date),
         predict_year=int(predict_year),

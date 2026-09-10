@@ -1,0 +1,110 @@
+[
+ {
+  "component": "bb_rate",
+  "cutoff": "2026-07-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "bb_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 175,
+  "n_matched": 175,
+  "max_abs_diff": 0.005472932655573914,
+  "mean_abs_diff": 0.0013305152960277494,
+  "note": null
+ },
+ {
+  "component": "bb_rate",
+  "cutoff": "2026-08-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "bb_rate",
+  "cutoff": "2026-09-01",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "hr_rate",
+  "cutoff": "2026-07-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "hr_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 175,
+  "n_matched": 175,
+  "max_abs_diff": 0.006563416943242431,
+  "mean_abs_diff": 0.001408130766258717,
+  "note": null
+ },
+ {
+  "component": "hr_rate",
+  "cutoff": "2026-08-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "hr_rate",
+  "cutoff": "2026-09-01",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "k_rate",
+  "cutoff": "2026-07-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "k_rate",
+  "cutoff": "2026-08-01",
+  "n_checkpoint": 131,
+  "n_matched": 131,
+  "max_abs_diff": 0.012315219836115499,
+  "mean_abs_diff": 0.0036214316683978024,
+  "note": null
+ },
+ {
+  "component": "k_rate",
+  "cutoff": "2026-08-15",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ },
+ {
+  "component": "k_rate",
+  "cutoff": "2026-09-01",
+  "n_checkpoint": 0,
+  "n_matched": 0,
+  "max_abs_diff": null,
+  "mean_abs_diff": null,
+  "note": "cutoff not in the dense harness's biweekly grid"
+ }
+]

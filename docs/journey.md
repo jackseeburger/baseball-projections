@@ -83,11 +83,17 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    real, and useless multiplied onto Marcel because Marcel's inputs already
    carry the park; their place is the hierarchical models' offset, to be
    scored there. After those: time and age as a process. The posterior
-   width at layer 7 is pre-registered (BAS-92, `docs/posterior-width.md`):
-   the served props mean with the hierarchical model's per-player width
-   in place of the Beta's, scored on BAS-70's own archive, HR contracts
-   primary, the one exam the Bayes arm can win without beating Marcel's
-   point estimate.
+   width at layer 7 was tested (BAS-92, `docs/posterior-width.md`): the
+   served props mean with the hierarchical model's per-player width in
+   place of the Beta's, on BAS-70's own archive. **Vacuous by its own
+   rule**: the single-component width is 1.2× the Beta's in almost the
+   same order (Spearman .96), so it cannot reorder the bets; the
+   `P(edge > 0)` rule ranks saturated favourites on top and they are the
+   worst bucket under either width. Width that reorders contracts has to
+   come from structure (joint or measurement posteriors). Two bugs fixed
+   on the way: a shared pricing RNG that leaked one player's Beta into
+   every later player's draws, and a `bayes_arm` kwarg that made every
+   Bayes fit on main raise before sampling.
 2. **BAS-74**, the pitcher hierarchical model with stuff inside it; a
    command *level* aggregate (BAS-76's follow-up) once pre-registered.
 3. **ISO and BABIP** hierarchical models (their own denominators), after 1.
