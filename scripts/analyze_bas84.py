@@ -96,6 +96,45 @@ def comparisons(cells: pd.DataFrame, component: str) -> list[dict]:
     return rows
 
 
+def diagnostics_summary(fits: list[dict], variant: str) -> dict:
+    """Worst r-hat, worst ESS and total divergences across one arm's fits.
+
+    A joint fit is recorded once per component it serves, so the same
+    posterior appears up to three times; the summary counts *fits*, keyed on
+    (season, cutoff), not fit records, or the divergence total would be
+    tripled and the "how many fits were unhealthy" fraction would be
+    meaningless.
+    """
+    seen: dict = {}
+    for f in fits:
+        if f.get("variant") != variant:
+            continue
+        d = f.get("diagnostics") or {}
+        seen[(f.get("cutoff"),)] = d
+    if not seen:
+        return {}
+    rhat = [d["max_rhat"] for d in seen.values() if d.get("max_rhat") is not None]
+    ess = [d["min_ess_bulk"] for d in seen.values()
+           if d.get("min_ess_bulk") is not None]
+    div = [d.get("divergences", 0) for d in seen.values()]
+    healthy = [bool(d.get("healthy")) for d in seen.values()]
+    worst_var = {}
+    for d in seen.values():
+        worst_var[d.get("max_rhat_var")] = worst_var.get(d.get("max_rhat_var"), 0) + 1
+    return {
+        "n_fits": len(seen),
+        "max_rhat": float(np.nanmax(rhat)) if rhat else float("nan"),
+        "median_max_rhat": float(np.nanmedian(rhat)) if rhat else float("nan"),
+        "n_fits_rhat_above_1_01": int(sum(1 for r in rhat if r >= 1.01)),
+        "min_ess_bulk": float(np.nanmin(ess)) if ess else float("nan"),
+        "median_min_ess_bulk": float(np.nanmedian(ess)) if ess else float("nan"),
+        "total_divergences": int(sum(div)),
+        "n_fits_with_divergences": int(sum(1 for x in div if x)),
+        "n_fits_healthy": int(sum(healthy)),
+        "worst_rhat_variable_counts": worst_var,
+    }
+
+
 def joint_params_by_cutoff(fits: list[dict]) -> dict:
     """`{param: {cutoff: {mean, q2.5, q97.5}}}`, deduplicated across components.
 
@@ -153,6 +192,48 @@ def score_predictions(by_cutoff: dict) -> dict:
                 p5["correlations_pinned"].append({"param": name, "cutoff": cutoff,
                                                   "mean": s["mean"]})
     return {"prediction_1_correlations": p1, "prediction_5_vacuity": p5}
+
+
+def comparisons_by_season(cells: pd.DataFrame, component: str) -> dict:
+    """The same table, one season at a time.
+
+    Pooling four seasons hides a sign flip in a single one, and BAS-84's
+    prediction 1 is about whether the correlation structure is a fact about
+    hitters or a fact about one year — so the per-season cut is not a
+    robustness afterthought here, it is part of the question.
+    """
+    out = {}
+    for season, g in cells.groupby("season"):
+        out[int(season)] = comparisons(g, component)
+    return out
+
+
+def joint_params_by_season(fits: list[dict]) -> dict:
+    """`{season: {param: {mean, n_cutoffs, n_excluding_zero}}}`, deduplicated
+    across the components one joint fit serves."""
+    per: dict = {}
+    for f in fits:
+        params = f.get("joint_params") or {}
+        if not params:
+            continue
+        season = int(str(f.get("cutoff"))[:4])
+        for name, s in params.items():
+            per.setdefault(season, {}).setdefault(name, {})[f.get("cutoff")] = s
+    out: dict = {}
+    for season, params in sorted(per.items()):
+        for name, by_cutoff in sorted(params.items()):
+            means = np.asarray([v["mean"] for v in by_cutoff.values()],
+                               dtype="float64")
+            excl = sum(1 for v in by_cutoff.values()
+                       if v.get("q2.5") is not None
+                       and (v["q2.5"] > 0 or v["q97.5"] < 0))
+            out.setdefault(season, {})[name] = {
+                "n_cutoffs": int(means.size),
+                "mean": float(means.mean()),
+                "min": float(means.min()), "max": float(means.max()),
+                "n_excluding_zero": int(excl),
+            }
+    return out
 
 
 def render(rows: list[dict]) -> str:
@@ -230,11 +311,23 @@ def main() -> None:
                                   "min": float(e.min()), "max": float(e.max()),
                                   "total_hours": float(e.sum() / 3600.0)}
 
+    payload["diagnostics"] = {
+        "bayes_joint_walk": diagnostics_summary(fits, "joint+ability_walk"),
+        "bayes_walk": diagnostics_summary(fits, "ability_walk"),
+    }
+    payload["joint_params_by_season"] = joint_params_by_season(fits)
+    payload["comparisons_by_season"] = {}
+
     for component in payload["scope"]["components"]:
         rows = comparisons(cells, component)
         payload["comparisons"][component] = rows
-        print(f"\n=== {component} ===")
+        payload["comparisons_by_season"][component] = comparisons_by_season(
+            cells, component)
+        print(f"\n=== {component} (pooled) ===")
         print(render(rows))
+        for season, srows in payload["comparisons_by_season"][component].items():
+            print(f"\n--- {component}, {season} ---")
+            print(render(srows))
 
     print("\n=== ability correlations by cutoff ===")
     print(render_corr(by_cutoff))
@@ -244,6 +337,28 @@ def main() -> None:
               f"{s['n_below_floor']}/{s['n_cutoffs']} below {s['floor']}")
     pinned = payload["prediction_5_vacuity"]["correlations_pinned"]
     print(f"  correlations pinned at +-1: {len(pinned)}")
+
+    print("\n=== correlations by season ===")
+    for season, params in sorted(payload["joint_params_by_season"].items()):
+        for name, s in sorted(params.items()):
+            if not name.startswith("corr_"):
+                continue
+            print(f"  {season}  {name:<24} mean {s['mean']:+.3f}  "
+                  f"[{s['min']:+.3f}, {s['max']:+.3f}]  "
+                  f"{s['n_excluding_zero']}/{s['n_cutoffs']} cutoffs exclude 0")
+
+    print("\n=== sampler diagnostics ===")
+    for arm, d in payload["diagnostics"].items():
+        if not d:
+            continue
+        print(f"  {arm:<18} {d['n_fits']} fits  max r-hat {d['max_rhat']:.3f} "
+              f"(median {d['median_max_rhat']:.3f}, "
+              f"{d['n_fits_rhat_above_1_01']} at/above 1.01)  "
+              f"min ESS {d['min_ess_bulk']:.0f} "
+              f"(median {d['median_min_ess_bulk']:.0f})  "
+              f"divergences {d['total_divergences']} "
+              f"in {d['n_fits_with_divergences']} fits  "
+              f"healthy {d['n_fits_healthy']}/{d['n_fits']}")
 
     out = args.out or (args.in_dir / "analysis_bas84.json")
     out.write_text(json.dumps(payload, indent=1))
