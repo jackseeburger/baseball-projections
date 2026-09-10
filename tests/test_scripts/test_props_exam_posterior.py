@@ -9,6 +9,7 @@ archive end to end.
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -224,3 +225,67 @@ def test_posterior_comparison_by_stat_reports_pooled_and_per_stat():
     assert "all" in stats
     assert stats - {"all"} == set(second["prop_stat"].unique())
     assert len(table) == 3 * len(stats)   # three rules per stat group
+
+
+# ───────────────────────────── --whole-window ─────────────────────────────
+#
+# BAS-93 scores the July contracts with tau and the matchup weight frozen at
+# the values BAS-70 chose on a different window. Nothing is chosen on July, so
+# there is nothing to hold July's second half out from, and the split would
+# only halve the sample. `--whole-window` says so explicitly and refuses to run
+# unless every free constant really is fixed on the command line.
+
+def test_scored_rows_defaults_to_the_second_half():
+    frame, cut = synthetic_frame()
+    rows, span = props_exam.scored_rows(frame, cut, whole_window=False)
+    assert span == "second half"
+    assert len(rows) < len(frame)
+    assert (rows["date"].astype(str) >= cut).all()
+
+
+def test_scored_rows_whole_window_keeps_every_row():
+    frame, cut = synthetic_frame()
+    rows, span = props_exam.scored_rows(frame, cut, whole_window=True)
+    assert span == "whole window"
+    assert len(rows) == len(frame)
+    assert (rows["date"].astype(str) < cut).any()   # the first half is back
+
+
+def test_scored_rows_whole_window_scores_more_bets_than_the_second_half():
+    """The point of the flag: the same frozen rule, on twice the rows."""
+    frame, cut = synthetic_frame()
+    fee_waived = props_exam.venue_for(0.0, False)
+    half, _ = props_exam.scored_rows(frame, cut, whole_window=False)
+    whole, _ = props_exam.scored_rows(frame, cut, whole_window=True)
+    n_half = len(pnl.bet_frame(half.reset_index(drop=True), "model",
+                               fee_waived, threshold=0.02))
+    n_whole = len(pnl.bet_frame(whole.reset_index(drop=True), "model",
+                                fee_waived, threshold=0.02))
+    assert n_whole > n_half
+
+
+def _cli(*args):
+    """Run the script's argument parsing only — these all exit before any
+    parquet is opened, so the test needs neither the archive nor a network."""
+    return subprocess.run([sys.executable, str(ROOT / "scripts/props_exam.py"), *args],
+                          capture_output=True, text=True, timeout=120)
+
+
+def test_whole_window_refuses_without_a_fixed_tau():
+    r = _cli("--whole-window", "--matchup-weight", "1.0")
+    assert r.returncode != 0
+    assert "--whole-window needs --tau" in r.stderr
+
+
+def test_whole_window_refuses_without_a_fixed_matchup_weight():
+    r = _cli("--whole-window", "--tau", "0.65", "--matchup", "on")
+    assert r.returncode != 0
+    assert "--whole-window needs --matchup-weight" in r.stderr
+
+
+def test_whole_window_allows_the_matchup_arm_off_without_a_weight():
+    """With the matchup arm off there is no weight to fix, so only tau is
+    required; the run gets past the guard and fails later on missing data."""
+    r = _cli("--whole-window", "--tau", "0.65", "--matchup", "off",
+             "--closes", str(ROOT / "does-not-exist.parquet"))
+    assert "--whole-window needs" not in r.stderr
