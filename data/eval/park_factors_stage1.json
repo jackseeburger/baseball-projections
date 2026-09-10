@@ -1,0 +1,5358 @@
+{
+ "ticket": "BAS-86",
+ "pre_registration": "docs/park-factors.md",
+ "arm": "marcel_tuned_park",
+ "base": "marcel_tuned",
+ "factors": {
+  "path": "data/features/park_factors.parquet",
+  "built_at": "2026-09-10T08:19:33.948180+00:00",
+  "seasons_with_data": [
+   2015,
+   2016,
+   2017,
+   2018,
+   2019,
+   2020,
+   2021,
+   2022,
+   2023,
+   2024,
+   2025,
+   2026
+  ],
+  "windows": {
+   "2016": [
+    2015
+   ],
+   "2017": [
+    2015,
+    2016
+   ],
+   "2018": [
+    2015,
+    2016,
+    2017
+   ],
+   "2019": [
+    2016,
+    2017,
+    2018
+   ],
+   "2020": [
+    2017,
+    2018,
+    2019
+   ],
+   "2021": [
+    2018,
+    2019,
+    2020
+   ],
+   "2022": [
+    2019,
+    2020,
+    2021
+   ],
+   "2023": [
+    2020,
+    2021,
+    2022
+   ],
+   "2024": [
+    2021,
+    2022,
+    2023
+   ],
+   "2025": [
+    2022,
+    2023,
+    2024
+   ],
+   "2026": [
+    2023,
+    2024,
+    2025
+   ]
+  },
+  "ballast": {
+   "k_rate": 2000.0,
+   "bb_rate": 8000.0,
+   "hr_rate": 3000.0,
+   "babip": 3000.0,
+   "iso": 4000.0
+  },
+  "ballast_chosen_on": [
+   2015,
+   2016,
+   2017,
+   2018,
+   2019
+  ],
+  "ballast_selection_rule": "minimum pooled leave-one-season-out RMSE of log factor against the held-out season's own single-season split; ties break toward the larger ballast",
+  "known_park_changes": {
+   "ATH": {
+    "from": "Oakland Coliseum",
+    "to": "Sutter Health Park (Sacramento)",
+    "first_season": 2025
+   },
+   "TB": {
+    "from": "Tropicana Field",
+    "to": "George M. Steinbrenner Field",
+    "first_season": 2025,
+    "note": "Tropicana Field in 2026 again"
+   }
+  },
+  "notes": [
+   "The key is the hosting club, not a venue id: the PA parquet has no venue column, and the rate models index their park offset on the batting team. A club that changes parks carries its old park's factor until the window rolls over (see known_park_changes); neutral-site games are charged to the nominal home club.",
+   "2020 is in the pool as a 60-game season. It is not weighted down or up: the counts are summed, so it contributes about a third of a normal season's trials to the windows stamped for 2021, 2022 and 2023.",
+   "Factors are renormalised to a trials-weighted mean of 1 within each season and component, so applying one cannot move the projected league level."
+  ]
+ },
+ "loso_persistence": [
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0597925736,
+   "corr": 0.7624372296
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0535259037,
+   "corr": 0.7778547945
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0462358734,
+   "corr": 0.8354565176
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521554904,
+   "corr": 0.8151573787
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0534827803,
+   "corr": 0.7933643927
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0532137824,
+   "corr": 0.7949841275
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0560286369,
+   "corr": 0.6897279199
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0639409222,
+   "corr": 0.5632352334
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0745439995,
+   "corr": 0.5047143203
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0829953058,
+   "corr": 0.4188197761
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0733657585,
+   "corr": 0.4056878249
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0707887178,
+   "corr": 0.5120768737
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1005705349,
+   "corr": 0.7698833219
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1095382321,
+   "corr": 0.7536046573
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1114075644,
+   "corr": 0.737883104
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0954563377,
+   "corr": 0.8023749479
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1180217624,
+   "corr": 0.6916800381
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1072993485,
+   "corr": 0.750191219
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0350915223,
+   "corr": 0.7578188407
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0331637806,
+   "corr": 0.7635134087
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0388840042,
+   "corr": 0.6135606221
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0369495715,
+   "corr": 0.6854662761
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0355122887,
+   "corr": 0.6889886286
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0359711289,
+   "corr": 0.6988026298
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0674120283,
+   "corr": 0.770899916
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.082962586,
+   "corr": 0.6980422749
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0926388818,
+   "corr": 0.6282815171
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0859981956,
+   "corr": 0.7440460152
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0942168566,
+   "corr": 0.6111337632
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0851840834,
+   "corr": 0.684686455
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0596126518,
+   "corr": 0.7623927124
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0529426843,
+   "corr": 0.7779850602
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0459754532,
+   "corr": 0.8353018852
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521305372,
+   "corr": 0.8151756805
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0532480268,
+   "corr": 0.7932569725
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0529590099,
+   "corr": 0.7949570949
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0558562328,
+   "corr": 0.6895124962
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0633007424,
+   "corr": 0.563625953
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0740903733,
+   "corr": 0.5048987379
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0827104837,
+   "corr": 0.418394944
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0727449553,
+   "corr": 0.405245789
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0703550123,
+   "corr": 0.5119845039
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0998429387,
+   "corr": 0.7695024035
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.109079872,
+   "corr": 0.7535021883
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.110656183,
+   "corr": 0.7379811437
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0952371323,
+   "corr": 0.802582337
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1170696759,
+   "corr": 0.691460811
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1066651228,
+   "corr": 0.7501103783
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0351204924,
+   "corr": 0.7580476392
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0330926611,
+   "corr": 0.7636434301
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0380300162,
+   "corr": 0.6137703797
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0367217336,
+   "corr": 0.6859646621
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0351809303,
+   "corr": 0.6895243262
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0356680218,
+   "corr": 0.6990835834
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0665683942,
+   "corr": 0.7708903011
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0823169577,
+   "corr": 0.6981406703
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0917129341,
+   "corr": 0.628570336
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0862011862,
+   "corr": 0.7440337285
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0933577583,
+   "corr": 0.6112123295
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0845754225,
+   "corr": 0.6847895007
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0595063015,
+   "corr": 0.7623499716
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0524644725,
+   "corr": 0.7781078824
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0458114475,
+   "corr": 0.835154721
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521780387,
+   "corr": 0.8151923006
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530967199,
+   "corr": 0.793154788
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0527901864,
+   "corr": 0.7949308728
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0557321264,
+   "corr": 0.6893082895
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0627318658,
+   "corr": 0.5639947969
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0736925138,
+   "corr": 0.5050727254
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0824618464,
+   "corr": 0.4179921967
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0721809567,
+   "corr": 0.4048276366
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0699742669,
+   "corr": 0.5118964602
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0992837953,
+   "corr": 0.7691388434
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1087702221,
+   "corr": 0.7534001117
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1100732777,
+   "corr": 0.7380714746
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0951648643,
+   "corr": 0.8027710222
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1162778613,
+   "corr": 0.6912487782
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1061896908,
+   "corr": 0.7500293118
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0352104551,
+   "corr": 0.7582587343
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0330938795,
+   "corr": 0.7637600033
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0372932945,
+   "corr": 0.61396132
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0365688578,
+   "corr": 0.6864219116
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0349362031,
+   "corr": 0.6900192991
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.03545022,
+   "corr": 0.6993406116
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0658753135,
+   "corr": 0.7708796557
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0817946474,
+   "corr": 0.6982313116
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.090919158,
+   "corr": 0.6288400955
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0864634387,
+   "corr": 0.7440185126
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0926203336,
+   "corr": 0.6112859599
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0840840853,
+   "corr": 0.6848846004
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0594634402,
+   "corr": 0.7623089114
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0520794492,
+   "corr": 0.7782238799
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0457311182,
+   "corr": 0.8350144974
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0522870033,
+   "corr": 0.8152074222
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530177433,
+   "corr": 0.7930574665
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0526959519,
+   "corr": 0.7949054443
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0556500966,
+   "corr": 0.6891144434
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0622269726,
+   "corr": 0.5643435601
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.073344275,
+   "corr": 0.5052371405
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0822452797,
+   "corr": 0.4176098479
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0716682397,
+   "corr": 0.4044314769
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0696406988,
+   "corr": 0.5118124515
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0988717269,
+   "corr": 0.7687915138
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1085886321,
+   "corr": 0.7532988301
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1096370833,
+   "corr": 0.7381548416
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0952175705,
+   "corr": 0.8029431192
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1156271578,
+   "corr": 0.6910437238
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1058521845,
+   "corr": 0.7499483968
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0353478645,
+   "corr": 0.7584541115
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0331528186,
+   "corr": 0.7638649769
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0366586265,
+   "corr": 0.6141358018
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0364775123,
+   "corr": 0.686842899
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0347634565,
+   "corr": 0.6904780266
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0353030951,
+   "corr": 0.6995766071
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0653150125,
+   "corr": 0.7708681838
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0813799431,
+   "corr": 0.6983150075
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0902419495,
+   "corr": 0.6290925733
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0867738668,
+   "corr": 0.7440008815
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0919902229,
+   "corr": 0.611355109
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0836949945,
+   "corr": 0.6849725738
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0594752399,
+   "corr": 0.7622694419
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0517769781,
+   "corr": 0.7783336049
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0457231121,
+   "corr": 0.8348807356
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0524478672,
+   "corr": 0.8152212047
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530012846,
+   "corr": 0.7929646696
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0526662654,
+   "corr": 0.7948807895
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.055604692,
+   "corr": 0.6889301866
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0617795419,
+   "corr": 0.5646738455
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0730402376,
+   "corr": 0.5053927497
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0820571782,
+   "corr": 0.4172463791
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0712018843,
+   "corr": 0.404055614
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0693492014,
+   "corr": 0.511732212
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0985878693,
+   "corr": 0.7684593771
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1085171389,
+   "corr": 0.7531986557
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1093285082,
+   "corr": 0.7382319036
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.095376201,
+   "corr": 0.8031004539
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1151006828,
+   "corr": 0.6908454175
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1056343192,
+   "corr": 0.7498679332
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0355218379,
+   "corr": 0.7586354692
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0332575305,
+   "corr": 0.7639598883
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0361128916,
+   "corr": 0.6142958122
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0364365916,
+   "corr": 0.6872317598
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0346504456,
+   "corr": 0.6909043534
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0352144397,
+   "corr": 0.6997940184
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0648716256,
+   "corr": 0.7708560556
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.081059084,
+   "corr": 0.6983924627
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0896675966,
+   "corr": 0.6293293359
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0871231665,
+   "corr": 0.743981267
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0914548187,
+   "corr": 0.611420177
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0833949768,
+   "corr": 0.6850541357
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0596329203,
+   "corr": 0.7621949417
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0513824566,
+   "corr": 0.778536164
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0458849434,
+   "corr": 0.8346308913
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0528932178,
+   "corr": 0.8152452934
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0531224077,
+   "corr": 0.792791446
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0527661876,
+   "corr": 0.7948337136
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0556052362,
+   "corr": 0.688587721
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0610344223,
+   "corr": 0.5652845821
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0725461724,
+   "corr": 0.5056802281
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0817540872,
+   "corr": 0.4165707288
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0703911619,
+   "corr": 0.4033588268
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0688748671,
+   "corr": 0.5115820848
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0983402549,
+   "corr": 0.767836936
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1086440182,
+   "corr": 0.7530025283
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1090293269,
+   "corr": 0.7383693857
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0959475176,
+   "corr": 0.8033769619
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1143626433,
+   "corr": 0.6904680931
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1054954623,
+   "corr": 0.749709261
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.035946291,
+   "corr": 0.7589617745
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0335670991,
+   "corr": 0.7641244708
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0352443423,
+   "corr": 0.6145789096
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.036470873,
+   "corr": 0.6879267272
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0345643788,
+   "corr": 0.691672642
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0351734857,
+   "corr": 0.700181133
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0642805776,
+   "corr": 0.7708303769
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0806521903,
+   "corr": 0.6985310425
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0887806505,
+   "corr": 0.6297611031
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0879084154,
+   "corr": 0.7439374856
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0906251322,
+   "corr": 0.6115394447
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0830175601,
+   "corr": 0.685200454
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0599286174,
+   "corr": 0.7621258549
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0512157791,
+   "corr": 0.7787189444
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0462297539,
+   "corr": 0.8344021354
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0534602943,
+   "corr": 0.8152654906
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0534028655,
+   "corr": 0.7926329647
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0530312257,
+   "corr": 0.7947894611
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0557021807,
+   "corr": 0.6882760685
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0604570142,
+   "corr": 0.5658368544
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0721782465,
+   "corr": 0.5059398713
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0815315146,
+   "corr": 0.4159557525
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.069718927,
+   "corr": 0.4027267604
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0685209448,
+   "corr": 0.5114443572
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0984304212,
+   "corr": 0.767264739
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1090489203,
+   "corr": 0.7528130189
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.109065171,
+   "corr": 0.7384878683
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0967721159,
+   "corr": 0.8036109251
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.113964514,
+   "corr": 0.6901148842
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1056675724,
+   "corr": 0.7495546467
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0364328346,
+   "corr": 0.759247165
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0339644269,
+   "corr": 0.7642618365
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0346137376,
+   "corr": 0.6148213699
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.036615641,
+   "corr": 0.6885295767
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0346146965,
+   "corr": 0.6923458593
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.035264506,
+   "corr": 0.7005153588
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0640067742,
+   "corr": 0.7708035035
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0804944155,
+   "corr": 0.698651146
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0881780623,
+   "corr": 0.6301447368
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.088770664,
+   "corr": 0.7438894515
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.090057598,
+   "corr": 0.6116461454
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0828760405,
+   "corr": 0.685327718
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0607891463,
+   "corr": 0.7620018182
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.051368568,
+   "corr": 0.7790357073
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0472733838,
+   "corr": 0.8339980487
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0548101022,
+   "corr": 0.8152969316
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0542766552,
+   "corr": 0.7923533004
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0538867804,
+   "corr": 0.7947086721
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0560937212,
+   "corr": 0.6877299058
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0596850101,
+   "corr": 0.566796739
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0717251408,
+   "corr": 0.5063903551
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0812657757,
+   "corr": 0.4148777265
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0686984404,
+   "corr": 0.4016237116
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0680836307,
+   "corr": 0.5112004861
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0993020505,
+   "corr": 0.766248797
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1104042205,
+   "corr": 0.752456181
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1098225223,
+   "corr": 0.7386798218
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0988849258,
+   "corr": 0.8039813348
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1138957766,
+   "corr": 0.6894734189
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1066409415,
+   "corr": 0.7492604541
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0374737972,
+   "corr": 0.7597226071
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.034881995,
+   "corr": 0.7644768684
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0338562627,
+   "corr": 0.6152144028
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0370948492,
+   "corr": 0.6895234588
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0349608203,
+   "corr": 0.6934699321
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0356807297,
+   "corr": 0.7010629389
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0641266177,
+   "corr": 0.7707484798
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0806962873,
+   "corr": 0.6988480493
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0875900075,
+   "corr": 0.6307959521
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0906000397,
+   "corr": 0.7437867169
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0894925583,
+   "corr": 0.6118290774
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.083082379,
+   "corr": 0.6855374367
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0618475906,
+   "corr": 0.7618937247
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0519358834,
+   "corr": 0.7793006777
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0485717002,
+   "corr": 0.8336523419
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0562878071,
+   "corr": 0.8153196484
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0553829514,
+   "corr": 0.7921143329
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0549859237,
+   "corr": 0.7946369729
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0566446173,
+   "corr": 0.6872669597
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0592774177,
+   "corr": 0.5676025577
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0715354809,
+   "corr": 0.5067676674
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.081166215,
+   "corr": 0.4139636308
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.067997752,
+   "corr": 0.4006933155
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0678990408,
+   "corr": 0.5109913134
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1007293881,
+   "corr": 0.7653745164
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1121687329,
+   "corr": 0.7521296651
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1111333746,
+   "corr": 0.7388263884
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1012988763,
+   "corr": 0.8042568201
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1144580175,
+   "corr": 0.6889073622
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1081119432,
+   "corr": 0.7489881385
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0385032714,
+   "corr": 0.7601028221
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0358362564,
+   "corr": 0.7646362434
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0335351652,
+   "corr": 0.6155186866
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0376893288,
+   "corr": 0.6903087924
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0354714576,
+   "corr": 0.6943710689
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0362492932,
+   "corr": 0.701492353
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0648060913,
+   "corr": 0.7706940649
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0813275584,
+   "corr": 0.6990016582
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.087550727,
+   "corr": 0.6313271643
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0924442434,
+   "corr": 0.743681412
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0894361648,
+   "corr": 0.611980259
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0836945598,
+   "corr": 0.6857021669
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.064133482,
+   "corr": 0.761714729
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0536435912,
+   "corr": 0.7797188566
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0513660238,
+   "corr": 0.8330918705
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0592337672,
+   "corr": 0.8153485625
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0578038554,
+   "corr": 0.7917274914
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0574092879,
+   "corr": 0.7945158536
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0579366203,
+   "corr": 0.6865245916
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0591090558,
+   "corr": 0.5688800758
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0716084437,
+   "corr": 0.507363989
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0812503629,
+   "corr": 0.4124971261
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0672050908,
+   "corr": 0.3992100648
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0679653549,
+   "corr": 0.5106512748
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1042512104,
+   "corr": 0.7639472706
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1160898954,
+   "corr": 0.7515613599
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1144337034,
+   "corr": 0.7390291986
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1062412778,
+   "corr": 0.8046271572
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1165098508,
+   "corr": 0.6879569337
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1116261668,
+   "corr": 0.7485079112
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0403505152,
+   "corr": 0.760673012
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0376093373,
+   "corr": 0.7648539325
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0335595589,
+   "corr": 0.6159577994
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0389203717,
+   "corr": 0.6914705064
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0366135528,
+   "corr": 0.6957259835
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0374812431,
+   "corr": 0.7021217525
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0669189719,
+   "corr": 0.7705922275
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0831628935,
+   "corr": 0.699223103
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0883328875,
+   "corr": 0.632139782
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0959030398,
+   "corr": 0.7434783004
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0901274166,
+   "corr": 0.6122156673
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0854602351,
+   "corr": 0.685941914
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0663352645,
+   "corr": 0.7615727752
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0555649841,
+   "corr": 0.7800338929
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0540268505,
+   "corr": 0.8326570741
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0619172879,
+   "corr": 0.8153644785
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0601461097,
+   "corr": 0.7914278921
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0597629323,
+   "corr": 0.7944178855
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0592541066,
+   "corr": 0.6859554231
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0593882515,
+   "corr": 0.5698475276
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0719793725,
+   "corr": 0.5078138552
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0815195239,
+   "corr": 0.4113721485
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0668847122,
+   "corr": 0.3980800742
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0683198963,
+   "corr": 0.5103867944
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1078895456,
+   "corr": 0.7628316979
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1199234259,
+   "corr": 0.7510893094
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1178783887,
+   "corr": 0.7391566699
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1108172935,
+   "corr": 0.8048532174
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1189927623,
+   "corr": 0.6871925132
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1152014294,
+   "corr": 0.7481035963
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0418741029,
+   "corr": 0.7610802589
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0391069019,
+   "corr": 0.7649935057
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0339591462,
+   "corr": 0.6162584205
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0400365204,
+   "corr": 0.6922883244
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0376910429,
+   "corr": 0.6966961903
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0386252549,
+   "corr": 0.7025602734
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0693003771,
+   "corr": 0.770502232
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0851965611,
+   "corr": 0.6993725898
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0895958185,
+   "corr": 0.6327305291
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0989233965,
+   "corr": 0.7432945148
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0912751098,
+   "corr": 0.6123906146
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.087413261,
+   "corr": 0.6861057956
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0730005143,
+   "corr": 0.7612138342
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0620185652,
+   "corr": 0.7807734262
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0618899265,
+   "corr": 0.83159105
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0696108092,
+   "corr": 0.8153806202
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0672217902,
+   "corr": 0.7906952173
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0668882267,
+   "corr": 0.7941636581
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.063495736,
+   "corr": 0.6845836144
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0614825327,
+   "corr": 0.5721375259
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0739730107,
+   "corr": 0.5088716291
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0828950246,
+   "corr": 0.4086583235
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0671754061,
+   "corr": 0.3953820086
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0702395002,
+   "corr": 0.509736238
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1194688037,
+   "corr": 0.7600647874
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1316496453,
+   "corr": 0.7498260828
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1289380152,
+   "corr": 0.7393574702
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1241085171,
+   "corr": 0.8051993878
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1278685376,
+   "corr": 0.6852211381
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1264774469,
+   "corr": 0.7470004071
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0457159614,
+   "corr": 0.7619689533
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.042961632,
+   "corr": 0.7652510533
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.035917449,
+   "corr": 0.6168752614
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0430963085,
+   "corr": 0.6940378941
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0407249356,
+   "corr": 0.6988201755
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0418127404,
+   "corr": 0.7034840413
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0772050793,
+   "corr": 0.7702440179
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.091973408,
+   "corr": 0.6996627862
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0947162884,
+   "corr": 0.6340412207
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1072721194,
+   "corr": 0.7427539124
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0960010532,
+   "corr": 0.6127940978
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0939302051,
+   "corr": 0.6864317861
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0797404118,
+   "corr": 0.7608962216
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0689221798,
+   "corr": 0.7813692303
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0696008543,
+   "corr": 0.8306821542
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0770457735,
+   "corr": 0.8153701485
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0743253655,
+   "corr": 0.7900726685
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0740451082,
+   "corr": 0.7939320987
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.068045517,
+   "corr": 0.6834390056
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0646548244,
+   "corr": 0.574004264
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0767618533,
+   "corr": 0.5097249996
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0848105974,
+   "corr": 0.4063911949
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0685756795,
+   "corr": 0.3931580273
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0729359748,
+   "corr": 0.5091796365
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1315385967,
+   "corr": 0.7576676237
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1435934871,
+   "corr": 0.7486399783
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1405473167,
+   "corr": 0.7394012545
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1370772101,
+   "corr": 0.8052809732
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1379132414,
+   "corr": 0.6834334454
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1381920865,
+   "corr": 0.7459395586
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0489397349,
+   "corr": 0.7626241285
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0462480778,
+   "corr": 0.7653986711
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0382451375,
+   "corr": 0.617294098
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0458394721,
+   "corr": 0.6952963702
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0434859677,
+   "corr": 0.700391679
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0446966654,
+   "corr": 0.7041346683
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0855084118,
+   "corr": 0.7699852157
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.09921883,
+   "corr": 0.6998316665
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1008368215,
+   "corr": 0.6350145037
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1151346416,
+   "corr": 0.742199865
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1017196806,
+   "corr": 0.6131128618
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.100922751,
+   "corr": 0.6866314258
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.091906886,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0816461879,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0830978728,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0900287965,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0870233971,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0868291287,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0767128961,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0718584677,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.082990666,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0891591706,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0728148936,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0789776233,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1537022989,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1653093976,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1619663902,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1599089284,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1574376148,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1597136018,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0538260137,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0512827863,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0424981507,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0501894929,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0478880831,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0492859218,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1004979121,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1126200615,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1129266415,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1286578148,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1131423179,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1139206323,
+   "corr": null
+  }
+ ],
+ "log_factor_sd_by_season": [
+  {
+   "component": "babip",
+   "game_year": 2016,
+   "sd": 0.03257697,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2017,
+   "sd": 0.0364390845,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2018,
+   "sd": 0.0348073506,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2019,
+   "sd": 0.0333233376,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2020,
+   "sd": 0.03268175,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2021,
+   "sd": 0.0340254849,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2022,
+   "sd": 0.0349872482,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2023,
+   "sd": 0.0370843036,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2024,
+   "sd": 0.0357841114,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2025,
+   "sd": 0.0362075773,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2026,
+   "sd": 0.0384441038,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2016,
+   "sd": 0.0339716497,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2017,
+   "sd": 0.0410508976,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2018,
+   "sd": 0.0445547592,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2019,
+   "sd": 0.0431895734,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2020,
+   "sd": 0.0426335897,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2021,
+   "sd": 0.0406760774,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2022,
+   "sd": 0.0345843049,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2023,
+   "sd": 0.0384520344,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2024,
+   "sd": 0.0409526206,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2025,
+   "sd": 0.0440007438,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2026,
+   "sd": 0.0402325672,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2016,
+   "sd": 0.1033394929,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2017,
+   "sd": 0.1145210013,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2018,
+   "sd": 0.1195873092,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2019,
+   "sd": 0.1232919838,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2020,
+   "sd": 0.1220870109,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2021,
+   "sd": 0.1174936733,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2022,
+   "sd": 0.1205142263,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2023,
+   "sd": 0.1167183223,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2024,
+   "sd": 0.1138966051,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2025,
+   "sd": 0.1103155039,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2026,
+   "sd": 0.0984171212,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2016,
+   "sd": 0.0599148208,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2017,
+   "sd": 0.0722835293,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2018,
+   "sd": 0.0755714477,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2019,
+   "sd": 0.0813283178,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2020,
+   "sd": 0.0818218282,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2021,
+   "sd": 0.0785834096,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2022,
+   "sd": 0.0759979809,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2023,
+   "sd": 0.0716403014,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2024,
+   "sd": 0.0712795886,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2025,
+   "sd": 0.0666279862,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2026,
+   "sd": 0.0555832445,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2016,
+   "sd": 0.0699691952,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2017,
+   "sd": 0.0700368879,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2018,
+   "sd": 0.0705894639,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2019,
+   "sd": 0.0701535411,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2020,
+   "sd": 0.0726640736,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2021,
+   "sd": 0.0700267694,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2022,
+   "sd": 0.0671749502,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2023,
+   "sd": 0.0715024169,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2024,
+   "sd": 0.0718444263,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2025,
+   "sd": 0.070202163,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2026,
+   "sd": 0.0632759744,
+   "n_parks": 30
+  }
+ ],
+ "vacuity": {
+  "measure": "sd of the regressed log HR factor across the 30 parks",
+  "bar": 0.05,
+  "by_season": {
+   "2016": 0.1033394929,
+   "2017": 0.1145210013,
+   "2018": 0.1195873092,
+   "2019": 0.1232919838,
+   "2020": 0.1220870109,
+   "2021": 0.1174936733,
+   "2022": 0.1205142263,
+   "2023": 0.1167183223,
+   "2024": 0.1138966051,
+   "2025": 0.1103155039,
+   "2026": 0.0984171212
+  },
+  "scored_seasons": {
+   "2022": 0.1205142263,
+   "2024": 0.1138966051,
+   "2025": 0.1103155039,
+   "2026": 0.0984171212
+  },
+  "min_over_scored_seasons": 0.0984171212,
+  "verdict": "not vacuous"
+ },
+ "scope": {
+  "seasons": [
+   2022,
+   2024,
+   2025,
+   2026
+  ],
+  "cutoffs": [
+   "2022-04-15",
+   "2022-04-29",
+   "2022-05-01",
+   "2022-05-13",
+   "2022-05-27",
+   "2022-06-10",
+   "2022-06-24",
+   "2022-07-01",
+   "2022-07-08",
+   "2022-07-22",
+   "2022-08-01",
+   "2022-08-05",
+   "2024-04-15",
+   "2024-04-29",
+   "2024-05-01",
+   "2024-05-13",
+   "2024-05-27",
+   "2024-06-10",
+   "2024-06-24",
+   "2024-07-01",
+   "2024-07-08",
+   "2024-07-22",
+   "2024-08-01",
+   "2024-08-05",
+   "2025-04-15",
+   "2025-04-29",
+   "2025-05-01",
+   "2025-05-13",
+   "2025-05-27",
+   "2025-06-10",
+   "2025-06-24",
+   "2025-07-01",
+   "2025-07-08",
+   "2025-07-22",
+   "2025-08-01",
+   "2025-08-05",
+   "2026-04-15",
+   "2026-04-29",
+   "2026-05-01",
+   "2026-05-13",
+   "2026-05-27",
+   "2026-06-10",
+   "2026-06-24",
+   "2026-07-01",
+   "2026-07-08",
+   "2026-07-22",
+   "2026-08-01",
+   "2026-08-05"
+  ],
+  "components": [
+   "babip",
+   "bb_rate",
+   "hr_rate",
+   "iso",
+   "k_rate"
+  ]
+ },
+ "arm_pooled": [
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 0.0006103821215782395,
+   "n": 11438,
+   "clustered_by_player_se": 0.0002487304721115417,
+   "clustered_by_player_t": 2.453990121903991,
+   "clustered_by_player_n_clusters": 596,
+   "clustered_by_cell_se": 8.80447768711044e-05,
+   "clustered_by_cell_t": 6.93263295415951,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 9.542622051182125e-05,
+   "unclustered_t_WRONG": 6.39637741392709,
+   "unclustered_over_player_clustered_t_ratio": 2.6065212556619,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 8,
+   "arm_loses_cells": 40,
+   "arm_mae": 0.02835470206103808,
+   "base_mae": 0.027744319939459836,
+   "pct_of_base": 2.200025529225941,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.0002614655007194597,
+   "n": 14294,
+   "clustered_by_player_se": 8.604331877182697e-05,
+   "clustered_by_player_t": 3.0387658734180643,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 2.4369081331810746e-05,
+   "clustered_by_cell_t": 10.7293950543039,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 3.154615316763546e-05,
+   "unclustered_t_WRONG": 8.288348164989838,
+   "unclustered_over_player_clustered_t_ratio": 2.7275375959342796,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 7,
+   "arm_loses_cells": 41,
+   "arm_mae": 0.018486089902152947,
+   "base_mae": 0.018224624401433485,
+   "pct_of_base": 1.434682520529168,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.0003413150758916817,
+   "n": 14294,
+   "clustered_by_player_se": 7.778691289152281e-05,
+   "clustered_by_player_t": 4.387821334003321,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 2.1041725319780596e-05,
+   "clustered_by_cell_t": 16.220869282559413,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 2.9502259191498037e-05,
+   "unclustered_t_WRONG": 11.569116577690494,
+   "unclustered_over_player_clustered_t_ratio": 2.636642583424236,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 48,
+   "arm_mae": 0.010496029180821577,
+   "base_mae": 0.010154714104929895,
+   "pct_of_base": 3.361149042354433,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.001100598026873047,
+   "n": 13715,
+   "clustered_by_player_se": 0.00026722932602270255,
+   "clustered_by_player_t": 4.118552567765505,
+   "clustered_by_player_n_clusters": 646,
+   "clustered_by_cell_se": 9.721846666303118e-05,
+   "clustered_by_cell_t": 11.320874157456407,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 9.80751741146542e-05,
+   "unclustered_t_WRONG": 11.221983920073384,
+   "unclustered_over_player_clustered_t_ratio": 2.7247397563658637,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 48,
+   "arm_mae": 0.037891000884628497,
+   "base_mae": 0.03679040285775544,
+   "pct_of_base": 2.991535676106466,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.001951278274986009,
+   "n": 14294,
+   "clustered_by_player_se": 0.0003741702552517284,
+   "clustered_by_player_t": 5.214947600987841,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 9.182733749326436e-05,
+   "clustered_by_cell_t": 21.249426676768643,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 0.00012358873381104846,
+   "unclustered_t_WRONG": 15.788480185979305,
+   "unclustered_over_player_clustered_t_ratio": 3.027543399091598,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 48,
+   "arm_mae": 0.030508266498645676,
+   "base_mae": 0.02855698822365967,
+   "pct_of_base": 6.832927407132385,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": -5.625097637135257e-05,
+   "n": 11438,
+   "clustered_by_player_se": 0.0001296049522027757,
+   "clustered_by_player_t": -0.43401872702629535,
+   "clustered_by_player_n_clusters": 596,
+   "clustered_by_cell_se": 5.03729524437324e-05,
+   "clustered_by_cell_t": -1.1166900815310763,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 5.044725850826685e-05,
+   "unclustered_t_WRONG": -1.1150452578534997,
+   "unclustered_over_player_clustered_t_ratio": 2.5691178477327403,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 22,
+   "arm_loses_cells": 26,
+   "arm_mae": 0.027688068963088487,
+   "base_mae": 0.027744319939459836,
+   "pct_of_base": -0.2027477209536812,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 7.109992619425934e-05,
+   "n": 14294,
+   "clustered_by_player_se": 4.317044149447073e-05,
+   "clustered_by_player_t": 1.6469585145050187,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 1.2866413647762578e-05,
+   "clustered_by_cell_t": 5.526009666774809,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 1.6218042486824896e-05,
+   "unclustered_t_WRONG": 4.384001722280542,
+   "unclustered_over_player_clustered_t_ratio": 2.661877444798979,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 13,
+   "arm_loses_cells": 35,
+   "arm_mae": 0.018295724327627744,
+   "base_mae": 0.018224624401433485,
+   "pct_of_base": 0.390131092022214,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 7.944036813666851e-05,
+   "n": 14294,
+   "clustered_by_player_se": 3.905195608029517e-05,
+   "clustered_by_player_t": 2.0342225104763068,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 1.2234863524386294e-05,
+   "clustered_by_cell_t": 6.492950900378211,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 1.5193580267382233e-05,
+   "unclustered_t_WRONG": 5.22854829070223,
+   "unclustered_over_player_clustered_t_ratio": 2.5702932023291702,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 8,
+   "arm_loses_cells": 40,
+   "arm_mae": 0.010234154473066566,
+   "base_mae": 0.010154714104929895,
+   "pct_of_base": 0.7823003908903936,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.00030180142179824876,
+   "n": 13715,
+   "clustered_by_player_se": 0.00013435504427283254,
+   "clustered_by_player_t": 2.2462976617787844,
+   "clustered_by_player_n_clusters": 646,
+   "clustered_by_cell_se": 4.2591429610086484e-05,
+   "clustered_by_cell_t": 7.085965992716438,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 5.013666685813364e-05,
+   "unclustered_t_WRONG": 6.019574908164995,
+   "unclustered_over_player_clustered_t_ratio": 2.679776153708076,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 4,
+   "arm_loses_cells": 44,
+   "arm_mae": 0.03709220427955369,
+   "base_mae": 0.03679040285775544,
+   "pct_of_base": 0.820326493746531,
+   "season": null
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.00041660843214395306,
+   "n": 14294,
+   "clustered_by_player_se": 0.00018731195165829672,
+   "clustered_by_player_t": 2.2241422848657826,
+   "clustered_by_player_n_clusters": 662,
+   "clustered_by_cell_se": 4.7110848900527856e-05,
+   "clustered_by_cell_t": 8.843152731626645,
+   "clustered_by_cell_n_clusters": 48,
+   "unclustered_se_WRONG": 6.5519321720572e-05,
+   "unclustered_t_WRONG": 6.358558379476398,
+   "unclustered_over_player_clustered_t_ratio": 2.858881116888666,
+   "n_cells_scored": 48,
+   "arm_wins_cells": 6,
+   "arm_loses_cells": 42,
+   "arm_mae": 0.02897359665580362,
+   "base_mae": 0.02855698822365967,
+   "pct_of_base": 1.4588668415627597,
+   "season": null
+  }
+ ],
+ "arm_by_season": [
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 0.0007002944837172943,
+   "n": 3142,
+   "clustered_by_player_se": 0.0004241131130830329,
+   "clustered_by_player_t": 1.651197433219167,
+   "clustered_by_player_n_clusters": 351,
+   "clustered_by_cell_se": 0.00010967080895770029,
+   "clustered_by_cell_t": 6.38542279730421,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0001772966854686369,
+   "unclustered_t_WRONG": 3.9498453220727225,
+   "unclustered_over_player_clustered_t_ratio": 2.3921096548534004,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.02871091053729543,
+   "base_mae": 0.02801061605357814,
+   "pct_of_base": 2.500103826269958,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": -5.9440400047998194e-05,
+   "n": 3082,
+   "clustered_by_player_se": 0.00046312606425756196,
+   "clustered_by_player_t": -0.1283460479454707,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 8.696984985597533e-05,
+   "clustered_by_cell_t": -0.6834598443763358,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00017974032847453038,
+   "unclustered_t_WRONG": -0.330701521202689,
+   "unclustered_over_player_clustered_t_ratio": 2.57663969009152,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 8,
+   "arm_loses_cells": 4,
+   "arm_mae": 0.027725119176946693,
+   "base_mae": 0.027784559576994685,
+   "pct_of_base": -0.2139332094981783,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 0.0006865829218033425,
+   "n": 2965,
+   "clustered_by_player_se": 0.0004837966389792642,
+   "clustered_by_player_t": 1.4191560388925517,
+   "clustered_by_player_n_clusters": 332,
+   "clustered_by_cell_se": 5.818861637646787e-05,
+   "clustered_by_cell_t": 11.79926529548835,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0001894004570948061,
+   "unclustered_t_WRONG": 3.625033077188759,
+   "unclustered_over_player_clustered_t_ratio": 2.554358349500157,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.027738376166330164,
+   "base_mae": 0.027051793244526817,
+   "pct_of_base": 2.5380310857663884,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 0.0013359409061247298,
+   "n": 2249,
+   "clustered_by_player_se": 0.0005425962897271975,
+   "clustered_by_player_t": 2.462126872995029,
+   "clustered_by_player_n_clusters": 307,
+   "clustered_by_cell_se": 8.409335909979963e-05,
+   "clustered_by_cell_t": 15.886401975443421,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0002263077940351042,
+   "unclustered_t_WRONG": 5.903203253872479,
+   "unclustered_over_player_clustered_t_ratio": 2.3976031936532936,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.02959557364896978,
+   "base_mae": 0.028259632742845046,
+   "pct_of_base": 4.727382405431196,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.0003598158783280979,
+   "n": 3808,
+   "clustered_by_player_se": 0.00016577387634340239,
+   "clustered_by_player_t": 2.1705221972534163,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 2.823122394537038e-05,
+   "clustered_by_cell_t": 12.745316286122405,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 5.728046492166398e-05,
+   "unclustered_t_WRONG": 6.281650800498519,
+   "unclustered_over_player_clustered_t_ratio": 2.894073513022504,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.01894534815271802,
+   "base_mae": 0.01858553227438992,
+   "pct_of_base": 1.9359998573939634,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.0002099018644416428,
+   "n": 3785,
+   "clustered_by_player_se": 0.00015685208241243662,
+   "clustered_by_player_t": 1.3382153504963599,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 5.5377172728323176e-05,
+   "clustered_by_cell_t": 3.790404134053715,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 6.140955413014817e-05,
+   "unclustered_t_WRONG": 3.4180652736345856,
+   "unclustered_over_player_clustered_t_ratio": 2.5541967310170106,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 4,
+   "arm_loses_cells": 8,
+   "arm_mae": 0.01771730797215736,
+   "base_mae": 0.017507406107715714,
+   "pct_of_base": 1.1989318300506928,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.0003280388313868974,
+   "n": 3612,
+   "clustered_by_player_se": 0.0001857666917479164,
+   "clustered_by_player_t": 1.7658646353676948,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 2.7169129639089943e-05,
+   "clustered_by_cell_t": 12.073954364549358,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 6.800236086567658e-05,
+   "unclustered_t_WRONG": 4.8239329813102305,
+   "unclustered_over_player_clustered_t_ratio": 2.731768270734848,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.018235200042635236,
+   "base_mae": 0.01790716121124834,
+   "pct_of_base": 1.8318862912835152,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.00010348533279614949,
+   "n": 3089,
+   "clustered_by_player_se": 0.0001603392695638742,
+   "clustered_by_player_t": 0.6454147700537213,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 3.5355616267224964e-05,
+   "clustered_by_cell_t": 2.926984273558866,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 6.475019009019576e-05,
+   "unclustered_t_WRONG": 1.5982243859361096,
+   "unclustered_over_player_clustered_t_ratio": 2.4762748856879755,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 3,
+   "arm_loses_cells": 9,
+   "arm_mae": 0.019216739626078796,
+   "base_mae": 0.019113254293282648,
+   "pct_of_base": 0.5414323024652029,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.00038297642604922844,
+   "n": 3808,
+   "clustered_by_player_se": 0.00016582332234120047,
+   "clustered_by_player_t": 2.309545006348447,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 2.4815861150665773e-05,
+   "clustered_by_cell_t": 15.432727630286315,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 6.0629010468113604e-05,
+   "unclustered_t_WRONG": 6.316719060599642,
+   "unclustered_over_player_clustered_t_ratio": 2.7350491301257724,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.009783357623137538,
+   "base_mae": 0.00940038119708831,
+   "pct_of_base": 4.074052083843708,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.00045120154512274553,
+   "n": 3785,
+   "clustered_by_player_se": 0.00015363257675109592,
+   "clustered_by_player_t": 2.9368871802088483,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 3.2599032646292554e-05,
+   "clustered_by_cell_t": 13.840948902330698,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 5.636479739789243e-05,
+   "unclustered_t_WRONG": 8.00502380834632,
+   "unclustered_over_player_clustered_t_ratio": 2.725683118606233,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.010889761913385488,
+   "base_mae": 0.010438560368262741,
+   "pct_of_base": 4.3224499280051365,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.00016826494564338982,
+   "n": 3612,
+   "clustered_by_player_se": 0.000165240140254007,
+   "clustered_by_player_t": 1.0183055121154767,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 1.743247539073195e-05,
+   "clustered_by_cell_t": 9.65238394845798,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 5.960972808513071e-05,
+   "unclustered_t_WRONG": 2.8227766012132256,
+   "unclustered_over_player_clustered_t_ratio": 2.772033115434143,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.010626133142363492,
+   "base_mae": 0.0104578681967201,
+   "pct_of_base": 1.608979406492833,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.00036217385271347137,
+   "n": 3089,
+   "clustered_by_player_se": 0.000132631299442132,
+   "clustered_by_player_t": 2.7306816282192155,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 2.216791547482608e-05,
+   "clustered_by_cell_t": 16.337749623989527,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 5.587040149848023e-05,
+   "unclustered_t_WRONG": 6.482392161139618,
+   "unclustered_over_player_clustered_t_ratio": 2.3739099037213798,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.010798627372463994,
+   "base_mae": 0.010436453519750522,
+   "pct_of_base": 3.4702770632578734,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.0019142122040006649,
+   "n": 3691,
+   "clustered_by_player_se": 0.0005597246727368817,
+   "clustered_by_player_t": 3.419917500939802,
+   "clustered_by_player_n_clusters": 389,
+   "clustered_by_cell_se": 0.0001024304115551504,
+   "clustered_by_cell_t": 18.68792846712344,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00020644369860174544,
+   "unclustered_t_WRONG": 9.272320816599052,
+   "unclustered_over_player_clustered_t_ratio": 2.7112703198398775,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.036697607303584644,
+   "base_mae": 0.034783395099583975,
+   "pct_of_base": 5.50323566322472,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.0008374552313678475,
+   "n": 3630,
+   "clustered_by_player_se": 0.0005089010650262744,
+   "clustered_by_player_t": 1.6456150103058047,
+   "clustered_by_player_n_clusters": 379,
+   "clustered_by_cell_se": 0.0001125426599544365,
+   "clustered_by_cell_t": 7.441224791620313,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0001935935624318244,
+   "unclustered_t_WRONG": 4.325842351616234,
+   "unclustered_over_player_clustered_t_ratio": 2.6287086132086035,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.03925819074785661,
+   "base_mae": 0.03842073551648876,
+   "pct_of_base": 2.1796959899646966,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.0007601598986397334,
+   "n": 3477,
+   "clustered_by_player_se": 0.0005318101589193553,
+   "clustered_by_player_t": 1.4293820565300739,
+   "clustered_by_player_n_clusters": 367,
+   "clustered_by_cell_se": 8.201848326749902e-05,
+   "clustered_by_cell_t": 9.268153571683488,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00019199631673094653,
+   "unclustered_t_WRONG": 3.959242091633358,
+   "unclustered_over_player_clustered_t_ratio": 2.7698977145723367,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.03806907678606527,
+   "base_mae": 0.03730891688742554,
+   "pct_of_base": 2.037475118705295,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.0007433945679414376,
+   "n": 2917,
+   "clustered_by_player_se": 0.0004151789904873391,
+   "clustered_by_player_t": 1.7905399477676782,
+   "clustered_by_player_n_clusters": 338,
+   "clustered_by_cell_se": 5.207792399755849e-05,
+   "clustered_by_cell_t": 14.274658259731885,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00016965692910089186,
+   "unclustered_t_WRONG": 4.381751879402193,
+   "unclustered_over_player_clustered_t_ratio": 2.4471678975188795,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.037483978830737646,
+   "base_mae": 0.03674058426279621,
+   "pct_of_base": 2.0233607680926418,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.001985381889496706,
+   "n": 3808,
+   "clustered_by_player_se": 0.0006490483605048933,
+   "clustered_by_player_t": 3.058912109341562,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 0.00012140116660650252,
+   "clustered_by_cell_t": 16.353894653516157,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0002335202788933031,
+   "unclustered_t_WRONG": 8.50196779014571,
+   "unclustered_over_player_clustered_t_ratio": 2.779408981442026,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.030838323755738306,
+   "base_mae": 0.028852941866241596,
+   "pct_of_base": 6.881037984621023,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.001489714384071319,
+   "n": 3785,
+   "clustered_by_player_se": 0.0007091765549934509,
+   "clustered_by_player_t": 2.1006255403988594,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 0.00018779423358409274,
+   "clustered_by_cell_t": 7.932695033493864,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00025797991087301333,
+   "unclustered_t_WRONG": 5.774536393279894,
+   "unclustered_over_player_clustered_t_ratio": 2.7489603845259567,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.029682554657764485,
+   "base_mae": 0.02819284027369317,
+   "pct_of_base": 5.284016685120499,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.002484693923122312,
+   "n": 3612,
+   "clustered_by_player_se": 0.0006831706531034575,
+   "clustered_by_player_t": 3.6370033048624486,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 0.0001305040061271302,
+   "clustered_by_cell_t": 19.039215705775753,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00024600880468507024,
+   "unclustered_t_WRONG": 10.100020307415862,
+   "unclustered_over_player_clustered_t_ratio": 2.777017082693535,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.03170005611371343,
+   "base_mae": 0.029215362190591124,
+   "pct_of_base": 8.504751393848931,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.0018236596008079163,
+   "n": 3089,
+   "clustered_by_player_se": 0.0006263166397617999,
+   "clustered_by_player_t": 2.9117214600932346,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 0.00012042064837128983,
+   "clustered_by_cell_t": 15.144077244834909,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00024135618466069906,
+   "unclustered_t_WRONG": 7.55588510554074,
+   "unclustered_over_player_clustered_t_ratio": 2.5949889812945215,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.029581420907980167,
+   "base_mae": 0.027757761307172252,
+   "pct_of_base": 6.569908792812862,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": -6.821163784770205e-05,
+   "n": 3142,
+   "clustered_by_player_se": 0.00023643022946471463,
+   "clustered_by_player_t": -0.28850641477672,
+   "clustered_by_player_n_clusters": 351,
+   "clustered_by_cell_se": 7.259902519446708e-05,
+   "clustered_by_cell_t": -0.9395668559596666,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 9.603012841095509e-05,
+   "unclustered_t_WRONG": -0.7103149706912242,
+   "unclustered_over_player_clustered_t_ratio": 2.4620422088047813,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 6,
+   "arm_loses_cells": 6,
+   "arm_mae": 0.027942404415730437,
+   "base_mae": 0.02801061605357814,
+   "pct_of_base": -0.24352066272740383,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": -0.0003969383942005643,
+   "n": 3082,
+   "clustered_by_player_se": 0.0002406614979601818,
+   "clustered_by_player_t": -1.6493639305205312,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 5.333994671144005e-05,
+   "clustered_by_cell_t": -7.441672117670699,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 9.397822677684847e-05,
+   "unclustered_t_WRONG": -4.223727216550866,
+   "unclustered_over_player_clustered_t_ratio": 2.560821864958499,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 10,
+   "arm_loses_cells": 2,
+   "arm_mae": 0.02738762118279413,
+   "base_mae": 0.027784559576994685,
+   "pct_of_base": -1.4286294267166466,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 3.154840615831161e-06,
+   "n": 2965,
+   "clustered_by_player_se": 0.00024544458065412297,
+   "clustered_by_player_t": 0.012853576181732518,
+   "clustered_by_player_n_clusters": 332,
+   "clustered_by_cell_se": 3.7338637792167835e-05,
+   "clustered_by_cell_t": 0.08449265432208461,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 9.849057853339677e-05,
+   "unclustered_t_WRONG": 0.0320319025718932,
+   "unclustered_over_player_clustered_t_ratio": 2.492061518055721,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 5,
+   "arm_loses_cells": 7,
+   "arm_mae": 0.02705494808514265,
+   "base_mae": 0.027051793244526817,
+   "pct_of_base": 0.011662223599426097,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "babip",
+   "diff": 0.00037242531714543693,
+   "n": 2249,
+   "clustered_by_player_se": 0.00028612833948525883,
+   "clustered_by_player_t": 1.301602343254168,
+   "clustered_by_player_n_clusters": 307,
+   "clustered_by_cell_se": 4.170777335699885e-05,
+   "clustered_by_cell_t": 8.929398219311592,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0001197532862082697,
+   "unclustered_t_WRONG": 3.109938181552121,
+   "unclustered_over_player_clustered_t_ratio": 2.3893151373536163,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 1,
+   "arm_loses_cells": 11,
+   "arm_mae": 0.02863205805999048,
+   "base_mae": 0.028259632742845046,
+   "pct_of_base": 1.3178703365836555,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 0.0001298336434467231,
+   "n": 3808,
+   "clustered_by_player_se": 8.176910553326162e-05,
+   "clustered_by_player_t": 1.5878080431479105,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 1.4261430023398403e-05,
+   "clustered_by_cell_t": 9.103830628044173,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 2.909064529451192e-05,
+   "unclustered_t_WRONG": 4.463071964622826,
+   "unclustered_over_player_clustered_t_ratio": 2.810838491392548,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 1,
+   "arm_loses_cells": 11,
+   "arm_mae": 0.018715365917836645,
+   "base_mae": 0.01858553227438992,
+   "pct_of_base": 0.6985737159953627,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 5.283002532434906e-05,
+   "n": 3785,
+   "clustered_by_player_se": 7.986254927680488e-05,
+   "clustered_by_player_t": 0.6615118826377473,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 2.7183441062762167e-05,
+   "clustered_by_cell_t": 1.9434634931748735,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 3.139301987127027e-05,
+   "unclustered_t_WRONG": 1.6828589776002132,
+   "unclustered_over_player_clustered_t_ratio": 2.5439588037177696,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 5,
+   "arm_loses_cells": 7,
+   "arm_mae": 0.017560236133040065,
+   "base_mae": 0.017507406107715714,
+   "pct_of_base": 0.3017581530885164,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": 8.690807610608929e-05,
+   "n": 3612,
+   "clustered_by_player_se": 9.429728337744877e-05,
+   "clustered_by_player_t": 0.921639234910063,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 1.6069770623283114e-05,
+   "clustered_by_cell_t": 5.408171537941569,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 3.537042795201797e-05,
+   "unclustered_t_WRONG": 2.4570829684047113,
+   "unclustered_over_player_clustered_t_ratio": 2.6659921532577577,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 1,
+   "arm_loses_cells": 11,
+   "arm_mae": 0.01799406928735443,
+   "base_mae": 0.01790716121124834,
+   "pct_of_base": 0.48532581507949,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "bb_rate",
+   "diff": -8.49294457877485e-06,
+   "n": 3089,
+   "clustered_by_player_se": 8.14200951821853e-05,
+   "clustered_by_player_t": -0.1043101774785582,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 2.1536745521741453e-05,
+   "clustered_by_cell_t": -0.3943467024858133,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 3.3476119239546394e-05,
+   "unclustered_t_WRONG": -0.25370158703288004,
+   "unclustered_over_player_clustered_t_ratio": 2.4321844058316406,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 6,
+   "arm_loses_cells": 6,
+   "arm_mae": 0.019104761348703873,
+   "base_mae": 0.019113254293282648,
+   "pct_of_base": -0.04443484321641498,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 6.345495881054366e-05,
+   "n": 3808,
+   "clustered_by_player_se": 8.282344631102994e-05,
+   "clustered_by_player_t": 0.7661472884411127,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 1.8073512673712776e-05,
+   "clustered_by_cell_t": 3.510936692612966,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 3.1242063920275773e-05,
+   "unclustered_t_WRONG": 2.031074482546016,
+   "unclustered_over_player_clustered_t_ratio": 2.651023521441501,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 2,
+   "arm_loses_cells": 10,
+   "arm_mae": 0.009463836155898853,
+   "base_mae": 0.00940038119708831,
+   "pct_of_base": 0.6750253790792899,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 0.00015423858000368973,
+   "n": 3785,
+   "clustered_by_player_se": 7.643841473366714e-05,
+   "clustered_by_player_t": 2.0178150023270387,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 1.937985258075103e-05,
+   "clustered_by_cell_t": 7.958707599091164,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 2.877917618493537e-05,
+   "unclustered_t_WRONG": 5.35938134617025,
+   "unclustered_over_player_clustered_t_ratio": 2.6560320643813036,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.010592798948266431,
+   "base_mae": 0.010438560368262741,
+   "pct_of_base": 1.4775847871957002,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 5.072478417393731e-06,
+   "n": 3612,
+   "clustered_by_player_se": 8.368674295791672e-05,
+   "clustered_by_player_t": 0.06061268772217018,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 1.0608873553356364e-05,
+   "clustered_by_cell_t": 0.4781354393453897,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 3.072831115949298e-05,
+   "unclustered_t_WRONG": 0.16507507982021577,
+   "unclustered_over_player_clustered_t_ratio": 2.7234410157963773,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 6,
+   "arm_loses_cells": 6,
+   "arm_mae": 0.010462940675137495,
+   "base_mae": 0.0104578681967201,
+   "pct_of_base": 0.04850394288756298,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "hr_rate",
+   "diff": 9.893331392166161e-05,
+   "n": 3089,
+   "clustered_by_player_se": 6.795495179675905e-05,
+   "clustered_by_player_t": 1.4558661481734727,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 1.2503281293828203e-05,
+   "clustered_by_cell_t": 7.912588031631064,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 2.9156910298397425e-05,
+   "unclustered_t_WRONG": 3.3931343516565735,
+   "unclustered_over_player_clustered_t_ratio": 2.330663678054191,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.010535386833672182,
+   "base_mae": 0.010436453519750522,
+   "pct_of_base": 0.9479591293578296,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.000627991594530502,
+   "n": 3691,
+   "clustered_by_player_se": 0.0002810140039413105,
+   "clustered_by_player_t": 2.2347341617240453,
+   "clustered_by_player_n_clusters": 389,
+   "clustered_by_cell_se": 5.818804389172495e-05,
+   "clustered_by_cell_t": 10.792450691400713,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00010644599049476116,
+   "unclustered_t_WRONG": 5.899626576929727,
+   "unclustered_over_player_clustered_t_ratio": 2.639967955910381,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.03541138669411448,
+   "base_mae": 0.034783395099583975,
+   "pct_of_base": 1.8054350149908542,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.00016721514855673434,
+   "n": 3630,
+   "clustered_by_player_se": 0.0002621864372072915,
+   "clustered_by_player_t": 0.6377719241996093,
+   "clustered_by_player_n_clusters": 379,
+   "clustered_by_cell_se": 5.7414681240698594e-05,
+   "clustered_by_cell_t": 2.912410988675895,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 9.875407831220081e-05,
+   "unclustered_t_WRONG": 1.693248030001363,
+   "unclustered_over_player_clustered_t_ratio": 2.654942881228826,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 3,
+   "arm_loses_cells": 9,
+   "arm_mae": 0.038587950665045494,
+   "base_mae": 0.03842073551648876,
+   "pct_of_base": 0.43522110211807835,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.00015117997133178276,
+   "n": 3477,
+   "clustered_by_player_se": 0.0002681379377250237,
+   "clustered_by_player_t": 0.5638141794273748,
+   "clustered_by_player_n_clusters": 367,
+   "clustered_by_cell_se": 3.953082257654614e-05,
+   "clustered_by_cell_t": 3.824356830395902,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 9.791683193975179e-05,
+   "unclustered_t_WRONG": 1.5439630586169675,
+   "unclustered_over_player_clustered_t_ratio": 2.738425380122683,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.03746009685875732,
+   "base_mae": 0.03730891688742554,
+   "pct_of_base": 0.4052113648540033,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "iso",
+   "diff": 0.00021821974482818905,
+   "n": 2917,
+   "clustered_by_player_se": 0.00020740766755820408,
+   "clustered_by_player_t": 1.0521295928799297,
+   "clustered_by_player_n_clusters": 338,
+   "clustered_by_cell_se": 2.3406964189609568e-05,
+   "clustered_by_cell_t": 9.32285549977718,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 8.581890401564958e-05,
+   "unclustered_t_WRONG": 2.542793424492993,
+   "unclustered_over_player_clustered_t_ratio": 2.4168062962023154,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 1,
+   "arm_loses_cells": 11,
+   "arm_mae": 0.0369588040076244,
+   "base_mae": 0.03674058426279621,
+   "pct_of_base": 0.593947399603985,
+   "season": 2026
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.00048345735988873824,
+   "n": 3808,
+   "clustered_by_player_se": 0.00032384596166336283,
+   "clustered_by_player_t": 1.4928620922291786,
+   "clustered_by_player_n_clusters": 398,
+   "clustered_by_cell_se": 6.956091157453113e-05,
+   "clustered_by_cell_t": 6.950129734437669,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00012246750118256059,
+   "unclustered_t_WRONG": 3.9476379873878145,
+   "unclustered_over_player_clustered_t_ratio": 2.6443420379796123,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.02933639922613034,
+   "base_mae": 0.028852941866241596,
+   "pct_of_base": 1.6755912174570702,
+   "season": 2022
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.00011838057487197319,
+   "n": 3785,
+   "clustered_by_player_se": 0.0003708169318296066,
+   "clustered_by_player_t": 0.31924263621913046,
+   "clustered_by_player_n_clusters": 392,
+   "clustered_by_cell_se": 7.900461170254085e-05,
+   "clustered_by_cell_t": 1.4984008189001197,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00013598149634069036,
+   "unclustered_t_WRONG": 0.8705638491826894,
+   "unclustered_over_player_clustered_t_ratio": 2.7269661079515957,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 6,
+   "arm_loses_cells": 6,
+   "arm_mae": 0.02831122084856514,
+   "base_mae": 0.02819284027369317,
+   "pct_of_base": 0.4198958803822064,
+   "season": 2024
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.0006476249489049861,
+   "n": 3612,
+   "clustered_by_player_se": 0.0003559359471655509,
+   "clustered_by_player_t": 1.8194985756911102,
+   "clustered_by_player_n_clusters": 381,
+   "clustered_by_cell_se": 7.547057055774559e-05,
+   "clustered_by_cell_t": 8.581158776446006,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.00013212326318923353,
+   "unclustered_t_WRONG": 4.901672372240953,
+   "unclustered_over_player_clustered_t_ratio": 2.6939687877354475,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.029862987139496106,
+   "base_mae": 0.029215362190591124,
+   "pct_of_base": 2.2167274349710278,
+   "season": 2025
+  },
+  {
+   "arm": "marcel_tuned_park_half",
+   "base": "marcel_tuned",
+   "component": "k_rate",
+   "diff": 0.0004215793156263593,
+   "n": 3089,
+   "clustered_by_player_se": 0.00033141906460107097,
+   "clustered_by_player_t": 1.2720430435521692,
+   "clustered_by_player_n_clusters": 348,
+   "clustered_by_cell_se": 6.614825711663089e-05,
+   "clustered_by_cell_t": 6.373249031838308,
+   "clustered_by_cell_n_clusters": 12,
+   "unclustered_se_WRONG": 0.0001290226154216637,
+   "unclustered_t_WRONG": 3.267483876749669,
+   "unclustered_over_player_clustered_t_ratio": 2.568689710078716,
+   "n_cells_scored": 12,
+   "arm_wins_cells": 0,
+   "arm_loses_cells": 12,
+   "arm_mae": 0.02817934062279861,
+   "base_mae": 0.027757761307172252,
+   "pct_of_base": 1.5187799583730428,
+   "season": 2026
+  }
+ ],
+ "park_tilt": [
+  {
+   "component": "babip",
+   "n": 11438,
+   "sd_log_factor": 0.0355173927157474,
+   "slope_realized": 0.28131914634439426,
+   "slope_base": 0.1144047712272381,
+   "slope_arm": 1.1347087756503318,
+   "excess_over_realized": 0.8533896293059375,
+   "base_share_of_realized": 0.40667253798354136
+  },
+  {
+   "component": "bb_rate",
+   "n": 14294,
+   "sd_log_factor": 0.03922770559036476,
+   "slope_realized": -0.5195784224800348,
+   "slope_base": -0.42025848104845154,
+   "slope_arm": 0.5975693703925928,
+   "excess_over_realized": 1.1171477928726277,
+   "base_share_of_realized": 0.8088451384152703
+  },
+  {
+   "component": "hr_rate",
+   "n": 14294,
+   "sd_log_factor": 0.10988018484732155,
+   "slope_realized": 0.2103268661204373,
+   "slope_base": 0.23714389067512623,
+   "slope_arm": 1.2153858426966888,
+   "excess_over_realized": 1.0050589765762514,
+   "base_share_of_realized": 1.1275016599131609
+  },
+  {
+   "component": "iso",
+   "n": 13715,
+   "sd_log_factor": 0.06700328010527053,
+   "slope_realized": 0.01009539313159789,
+   "slope_base": 0.11083933536286389,
+   "slope_arm": 1.1224469405235002,
+   "excess_over_realized": 1.1123515473919023,
+   "base_share_of_realized": 10.979199513879687
+  },
+  {
+   "component": "k_rate",
+   "n": 14294,
+   "sd_log_factor": 0.06670011085954052,
+   "slope_realized": -0.033326552664091305,
+   "slope_base": -0.15014053863670832,
+   "slope_arm": 0.8385875568060168,
+   "excess_over_realized": 0.8719141094701082,
+   "base_share_of_realized": 4.505132593521494
+  }
+ ],
+ "arm_coverage": [
+  {
+   "component": "babip",
+   "season": 2022,
+   "cells": 12,
+   "n_with_park": 3142,
+   "n": 3142,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.02714810435735292
+  },
+  {
+   "component": "babip",
+   "season": 2024,
+   "cells": 12,
+   "n_with_park": 3082,
+   "n": 3082,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.026700315240192056
+  },
+  {
+   "component": "babip",
+   "season": 2025,
+   "cells": 12,
+   "n_with_park": 2965,
+   "n": 2965,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.027218849565455998
+  },
+  {
+   "component": "babip",
+   "season": 2026,
+   "cells": 12,
+   "n_with_park": 2249,
+   "n": 2249,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.029532856773149013
+  },
+  {
+   "component": "bb_rate",
+   "season": 2022,
+   "cells": 12,
+   "n_with_park": 3808,
+   "n": 3808,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.024980446541311537
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024,
+   "cells": 12,
+   "n_with_park": 3785,
+   "n": 3785,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.03303902929070134
+  },
+  {
+   "component": "bb_rate",
+   "season": 2025,
+   "cells": 12,
+   "n_with_park": 3612,
+   "n": 3612,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.03537996557239557
+  },
+  {
+   "component": "bb_rate",
+   "season": 2026,
+   "cells": 12,
+   "n_with_park": 3089,
+   "n": 3089,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.03131573816533814
+  },
+  {
+   "component": "hr_rate",
+   "season": 2022,
+   "cells": 12,
+   "n_with_park": 3808,
+   "n": 3808,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.09887582165709206
+  },
+  {
+   "component": "hr_rate",
+   "season": 2024,
+   "cells": 12,
+   "n_with_park": 3785,
+   "n": 3785,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.09557477566695327
+  },
+  {
+   "component": "hr_rate",
+   "season": 2025,
+   "cells": 12,
+   "n_with_park": 3612,
+   "n": 3612,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.09002154036928527
+  },
+  {
+   "component": "hr_rate",
+   "season": 2026,
+   "cells": 12,
+   "n_with_park": 3089,
+   "n": 3089,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.07540289761648179
+  },
+  {
+   "component": "iso",
+   "season": 2022,
+   "cells": 12,
+   "n_with_park": 3691,
+   "n": 3691,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.05668796379232751
+  },
+  {
+   "component": "iso",
+   "season": 2024,
+   "cells": 12,
+   "n_with_park": 3630,
+   "n": 3630,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.05443230186534509
+  },
+  {
+   "component": "iso",
+   "season": 2025,
+   "cells": 12,
+   "n_with_park": 3477,
+   "n": 3477,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.052425854706443537
+  },
+  {
+   "component": "iso",
+   "season": 2026,
+   "cells": 12,
+   "n_with_park": 2917,
+   "n": 2917,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.037633599794077696
+  },
+  {
+   "component": "k_rate",
+   "season": 2022,
+   "cells": 12,
+   "n_with_park": 3808,
+   "n": 3808,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.05116508153973941
+  },
+  {
+   "component": "k_rate",
+   "season": 2024,
+   "cells": 12,
+   "n_with_park": 3785,
+   "n": 3785,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.05812418955393317
+  },
+  {
+   "component": "k_rate",
+   "season": 2025,
+   "cells": 12,
+   "n_with_park": 3612,
+   "n": 3612,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.05408275663067889
+  },
+  {
+   "component": "k_rate",
+   "season": 2026,
+   "cells": 12,
+   "n_with_park": 3089,
+   "n": 3089,
+   "share_with_park": 1.0,
+   "mean_abs_log_factor": 0.0487221532504221
+  }
+ ],
+ "predictions": {
+  "1_persistence": {
+   "claim": "year-over-year correlation of the regressed factor across parks: HR >= 0.60, K >= 0.40",
+   "bars": {
+    "hr_rate": 0.6,
+    "k_rate": 0.4
+   },
+   "stamped_factor_corr": {
+    "babip": 0.9331335853,
+    "bb_rate": 0.8605324888,
+    "hr_rate": 0.9204938773,
+    "iso": 0.9106852665,
+    "k_rate": 0.9495013701
+   },
+   "single_season_raw_corr": {
+    "k_rate": 0.7043492704,
+    "bb_rate": 0.2929177418,
+    "hr_rate": 0.4386993467,
+    "babip": 0.6181861338,
+    "iso": 0.3826912352
+   },
+   "note": "the stamped factors for consecutive seasons share two of their three window seasons, so the first number is a persistence check on the artifact a model consumes; the single-season column is the same question asked of windows that share nothing",
+   "passes": {
+    "hr_rate": true,
+    "k_rate": true
+   },
+   "verdict": "held"
+  },
+  "2_hr_gain": {
+   "claim": "marcel_tuned_park beats marcel_tuned on HR/PA by >= 0.5% of MAE, |t| > 2.5",
+   "diff": 0.0003413150758916817,
+   "pct_of_base": 3.361149042354433,
+   "t_player": 4.387821334003321,
+   "t_cell": 16.220869282559413,
+   "n": 14294,
+   "n_clusters": 662,
+   "wins_losses": [
+    0,
+    48
+   ],
+   "base_mae": 0.010154714104929895,
+   "arm_mae": 0.010496029180821577,
+   "verdict": "FAILED (the arm is worse than the baseline)"
+  },
+  "3_k_bb_null": {
+   "claim": "K% and BB%: |delta| < 0.3% of MAE",
+   "components": {
+    "k_rate": {
+     "diff": 0.001951278274986009,
+     "pct_of_base": 6.832927407132385,
+     "t_player": 5.214947600987841,
+     "n": 14294,
+     "within_bar": false
+    },
+    "bb_rate": {
+     "diff": 0.0002614655007194597,
+     "pct_of_base": 1.434682520529168,
+     "t_player": 3.0387658734180643,
+     "n": 14294,
+     "within_bar": false
+    }
+   },
+   "verdict": "FAILED"
+  },
+  "4_serving_floor": {
+   "claim": "under architecture.md \u00a73's effect floor (1.0% of the served baseline's MAE at |t| > 2.0), prediction 2's gain does not clear serving on its own",
+   "floor_pct": 1.0,
+   "floor_t": 2.0,
+   "gain_pct_of_base": 3.361149042354433,
+   "t_player": 4.387821334003321,
+   "clears_the_floor": false,
+   "note": "the arm has no fitted parameter \u2014 the factor is applied as measured \u2014 so there is no recalibration control to subtract and the whole gain is the measurement's share",
+   "verdict": "held vacuously \u2014 the arm has no gain to clear the floor with; it is worse than the baseline"
+  }
+ }
+}
