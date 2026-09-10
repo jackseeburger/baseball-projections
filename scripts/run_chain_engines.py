@@ -672,16 +672,22 @@ def rate_table_spread(season: int, as_of: str, pa_dir: Path,
             match=RUNGS[name].get("match", False),
             pitcher_seasons=p_seasons, hitter_seasons=h_seasons, pa_dir=pa_dir,
             stuff_monthly=stuff_monthly, contact_monthly=contact_monthly)
-        ra9 = pd.Series(sp_model.rate_table(sp_ctx, as_of, 4.5,
-                                            ballast=sp_ctx["ballast"],
-                                            engine=engine))
+        p_counts = pd.concat(
+            [sp_ctx["prior_counts"],
+             sp_model.appearances_before(sp_ctx["game_logs"], as_of)],
+            ignore_index=True)
+        p_rates = sp_model.marcel_rates(p_counts, season, sp_ctx["league"],
+                                        ballast=sp_ctx["ballast"],
+                                        engine=engine, as_of=as_of)
+        ra9 = pd.Series(sp_model.starter_ra9_lookup(p_rates, sp_ctx["league"],
+                                                    4.5))
         counts = pd.concat([lu_ctx["prior_counts"],
                             lu_model.games_before(lu_ctx["game_logs"], as_of)],
                            ignore_index=True)
-        raa = pd.Series(lu_model.batter_runs_lookup(
-            lu_model.marcel_rates(counts, season, lu_ctx["league"],
-                                  ballast=lu_ctx["ballast"], engine=engine,
-                                  as_of=as_of), lu_ctx["league"]))
+        h_rates = lu_model.marcel_rates(counts, season, lu_ctx["league"],
+                                        ballast=lu_ctx["ballast"],
+                                        engine=engine, as_of=as_of)
+        raa = pd.Series(lu_model.batter_runs_lookup(h_rates, lu_ctx["league"]))
         out[name] = {
             "pitcher_fip_ra9": {"n": int(len(ra9)), "mean": float(ra9.mean()),
                                 "sd": float(ra9.std(ddof=1)),
@@ -691,7 +697,32 @@ def rate_table_spread(season: int, as_of: str, pa_dir: Path,
                                    "sd": float(raa.std(ddof=1)),
                                    "p05": float(raa.quantile(0.05)),
                                    "p95": float(raa.quantile(0.95))},
+            # The columns the match itself acts on, weighted by the effective
+            # sample each table carries. `match` is an equality on exactly
+            # these numbers, so they are what says the transform did what it
+            # claims on the real population rather than on a synthetic frame —
+            # and the two derived numbers above say what a linear rescale of a
+            # rate becomes after FIP and the runs-above-average map, which is
+            # the risk docs/chain-engines-matched.md records up front.
+            "weighted_rate_moments": {
+                "pitcher": _rate_moments(p_rates, "bf_weighted"),
+                "hitter": _rate_moments(h_rates, "pa_weighted"),
+            },
         }
+    return out
+
+
+def _rate_moments(table: pd.DataFrame, weight_col: str) -> dict:
+    """{rate column: weighted mean and sd} — the moments `match` equalises."""
+    from src.sim.engines import weighted_moments
+
+    if weight_col not in table.columns:
+        return {}
+    w = table[weight_col].to_numpy(dtype="float64")
+    out = {}
+    for column in [c for c in table.columns if c.startswith("rate_")]:
+        mean, sd = weighted_moments(table[column].to_numpy(dtype="float64"), w)
+        out[column] = {"mean": mean, "sd": sd}
     return out
 
 
