@@ -111,3 +111,123 @@ spread the engines carry; a gain at player grain that is real but small
 will be invisible here (prediction 3's power statement). Closing-line
 leakage: compare against the close, never fit on it. Same market-set
 caveat as BAS-90 (756 archive set, not the 737 re-pull).
+
+## Results (2026-09-10)
+
+Evidence `data/eval/chain_engines_matched.json`; `match` and `age_slopes`
+on `ChainEngines` / `build_engines`; `--engine-match` / `--engine-no-age`
+on `scripts/backtest_game_odds.py`; the seven arms, predictions and
+verdict in `scripts/run_chain_engines.py`; tests in
+`tests/test_sim/test_engines.py` and
+`tests/test_scripts/test_run_chain_engines.py`.
+
+**Verdict: nothing ships. A real null.** The matching does what it says
+(every matched arm's weighted mean and sd equal stock's on all eight rate
+columns to five decimals) and removes essentially all of the engines'
+cost, but the candidate arm's gain over the served chain is −.00008 ±
+.00015 Brier on the pooled seasons. The game-grain exam cannot resolve a
+player-grain gain of this size. No default flipped; the arms stay behind
+the switch.
+
+### Reproduction
+
+BAS-90's prediction frames were not on disk, so served, recal and R3 were
+re-walked; they reproduce BAS-90 to five decimals on every set (market
+.24358 / .24381 / .24435; all-2026 +.00003 / +.00026; all-2025 −.00002 /
++.00025; the 722-game 07-07 cut R3 +.00089, t +1.51). Market set frozen
+by id from the BAS-90 evidence, all 756 present.
+
+### Per-arm Brier, Δ vs served, paired
+
+| arm | market (756) | t | all 2026 (1,883) | all 2025 (2,105) | pooled (3,988) | t |
+|---|---|---|---|---|---|---|
+| served | .24358 | — | .24543 | .24343 | .24438 | — |
+| recal | +.00023 | +0.96 | +.00003 | −.00002 | +.00000 | — |
+| R1-match | +.00071 | +2.02 | +.00018 | −.00006 | +.00006 | — |
+| R3 | +.00076 | +1.31 | +.00026 | +.00025 | +.00026 | +1.04 |
+| R3-noage | +.00027 | +0.51 | +.00014 | +.00037 | +.00026 | +1.14 |
+| R3-match | +.00064 | +1.45 | +.00002 | −.00005 | −.00002 | −0.09 |
+| **R3-noage-match** | +.00017 | +0.50 | −.00013 | −.00003 | **−.00008** | **−0.51** |
+
+Kalshi close .24156, Polymarket .24165, `pythag_60` .24619, unchanged.
+On the market set R3-noage-match has the highest correlation with the
+market's deviation from `pythag_60` of any arm, .808 (served .795), and a
+slope of 1.026 (served 1.054).
+
+Mechanism split of R3's cost: pooled +.00026 → matching alone −.00002,
+age off alone +.00026, both −.00008. Matching is what removes the cost on
+the full seasons; on the market set it is the age curve (+.00076 →
++.00064 / +.00027 / +.00017).
+
+### Rate-table spread at 2026-08-15 (derived tables)
+
+| arm | FIP RA/9 mean | sd | runs/PA mean | sd |
+|---|---|---|---|---|
+| served | 4.549 | .273 | −.0031 | .0127 |
+| R3 | 4.667 | .323 | −.0045 | .0174 |
+| R3-noage | 4.617 | .324 | +.0006 | .0172 |
+| R3-match | 4.538 | .272 | −.0037 | .0132 |
+| R3-noage-match | 4.538 | .272 | −.0034 | .0131 |
+
+The match is exact on the rate columns; the derived FIP and runs tables
+come back near stock but not on it (FIP and the runs map are non-linear
+in the rates), the risk recorded up front. R1-match's RA/9 sd is .256,
+not .273: rung 1's narrower K spread propagates differently through FIP.
+
+### Predictions
+
+1. **Fails as written.** Slope gaps vs served on the market set: R1-match
+   −.067, R3-match −.053, R3-noage-match −.029; the worst exceeds .03.
+   The reading is not "the transform failed": the matched arms sit at
+   .987–1.026 while served sits at 1.054, so they are closer to 1.0 than
+   served is, and the clause measures distance to served. On both full
+   seasons every matched arm is within .029 of served, and R3-noage-match
+   is within .009 on all three sets.
+2. **Fails on the sign clause.** R3-match − R3-noage-match: market
+   +.00046 (se .00022, t +2.11), clearing the +.00030 bar; all-2026
+   +.00015 (t +1.09); all-2025 −.00002 (t −0.18). Same shape as BAS-90's
+   control: the age curve costs on 2026 and nothing on 2025.
+3. **Fails.** Pooled R3-noage-match − served −.000076 (se .000149,
+   t −0.51) against ≤ −.00020 required, and the market set has the wrong
+   sign (+.00017). The realised pooled se is better than the
+   pre-registered ≈ .00025, so the test could have resolved ≈ −.0003 at
+   t −2; it resolved nothing. That is the pre-registered null, and it is
+   a real null, not a dead arm.
+4. **Passes.** R1-match − served +.00071 (se .00035, t +2.02) ≥ +.00040
+   and not within +.00010 of served. At rung 1 the cost is the age
+   curve, not the spread: recal (age off, unmatched) +.00023, R1-match
+   (age on, matched) +.00071. M1 stands.
+
+**Vacuity passes.** Mean |ΔP(home)| between R3-noage-match and served
+.0078 > .003. The 07-07 → 09-02 cut (722 games) agrees in sign
+everywhere (R3-noage-match +.00019; R1-match +.00078, t +2.19; prediction
+2 +.00053, t +2.38).
+
+### Failure conditions as fired
+
+Prediction 1 failed, so per the text "matching is not the fix"; read with
+the caveat above (the tables match exactly and the matched arms are the
+best-calibrated in absolute terms, but not within .03 of served on the
+market set). Prediction 3 failed on threshold and sign: nothing ships.
+Prediction 4 passed: M1 is not dropped. No blend re-sweep (nothing
+shipped).
+
+### What this means
+
+- **For the odds board:** nothing changes. Stock Marcel stays in the
+  chain.
+- **For the engines:** they are not wrong at game grain; with level and
+  spread matched and the age curve off they price games as well as stock
+  Marcel on every set, and no better. The 1% MAE gains at player grain are
+  below what the per-game Brier can see, on 3,988 games, at se .00015.
+- **For the age curve:** applying station A's tuned age curve to the
+  chain's whole-roster population costs about +.0005 Brier on 2026 and
+  nothing on 2025, in both BAS-90 and here. If a future chain ever runs
+  the tuned estimator, it runs it with the age slopes zeroed, or with a
+  curve gated on the chain's population, under its own pre-registration.
+- **For the exam:** two tickets have now shown the per-game chain cannot
+  discriminate between layer-2 engines that differ by 1% of player MAE.
+  The lever that moves the game price is not a better rate table; it is
+  the terms the market carries that the chain does not (the .002 residual
+  to the close), which `docs/market-benchmark-2026.md` and the ledger
+  are the place to chase. The engine switch stays in the code, off.

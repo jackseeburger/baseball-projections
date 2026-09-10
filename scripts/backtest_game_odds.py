@@ -1165,6 +1165,18 @@ def main() -> None:
                              "recalibration control that says how much of a "
                              "rung's gain is the age curve and how much is "
                              "re-ballasting")
+    parser.add_argument("--engine-no-age", action="store_true",
+                        help="zero the tuned age slopes at whichever rung is "
+                             "on (--engine-recalibration is this at rung 1). "
+                             "BAS-90 put about 70%% of rung 1's cost on 2026 "
+                             "on the age curve applied to an ungated "
+                             "population, so it is a switch at every rung")
+    parser.add_argument("--engine-match", action="store_true",
+                        help="centre each rate column of the rung's table on "
+                             "the stock table's weighted mean at the same date "
+                             "and rescale its deviations to the stock table's "
+                             "weighted sd (docs/chain-engines-matched.md). "
+                             "Parameter-free, and the identity at rung 0")
     parser.add_argument("--engine-pa-dir", type=Path,
                         default=Path("data/parquet/pa_outcomes"),
                         help="plate-appearance outcomes by season, for the "
@@ -1196,6 +1208,8 @@ def main() -> None:
     engines = eng_model.build_engines(
         args.engine_rung, args.season,
         recalibration=args.engine_recalibration,
+        age_slopes=not args.engine_no_age,
+        match=args.engine_match,
         pitcher_seasons=(P_EVAL.normalize_pitcher_seasons(
             pd.read_parquet("data/parquet/pitcher_seasons_api.parquet"))
             if args.engine_rung >= 2 else None),
@@ -1208,7 +1222,8 @@ def main() -> None:
                          if args.engine_rung >= 3 else None))
     print(f"engines: rung {args.engine_rung} "
           f"(tuned={engines.tuned}, stuff={engines.stuff}, "
-          f"contact={engines.contact}, age_slopes={engines.age_slopes})")
+          f"contact={engines.contact}, age_slopes={engines.age_slopes}, "
+          f"match={engines.match})")
 
     sp_ctx = None
     if not args.no_starters:

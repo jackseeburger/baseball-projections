@@ -334,3 +334,155 @@ def test_the_age_map_is_the_chadwick_age_of_record():
     assert ages[1] == pytest.approx(33.0, abs=0.01)
     assert ages[2] == pytest.approx(26.58, abs=0.01)
     assert 3 not in ages                        # unknown birthdate, no age
+
+
+# ─── the level and spread match ───
+
+def test_matching_with_every_other_flag_off_is_the_stock_table_bit_for_bit():
+    """`match` is the identity at rung 0, and identically so.
+
+    The point of the flag is to move a *rung's* table onto the stock table's
+    moments; at rung 0 the table already is the stock table, so putting it
+    through `(x - m) * (s/s) + m` would round it in the last bit for nothing.
+    `_match` returns early instead, and this asserts the early return with
+    `==` on the arrays rather than `approx` — every published Brier in
+    docs/market-benchmark-2026.md is computed on this table.
+    """
+    served = st.marcel_rates(PITCHERS, 2026, P_LEAGUE)
+    switched = eng.ChainEngines(match=True).pitcher_rates(
+        PITCHERS, 2026, P_LEAGUE, stock=st.marcel_params())
+    assert list(switched.index) == list(served.index)
+    for column in ["bf_weighted", *st.RATE_COLS]:
+        assert np.array_equal(switched[column].to_numpy(),
+                              served[column].to_numpy())
+
+    # ...and on the hitter side, where `lineups.marcel_rates` keeps its own
+    # arithmetic unless the engine is tuned, so a match-only engine is the
+    # served function itself.
+    lu_served = lu.marcel_rates(BATTERS, 2026, H_LEAGUE)
+    lu_switched = lu.marcel_rates(BATTERS, 2026, H_LEAGUE,
+                                  engine=eng.ChainEngines(match=True))
+    assert lu_served.equals(lu_switched)
+
+
+def _weighted(x, w):
+    m = np.isfinite(x) & np.isfinite(w) & (w > 0)
+    x, w = np.asarray(x)[m], np.asarray(w)[m]
+    mean = float((w * x).sum() / w.sum())
+    return mean, float(np.sqrt((w * (x - mean) ** 2).sum() / w.sum()))
+
+
+def test_the_matched_pitcher_table_carries_the_stock_moments():
+    """Weighted mean and weighted sd, to 1e-9, on the effective sample.
+
+    This is the whole claim of the transform, stated as an equality rather
+    than as "closer to". The weights are `bf_weighted`, which the tuned params
+    do not change on the pitcher side, so both tables are weighted the same and
+    the equality is arithmetic rather than a coincidence of this frame.
+    """
+    ages = {543037: 33.0, 605400: 24.0, 111111: 28.0}
+    stock = eng.ChainEngines().pitcher_rates(
+        PITCHERS, 2026, P_LEAGUE, stock=st.marcel_params())
+    unmatched = eng.ChainEngines(tuned=True, ages=ages).pitcher_rates(
+        PITCHERS, 2026, P_LEAGUE, stock=st.marcel_params())
+    matched = eng.ChainEngines(tuned=True, ages=ages, match=True).pitcher_rates(
+        PITCHERS, 2026, P_LEAGUE, stock=st.marcel_params())
+
+    assert list(matched.index) == list(stock.index)
+    moved = False
+    for column in st.RATE_COLS:
+        want = _weighted(stock[column].to_numpy(),
+                         stock["bf_weighted"].to_numpy())
+        got = _weighted(matched[column].to_numpy(),
+                        matched["bf_weighted"].to_numpy())
+        assert got[0] == pytest.approx(want[0], abs=1e-9)
+        assert got[1] == pytest.approx(want[1], abs=1e-9)
+        # The rung's own ordering survives — matching is affine with a positive
+        # scale, so it cannot reorder players — and the matched table is not
+        # just the stock table back again.
+        assert np.array_equal(np.argsort(matched[column].to_numpy()),
+                              np.argsort(unmatched[column].to_numpy()))
+        if not np.allclose(matched[column].to_numpy(),
+                           stock[column].to_numpy()):
+            moved = True
+    assert moved
+
+
+def test_the_matched_hitter_table_carries_the_stock_moments():
+    """The hitter side, where the tuned recency weights move `pa_weighted` too.
+
+    Each table is weighted by the effective sample it carries, so the equality
+    asserted is between the matched table's moments under its own weights and
+    the stock table's under the stock weights — which is what the chain reads
+    when it weights a lineup.
+    """
+    ages = {660271: 31.0, 592450: 34.0, 514888: 27.0}
+    stock = eng.ChainEngines().hitter_rates(
+        BATTERS, 2026, H_LEAGUE, stock=lu.marcel_params())
+    matched = eng.ChainEngines(tuned=True, ages=ages, match=True).hitter_rates(
+        BATTERS, 2026, H_LEAGUE, stock=lu.marcel_params())
+    assert list(matched.index) == list(stock.index)
+    for column in lu.RATE_COLS:
+        want = _weighted(stock[column].to_numpy(),
+                         stock["pa_weighted"].to_numpy())
+        got = _weighted(matched[column].to_numpy(),
+                        matched["pa_weighted"].to_numpy())
+        assert got[0] == pytest.approx(want[0], abs=1e-9)
+        assert got[1] == pytest.approx(want[1], abs=1e-9)
+
+
+def test_a_player_missing_from_the_stock_table_keeps_his_rung_value():
+    """No row is dropped and no row is invented; an absent one is left alone.
+
+    Both tables come off the same count frame, so this is not expected to fire
+    in the chain — it is here because the alternative failure (a player
+    silently taking someone else's level because he had no stock row) would be
+    invisible in a Brier score.
+    """
+    ages = {543037: 33.0, 605400: 24.0, 111111: 28.0}
+    engine = eng.ChainEngines(tuned=True, ages=ages, match=True)
+    stock = eng.ChainEngines().pitcher_rates(PITCHERS, 2026, P_LEAGUE,
+                                             stock=st.marcel_params())
+    # Prime the memo with a stock table one pitcher short.
+    engine._stock[("pitcher", "None", len(PITCHERS))] = stock.drop(index=111111)
+    matched = engine.pitcher_rates(PITCHERS, 2026, P_LEAGUE,
+                                   stock=st.marcel_params())
+    plain = eng.ChainEngines(tuned=True, ages=ages).pitcher_rates(
+        PITCHERS, 2026, P_LEAGUE, stock=st.marcel_params())
+    assert list(matched.index) == list(plain.index)
+    for column in st.RATE_COLS:
+        assert matched.loc[111111, column] == plain.loc[111111, column]
+        assert matched.loc[543037, column] != plain.loc[543037, column]
+
+
+def test_the_stock_table_is_memoised_per_side_and_date():
+    engine = eng.ChainEngines(tuned=True, ages={543037: 33.0}, match=True)
+    for _ in range(3):
+        engine.pitcher_rates(PITCHERS, 2026, P_LEAGUE,
+                             stock=st.marcel_params(), as_of="2026-08-15")
+    engine.pitcher_rates(PITCHERS, 2026, P_LEAGUE,
+                         stock=st.marcel_params(), as_of="2026-08-16")
+    assert set(engine._stock) == {("pitcher", "2026-08-15", len(PITCHERS)),
+                                  ("pitcher", "2026-08-16", len(PITCHERS))}
+
+
+def test_weighted_moments_ignores_rows_with_no_weight():
+    x = np.array([1.0, 2.0, 3.0, 4.0])
+    w = np.array([1.0, 1.0, np.nan, 0.0])
+    mean, sd = eng.weighted_moments(x, w)
+    assert mean == pytest.approx(1.5)
+    assert sd == pytest.approx(0.5)
+    assert all(np.isnan(v) for v in eng.weighted_moments(x, np.zeros(4)))
+
+
+def test_build_engines_carries_the_two_new_switches():
+    """`--engine-match` / `--engine-no-age` reach the object, at every rung."""
+    built = eng.build_engines(0, 2026, match=True)
+    assert built.match and not built.tuned
+    birthdates = pd.DataFrame({"batter": [543037], "birth_year": [1991],
+                               "birth_month": [7], "birth_day": [3]})
+    r1 = eng.build_engines(1, 2026, age_slopes=False, match=True,
+                           birthdates=birthdates)
+    assert (r1.tuned, r1.age_slopes, r1.match) == (True, False, True)
+    r1b = eng.build_engines(1, 2026, recalibration=True, birthdates=birthdates)
+    assert (r1b.age_slopes, r1b.match) == (False, False)
