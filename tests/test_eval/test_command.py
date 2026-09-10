@@ -231,3 +231,166 @@ def test_the_season_aggregate_carries_the_levels_the_vacuity_check_needs():
     # heart is 0.4 of the pitches and the other three split the remaining 0.6.
     assert g.loc[(1, 2025), "waste_share"] == pytest.approx(0.2, abs=1e-9)
     assert g.loc[(1, 2025), "heart_share"] == pytest.approx(0.4, abs=1e-9)
+
+
+# --- the served arm (BAS-88) --------------------------------------------------
+
+def stuff_bucket(pitcher, season, month, pitches, whiff_rate, velo):
+    """One monthly *stuff* bucket, every count consistent with the rates."""
+    from src.data.pitching_stuff import COUNT_COLUMNS as STUFF_COUNTS
+
+    row = {"pitcher": pitcher, "season": season, "month": month}
+    row.update({c: 0.0 for c in STUFF_COUNTS})
+    swings = pitches * 0.45
+    row["pitches"] = float(pitches)
+    row["swings"] = swings
+    row["p_whiff_sum"] = swings * whiff_rate
+    row["p_csw_sum"] = pitches * (whiff_rate * 0.45 + 0.17)
+    row["sum_velo"] = pitches * velo
+    row["fb_pitches"] = pitches * 0.5
+    row["fb_swings"] = swings * 0.5
+    row["fb_p_whiff_sum"] = swings * 0.5 * whiff_rate
+    row["nfb_pitches"] = pitches * 0.5
+    row["nfb_swings"] = swings * 0.5
+    row["nfb_p_whiff_sum"] = swings * 0.5 * whiff_rate
+    return row
+
+
+@pytest.fixture
+def stuff_monthly():
+    """Three pitchers with different stuff, over the three window seasons."""
+    rows = []
+    for pitcher, whiff, velo in ((1, 0.26, 95.0), (2, 0.20, 91.0),
+                                 (3, 0.23, 93.0)):
+        for season in (2024, 2025, 2026):
+            rows.append(stuff_bucket(pitcher, season, 4, 500, whiff, velo))
+    return pd.DataFrame(rows)
+
+
+@pytest.fixture
+def command_monthly():
+    """The command mirror of `stuff_monthly`, same pitchers and months."""
+    rows = []
+    for pitcher, scale in ((1, 1.0), (2, 0.5), (3, 0.75)):
+        for season in (2024, 2025, 2026):
+            rows.append(bucket(pitcher, season, 4, 500, 0.01 * scale,
+                               0.02 * scale, 0.30 * scale,
+                               zone_share=0.45 * scale))
+    return pd.DataFrame(rows)
+
+
+def test_the_served_hyperparameters_are_the_ones_the_gate_was_scored_at():
+    """BAS-87 tuned the command block on 2019 + 2021 and scored the arm at
+    that setting; the serving path has to pin the same numbers or it is
+    serving an arm nobody measured. The stuff controls stay at *stuff's* own
+    pinned setting for the same reason — the control has to be the engine that
+    actually ships, not a re-tuned version of it."""
+    from src.eval import command as C
+    from src.eval.stuff import DEFAULT_BALLAST, DEFAULT_WINDOW_WEIGHTS
+
+    assert C.SERVED_WEIGHTS == (1.0, 0.35, 0.1)
+    assert C.SERVED_BALLAST == 50.0
+    assert C.SERVED_STUFF_WEIGHTS == DEFAULT_WINDOW_WEIGHTS
+    assert C.SERVED_STUFF_BALLAST == DEFAULT_BALLAST
+
+
+def test_the_served_block_is_the_stuff_controls_then_the_command_levels():
+    """One list, built in one place: the fit and the provider must agree on the
+    order or the coefficients land on the wrong columns."""
+    from src.eval import command as C
+    from src.eval.stuff import FEATURES as STUFF_FEATURES
+
+    assert C.served_features() == tuple(STUFF_FEATURES) + tuple(LEVEL_FEATURES)
+    assert C.served_features(LEVEL_FEATURES_WITH_EDGE)[-1] == "shadow_share"
+
+
+def test_attaching_both_blocks_puts_each_at_its_own_hyperparameters(
+        command_monthly, stuff_monthly):
+    """`attach_both_blocks` is what the walk-forward fit trains on, and it has
+    to be the same two calls the BAS-87 runner's `attach_z` makes."""
+    from src.eval import command as C
+    from src.eval import stuff as stuff_eval
+    from src.eval.stuff import FEATURES as STUFF_FEATURES
+
+    cells = pd.DataFrame({
+        "component": "p_bb_rate", "season": 2026, "cutoff": "2026-05-01",
+        "player": [1, 2, 3], "base": 0.08, "realized_rate": 0.08,
+        "trials": 300.0, "realized_successes": 24.0, "pre_trials": 100.0,
+    })
+    got = C.attach_both_blocks(cells, command_monthly, stuff_monthly)
+    want = stuff_eval.attach_live_features(
+        attach_command_features(cells, command_monthly, C.SERVED_WEIGHTS,
+                                C.SERVED_BALLAST, features=LEVEL_FEATURES),
+        stuff_monthly, C.SERVED_STUFF_WEIGHTS, C.SERVED_STUFF_BALLAST)
+    pd.testing.assert_frame_equal(got, want)
+    assert set(STUFF_FEATURES) <= set(got.columns)
+    assert set(LEVEL_FEATURES) <= set(got.columns)
+
+
+def test_the_command_provider_is_the_stuff_provider_with_zero_command_coefs(
+        command_monthly, stuff_monthly):
+    """The withholding BAS-88 reports is a statement about coefficients, not
+    about code: with the command coefficients at zero the joint arm collapses
+    onto the served `stuff_additive` engine exactly. If it did not, the two
+    arms would not be nested and the incremental reading would be meaningless.
+    """
+    from src.eval import command as C
+    from src.eval import pitchers  # noqa: F401 — registers the pitcher specs
+    from src.eval import stuff as stuff_eval
+    from src.eval.backtest import COMPONENTS
+    from src.eval.stuff import FEATURES as STUFF_FEATURES
+    from src.eval.stuff import StuffFit
+
+    spec = COMPONENTS["p_bb_rate"]
+    train = pd.DataFrame({"pitcher": [1, 2, 3]})
+
+    def base_provider(train, spec, predict_year):
+        return pd.DataFrame({spec.id_col: [1, 2, 3],
+                             "predicted": [0.07, 0.09, 0.08]})
+
+    stuff_coef = {"intercept": -0.002, "base": 1.0,
+                  **{f: 0.001 for f in STUFF_FEATURES}}
+    stuff_fit = StuffFit("p_bb_rate", tuple(STUFF_FEATURES), stuff_coef, 1, 3)
+    joint_fit = StuffFit("p_bb_rate", C.served_features(),
+                         {**stuff_coef, **{f: 0.0 for f in LEVEL_FEATURES}},
+                         1, 3)
+
+    served = stuff_eval.stuff_provider(stuff_eval.StuffProviderConfig(
+        monthly=stuff_monthly, cutoff="2026-05-01", predict_year=2026,
+        fit=stuff_fit, base_provider=base_provider,
+        weights=C.SERVED_STUFF_WEIGHTS, ballast=C.SERVED_STUFF_BALLAST))
+    joint = C.command_provider(C.CommandProviderConfig(
+        command_monthly=command_monthly, stuff_monthly=stuff_monthly,
+        cutoff="2026-05-01", predict_year=2026, fit=joint_fit,
+        base_provider=base_provider))
+    pd.testing.assert_frame_equal(joint(train, spec, 2026),
+                                  served(train, spec, 2026))
+
+
+def test_a_pitcher_missing_from_either_artifact_keeps_the_baseline(
+        command_monthly, stuff_monthly):
+    """z = 0 on both blocks for an untracked pitcher, so he gets the pinned
+    baseline plus the fitted intercept and is never dropped — the common
+    pitcher set stays the baseline's."""
+    from src.eval import command as C
+    from src.eval import pitchers  # noqa: F401 — registers the pitcher specs
+    from src.eval.backtest import COMPONENTS
+    from src.eval.stuff import StuffFit
+
+    spec = COMPONENTS["p_bb_rate"]
+
+    def base_provider(train, spec, predict_year):
+        return pd.DataFrame({spec.id_col: [1, 999], "predicted": [0.07, 0.09]})
+
+    fit = StuffFit("p_bb_rate", C.served_features(),
+                   {"intercept": -0.002, "base": 1.0,
+                    **{f: 0.5 for f in C.served_features()}}, 1, 2)
+    out = C.command_provider(C.CommandProviderConfig(
+        command_monthly=command_monthly, stuff_monthly=stuff_monthly,
+        cutoff="2026-05-01", predict_year=2026, fit=fit,
+        base_provider=base_provider))(pd.DataFrame(), spec, 2026)
+    got = out.set_index(spec.id_col)["predicted"]
+    assert set(got.index) == {1, 999}
+    # Every covariate is zero for 999, so he is exactly baseline + intercept.
+    assert got.loc[999] == pytest.approx(0.09 - 0.002)
+    assert got.loc[1] != pytest.approx(0.07 - 0.002)

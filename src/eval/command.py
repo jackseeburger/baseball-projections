@@ -45,18 +45,26 @@ than copied — the check is the same check.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 import numpy as np
 import pandas as pd
 
 from src.data.pitching_command import COUNT_COLUMNS, REGIONS
+from src.eval import stuff as stuff_eval
 from src.eval.contact import assert_month_boundary, assert_window_clean
 from src.eval.stuff import (
     DEFAULT_BALLAST,
     DEFAULT_WINDOW_WEIGHTS,
+    LIVE_CELL_SEASONS,
     STUFF_BALLAST_GRID,
     STUFF_WEIGHT_GRID,
+    StuffFit,
+    build_pitcher_cells,
+    fit_stuff,
     standardize,
 )
+from src.eval.stuff import FEATURES as STUFF_FEATURES
 
 FEATURES = ("cmd_resid", "cs_resid", "zone_share", "shadow_share",
             "chase_share", "waste_share")
@@ -239,9 +247,154 @@ def attach_command_features(
     return pd.concat(out, ignore_index=True)
 
 
+# --- the served arm: the joint additive fit (BAS-88) --------------------------
+
+# The hyperparameters `scripts/run_command_level_backtest.py --tune` chose on
+# the tuning window (2019 + 2021, the two walk rates, holdout untouched) and
+# the ones the arm that cleared BAS-87's gate was scored at — pinned here
+# because the served engine has to be the arm that was measured, not a
+# re-tuned one. Both are interior points of the grid, unlike stuff's corner: a
+# slower-moving skill wants a longer window and more shrinkage.
+SERVED_WEIGHTS = (1.0, 0.35, 0.1)
+SERVED_BALLAST = 50.0
+# The command block moves with the setting above; the six stuff controls stay
+# at *their* own pinned setting, because the control has to be the engine that
+# is actually served (`stuff_additive`) rather than a re-tuned version of it.
+# This is exactly what `run_command_level_backtest.attach_z` does.
+SERVED_STUFF_WEIGHTS = DEFAULT_WINDOW_WEIGHTS
+SERVED_STUFF_BALLAST = DEFAULT_BALLAST
+
+
+def served_features(level_features: tuple[str, ...] = LEVEL_FEATURES
+                    ) -> tuple[str, ...]:
+    """The one covariate block of the served fit: stuff controls, then command.
+
+    Order matters only in that the fit and the provider must agree on it, and
+    both take it from here rather than each writing the concatenation out.
+    """
+    return tuple(STUFF_FEATURES) + tuple(level_features)
+
+
+def attach_both_blocks(
+    cells: pd.DataFrame,
+    command_monthly: pd.DataFrame,
+    stuff_monthly: pd.DataFrame,
+    weights: tuple[float, float, float] = SERVED_WEIGHTS,
+    ballast: float = SERVED_BALLAST,
+    level_features: tuple[str, ...] = LEVEL_FEATURES,
+) -> pd.DataFrame:
+    """Both covariate blocks on `build_pitcher_cells`'s output.
+
+    The same two calls, in the same order, at the same hyperparameters as
+    `scripts/run_command_level_backtest.py`'s `attach_z`, so the coefficients
+    fitted here are the coefficients the gate was scored on.
+    """
+    out = attach_command_features(cells, command_monthly, weights, ballast,
+                                  features=level_features)
+    return stuff_eval.attach_live_features(out, stuff_monthly,
+                                           SERVED_STUFF_WEIGHTS,
+                                           SERVED_STUFF_BALLAST)
+
+
+def fit_live_command(
+    component: str,
+    seasons_table: pd.DataFrame,
+    command_monthly: pd.DataFrame,
+    stuff_monthly: pd.DataFrame,
+    pa_dir,
+    predict_year: int,
+    weights: tuple[float, float, float] = SERVED_WEIGHTS,
+    ballast: float = SERVED_BALLAST,
+    level_features: tuple[str, ...] = LEVEL_FEATURES,
+    fixed_base: bool = True,
+) -> StuffFit:
+    """`command_level_additive`'s coefficients for `predict_year`, fitted the
+    way the harness fits them: on cell seasons strictly before the one being
+    served, never on `predict_year` itself.
+
+    The mirror of `src.eval.stuff.fit_live_stuff`, one weighted least squares
+    with both blocks in it. `fixed_base=True` pins the baseline coefficient at
+    exactly 1, so the fit is a pure correction added to
+    `marcel_pitcher_tuned` and the six stuff controls alone *are* the served
+    `stuff_additive` engine — which is what makes the command coefficients
+    conditional on stuff and makes the increment over the served engine and
+    the covariate-only share the same number (docs/pitching-command-level.md).
+    """
+    train_seasons = tuple(s for s in LIVE_CELL_SEASONS if s < predict_year)
+    if not train_seasons:
+        raise ValueError(
+            f"no command training seasons strictly before {predict_year}")
+    cells = build_pitcher_cells(seasons_table, pa_dir, [component],
+                                seasons=train_seasons)
+    if cells.empty:
+        raise ValueError(f"no command training cells for {component!r} "
+                         f"before {predict_year}")
+    cells = attach_both_blocks(cells, command_monthly, stuff_monthly, weights,
+                               ballast, level_features)
+    return fit_stuff(cells, component, features=served_features(level_features),
+                     fixed_base=fixed_base)
+
+
+@dataclass
+class CommandProviderConfig:
+    """Everything the served command arm needs that a provider signature cannot
+    carry. The mirror of `src.eval.stuff.StuffProviderConfig`, with the second
+    artifact the joint fit reads."""
+    command_monthly: pd.DataFrame
+    stuff_monthly: pd.DataFrame
+    cutoff: str
+    predict_year: int
+    fit: StuffFit
+    base_provider: object
+    weights: tuple[float, float, float] = SERVED_WEIGHTS
+    ballast: float = SERVED_BALLAST
+    stuff_weights: tuple[float, float, float] = SERVED_STUFF_WEIGHTS
+    stuff_ballast: float = SERVED_STUFF_BALLAST
+    level_features: tuple[str, ...] = LEVEL_FEATURES
+    clip: tuple[float, float] = (1e-4, 0.999)
+
+
+def command_provider(config: CommandProviderConfig):
+    """A harness provider: the baseline plus the fitted stuff *and* command
+    covariates, in one correction.
+
+    Covers exactly the pitchers the baseline covers — a pitcher with no tracked
+    pitches before the cutoff gets z = 0 on every covariate of either block and
+    therefore the baseline itself, rather than being dropped. The common
+    pitcher set stays the baseline's, so nothing is quietly scored on a
+    different population.
+    """
+
+    def provider(train: pd.DataFrame, spec, predict_year: int):
+        base = config.base_provider(train, spec, predict_year)
+        ids = base[spec.id_col].to_numpy()
+        zc = features_at_cutoff(config.command_monthly, config.cutoff,
+                                config.predict_year, config.weights,
+                                config.ballast, config.level_features
+                                ).set_index("player").reindex(ids)
+        zs = stuff_eval.features_at_cutoff(
+            config.stuff_monthly, config.cutoff, config.predict_year,
+            config.stuff_weights, config.stuff_ballast
+        ).set_index("player").reindex(ids)
+        z = pd.DataFrame(index=pd.RangeIndex(len(ids)))
+        for f in STUFF_FEATURES:
+            z[f] = zs[f].fillna(0.0).to_numpy()
+        for f in config.level_features:
+            z[f] = zc[f].fillna(0.0).to_numpy()
+        pred = config.fit.predict(base["predicted"].to_numpy(dtype="float64"), z)
+        out = base[[spec.id_col]].copy()
+        out["predicted"] = np.clip(pred, *config.clip)
+        return out
+
+    return provider
+
+
 __all__ = [
-    "COMMAND_BALLAST_GRID", "COMMAND_WEIGHT_GRID", "DEFAULT_COMMAND_BALLAST",
-    "DEFAULT_COMMAND_WEIGHTS", "FEATURES", "LEVEL_FEATURES",
-    "LEVEL_FEATURES_WITH_EDGE", "attach_command_features",
-    "command_metrics", "features_at_cutoff", "league_profile", "window_counts",
+    "COMMAND_BALLAST_GRID", "COMMAND_WEIGHT_GRID", "CommandProviderConfig",
+    "DEFAULT_COMMAND_BALLAST", "DEFAULT_COMMAND_WEIGHTS", "FEATURES",
+    "LEVEL_FEATURES", "LEVEL_FEATURES_WITH_EDGE", "SERVED_BALLAST",
+    "SERVED_STUFF_BALLAST", "SERVED_STUFF_WEIGHTS", "SERVED_WEIGHTS",
+    "attach_both_blocks", "attach_command_features", "command_metrics",
+    "command_provider", "features_at_cutoff", "fit_live_command",
+    "league_profile", "served_features", "window_counts",
 ]
