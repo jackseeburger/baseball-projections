@@ -123,7 +123,9 @@ def vacuity(closes: pd.DataFrame, candles: pd.DataFrame,
 
     Run and written down before any ROI is read, because a window too thin or
     a candle archive too hollowed makes the rest descriptive rather than a
-    test.
+    test. `closes` and `august` are the raw seven-series archive slices, not
+    the priced four — the mix check is about what the fetch came back with,
+    including the three stats the component table cannot price.
     """
     hits = closes[closes["prop_stat"] == "hits"]
     ids = set(closes["market_id"])
@@ -139,9 +141,15 @@ def vacuity(closes: pd.DataFrame, candles: pd.DataFrame,
         for stat in sorted(set(july_share) | set(aug_share)):
             j, a = july_share.get(stat, 0.0), aug_share.get(stat, 0.0)
             ratio = (j / a) if a else float("inf")
-            mix_rows[stat] = {"july_share": round(j, 5), "august_share": round(a, 5),
-                              "ratio": None if ratio == float("inf") else round(ratio, 4)}
-            worst = max(worst, ratio, (1 / ratio) if ratio else float("inf"))
+            # A stat one window has and the other does not is not "within a
+            # factor of 1.5" — it is infinitely off, in whichever direction.
+            deviation = max(ratio, 1 / ratio) if (j and a) else float("inf")
+            mix_rows[stat] = {
+                "july_n": int(mix.get(stat, 0)), "august_n": int(amix.get(stat, 0)),
+                "july_share": round(j, 5), "august_share": round(a, 5),
+                "ratio": None if ratio == float("inf") else round(ratio, 4),
+                "deviation": None if deviation == float("inf") else round(deviation, 4)}
+            worst = max(worst, deviation)
 
     checks = {
         "hits_contracts": {
@@ -158,12 +166,21 @@ def vacuity(closes: pd.DataFrame, candles: pd.DataFrame,
         },
         "median_candles_per_contract": {
             "value": _f(per_contract.median()) if len(per_contract) else 0.0,
+            "mean": _f(per_contract.mean()) if len(per_contract) else 0.0,
             "threshold": MIN_MEDIAN_CANDLES,
             "pass": bool(len(per_contract) and per_contract.median() >= MIN_MEDIAN_CANDLES),
+            "note": "the hourly *path*. The close itself needs one candle and "
+                    "every archived contract has at least one; a thin path "
+                    "damages a maker replay, not the taker exam scored here. "
+                    "Compare `close_quality` below before reading a failure "
+                    "as a hollowed close.",
         },
         "stat_mix_vs_august": {
-            "shares": mix_rows, "worst_ratio": None if not mix_rows else round(worst, 4),
-            "threshold": MAX_MIX_RATIO,
+            "shares": mix_rows, "threshold": MAX_MIX_RATIO,
+            # inf is not JSON, so a stat missing from one window reads as null
+            # and fails on the flag rather than on an unwritable number.
+            "worst_ratio": None if (not mix_rows or worst == float("inf"))
+            else round(worst, 4),
             "pass": bool(mix_rows) and worst <= MAX_MIX_RATIO,
         },
     }
@@ -172,6 +189,27 @@ def vacuity(closes: pd.DataFrame, candles: pd.DataFrame,
         "contracts_archived": int(closes["market_id"].nunique()),
         "candles": int(len(mine)),
     }
+
+    def quality(frame: pd.DataFrame) -> dict:
+        h = frame[frame["prop_stat"] == "hits"]
+        if not len(h):
+            return {}
+        per = candles[candles["market_id"].isin(set(h["market_id"]))] \
+            .groupby("market_id").size()
+        return {
+            "hits_contracts": int(len(h)),
+            "median_minutes_before_pitch": _f(h["minutes_before_pitch"].median()),
+            "median_volume_pre": _f(h["volume_pre"].median()),
+            "median_volume_total": _f(h["volume_total"].median()),
+            "share_traded_before_first_pitch": _f((h["volume_pre"] >= 1).mean()),
+            "median_candles": _f(per.median()) if len(per) else 0.0,
+            "settled_yes_no": _f(h["over_hit"].notna().mean()),
+            "player_ids_resolved": _f(h["player_id"].notna().mean()),
+        }
+
+    checks["close_quality"] = {"july": quality(closes)}
+    if august is not None and len(august):
+        checks["close_quality"]["august"] = quality(august)
     checks["pass"] = all(c.get("pass", True) for c in checks.values()
                          if isinstance(c, dict))
     return checks
@@ -418,6 +456,24 @@ def vacuity_markdown(vac: dict) -> str:
     r = vac["retention"]
     out.append(f"| contracts with candles | {r['contracts_with_candles']} of "
                f"{r['contracts_archived']} | — | — |")
+
+    q = vac.get("close_quality", {})
+    if q.get("july"):
+        fields = [("hits_contracts", "hits contracts", "{:.0f}"),
+                  ("median_candles", "median candles/contract", "{:.1f}"),
+                  ("median_minutes_before_pitch", "median close, min before pitch", "{:.0f}"),
+                  ("median_volume_pre", "median pre-pitch volume", "{:.0f}"),
+                  ("median_volume_total", "median whole-life volume", "{:.0f}"),
+                  ("share_traded_before_first_pitch", "share that traded pre-pitch", "{:.1%}"),
+                  ("settled_yes_no", "settled yes/no", "{:.1%}"),
+                  ("player_ids_resolved", "player ids resolved", "{:.1%}")]
+        out += ["", "Hits closes, July vs August — what the thin path does and "
+                "does not damage:", "",
+                "| | July | August |", "|---|---|---|"]
+        for key, label, fmt in fields:
+            j, a = q["july"].get(key), q.get("august", {}).get(key)
+            out.append(f"| {label} | {'—' if j is None else fmt.format(j)} | "
+                       f"{'—' if a is None else fmt.format(a)} |")
     return "\n".join(out)
 
 
@@ -430,6 +486,13 @@ def main() -> None:
                     help="BAS-70's priced frame, for the side-by-side")
     ap.add_argument("--candles", type=Path,
                     default=ROOT / "data/market/kalshi_prop_candles_2026.parquet")
+    ap.add_argument("--closes", type=Path,
+                    default=ROOT / "data/market/prop_closes_2026.parquet",
+                    help="the raw seven-series archive the vacuity check counts")
+    ap.add_argument("--start", default="2026-07-05")
+    ap.add_argument("--end", default="2026-07-30")
+    ap.add_argument("--august-start", default="2026-07-31")
+    ap.add_argument("--august-end", default="2026-09-02")
     ap.add_argument("--out", type=Path,
                     default=ROOT / "data/eval/bas93/props_replication.json")
     ap.add_argument("--markdown-out", type=Path, default=None)
@@ -443,7 +506,11 @@ def main() -> None:
     august = pd.read_parquet(args.august) if args.august and args.august.exists() else None
 
     # ── vacuity first, and printed before a single ROI is computed ──
-    vac = vacuity(priced, candles, august)
+    archive = pd.read_parquet(args.closes)
+    dates = archive["game_date"].astype(str)
+    july_raw = archive[(dates >= args.start) & (dates <= args.end)]
+    aug_raw = archive[(dates >= args.august_start) & (dates <= args.august_end)]
+    vac = vacuity(july_raw, candles, aug_raw)
     print("\n== vacuity check (before scoring) ==")
     print(json.dumps(vac, indent=1))
     if not vac["pass"]:
