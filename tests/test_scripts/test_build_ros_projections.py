@@ -53,3 +53,35 @@ def test_ensure_never_raises_and_reports_what_it_could_not_fetch(tmp_path, caplo
     assert missing == [2018, 2019]
     assert "could not fetch" in caplog.text
     assert "fall back" in caplog.text
+
+
+def test_missing_training_seasons_carry_the_previous_projection_forward(tmp_path, monkeypatch, caplog):
+    """A build that cannot fit the live engines must not publish tuned Marcel
+    under the live engine's name; it goes stale with the reason instead."""
+    import json
+    import logging
+
+    out = tmp_path / "projections"
+    out.mkdir()
+    previous = {"as_of": "2026-09-09", "engine": {"k_rate": "contact_additive"},
+                "n_hitters": 3}
+    (out / "2026-09-09.json").write_text(json.dumps(previous))
+    monkeypatch.setattr(b, "ensure_training_pa_outcomes",
+                        lambda years, pa_dir, download=None: [2017, 2018])
+    with caplog.at_level(logging.ERROR):
+        doc = b.build("2026-09-10", out_dir=out)
+    assert doc["stale"] is True
+    assert doc["engine"] == previous["engine"]
+    assert doc["requested_as_of"] == "2026-09-10"
+    assert "[2017, 2018]" in doc["stale_reason"]
+    assert "not in R2" in caplog.text
+
+
+def test_missing_training_seasons_with_no_previous_document_is_empty_and_stale(tmp_path, monkeypatch):
+    out = tmp_path / "projections"
+    out.mkdir()
+    monkeypatch.setattr(b, "ensure_training_pa_outcomes",
+                        lambda years, pa_dir, download=None: [2025])
+    doc = b.build("2026-09-10", out_dir=out)
+    assert doc["stale"] is True
+    assert doc["n_hitters"] == 0
