@@ -120,6 +120,10 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    is moved by terms the chain lacks, not by a better rate table.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
+   Meanwhile the July 2026 contracts the archive never fetched are being
+   pulled and scored as a frozen-constant replication of that lead
+   (BAS-93, `docs/props-replication.md`), before Kalshi's candle
+   retention takes them away.
 
 The honest summary: the measurement layer is real and serving; the talent
 layer is the open question and this week's work puts the hierarchical
