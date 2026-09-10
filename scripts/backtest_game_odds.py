@@ -73,8 +73,19 @@ Metrics: Brier score and log loss (lower is better). Baselines:
                       Ungated: it loses to `pythag_C_sp_bpa_ip` by .0007 on the
                       market's 756 games (docs/market-benchmark-2026.md)
 
+Every model above reads two rate tables — every pitcher's K, BB+HBP and HR per
+batter faced, and every batter's five component rates — and `--engine-rung`
+says which of station A's engines builds them (`src/sim/engines.py`). Rung 0,
+the default, is stock Marcel under both, which is the chain as served and every
+number in docs/market-benchmark-2026.md; rungs 1-3 nest the tuned constants and
+the two served additive corrections on top. The rung is one object threaded
+through every day context here, so the announced starter, the rotation, the pen
+and the shared chain cannot end up on different engines.
+
 Usage:
     python scripts/backtest_game_odds.py --season 2026 --min-games 20
+    python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
+        --engine-rung 3 --market data/parquet/market_closes_2026.parquet
     python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
         --market data/parquet/market_closes_2026.parquet
     python scripts/backtest_game_odds.py --season 2026 --min-games 20 \
@@ -98,8 +109,10 @@ from src.data.mlb_stats_api import (
     fetch_lineups, fetch_pitcher_game_logs, fetch_probables, fetch_schedule,
     fetch_season_pitching,
 )
+from src.eval import pitchers as P_EVAL
 from src.sim import bullpen as bp_model
 from src.sim import defence as df_model
+from src.sim import engines as eng_model
 from src.sim import game_features as gf
 from src.sim import game_model as gm
 from src.sim import lineups as lu_model
@@ -309,7 +322,8 @@ def starter_day_context(tot: pd.DataFrame, date: str, sp_ctx: dict) -> dict:
     lg_ra9 = float(tot["ra"].sum() / max(tot["g"].sum(), 1))
     return {
         "sp_ra9": sp_model.rate_table(sp_ctx, date, lg_ra9,
-                                      ballast=sp_ctx["ballast"]),
+                                      ballast=sp_ctx["ballast"],
+                                      engine=sp_ctx["engines"]),
         "lg_ra9": lg_ra9,
         "team": team_rates(tot, SP_BALLAST_GAMES),
         "probables": sp_ctx["probables"],
@@ -334,11 +348,17 @@ def starter_game_prob(g, day: dict, hfa: float):
 
 
 def build_sp_context(season: int, scored: pd.DataFrame, ballast: float,
-                     starter_ip: float, prior_seasons: int = 2) -> dict:
+                     starter_ip: float, prior_seasons: int = 2,
+                     engines=None) -> dict:
     """Fetch probables + pitcher counts once for the whole backtest.
 
     `prior_seasons` completed seasons plus the current one are Marcel-weighted,
     matching the 5/4/3 weights in `src.sim.starters`.
+
+    `engines` is the `src/sim/engines.ChainEngines` every rate table in this
+    harness runs on — one object for the whole walk-forward, built once by
+    `main` and threaded through every context, so the announced starter, the
+    rotation, the pen and the shared chain cannot end up on different rungs.
     """
     probables = fetch_probables(f"{season}-03-01", f"{season}-11-15")
     probables = probables.dropna(subset=["home_sp_id", "away_sp_id"])
@@ -350,7 +370,8 @@ def build_sp_context(season: int, scored: pd.DataFrame, ballast: float,
         season, {p for ids in pmap.values() for p in ids},
         prior_seasons=prior_seasons)
     return {**inputs, "probables": pmap,
-            "ballast": ballast, "starter_ip": starter_ip}
+            "ballast": ballast, "starter_ip": starter_ip,
+            "engines": engines if engines is not None else eng_model.STOCK}
 
 
 # ─── station E posted-lineup term ───
@@ -371,7 +392,8 @@ def lineup_day_context(tot: pd.DataFrame, date: str, day: pd.DataFrame,
     # enters through lg_rs9, which is season-to-date league runs per game.
     lg = lu_ctx["league"]
     rates = lu_model.marcel_rates(counts, lu_ctx["season"], lg,
-                                  ballast=lu_ctx["ballast"])
+                                  ballast=lu_ctx["ballast"],
+                                  engine=lu_ctx["engines"], as_of=date)
     lookup = lu_model.batter_runs_lookup(rates, lg)
     def raa9(ids):
         return lu_model.lineup_r9(ids, lookup, 0.0, lu_ctx["pa_per_game"])
@@ -493,7 +515,7 @@ def update_lineup_history(day: pd.DataFrame, lu_ctx: dict, history: dict) -> Non
 def build_lu_context(season: int, scored: pd.DataFrame, ballast, weight: float,
                      baseline: str, baseline_ballast: float, pa_per_game: float,
                      baseline_window: int = lu_model.BASELINE_WINDOW_GAMES,
-                     prior_seasons: int = 2) -> dict:
+                     prior_seasons: int = 2, engines=None) -> dict:
     """Fetch posted lineups + batter counts once for the whole backtest."""
     lineups = fetch_lineups(scored["game_pk"])
     by_game: dict[int, dict[str, list[int]]] = {}
@@ -514,7 +536,8 @@ def build_lu_context(season: int, scored: pd.DataFrame, ballast, weight: float,
             "league": lu_model.league_rates(prior_counts), "season": season,
             "ballast": ballast, "weight": weight, "baseline": baseline,
             "baseline_ballast": baseline_ballast, "pa_per_game": pa_per_game,
-            "baseline_window": baseline_window}
+            "baseline_window": baseline_window,
+            "engines": engines if engines is not None else eng_model.STOCK}
 
 
 # ─── station E bullpen-availability term ───
@@ -533,7 +556,8 @@ def bullpen_day_context(tot: pd.DataFrame, date: str, bp_ctx: dict,
                         sp_model.appearances_before(bp_ctx["game_logs"], date)],
                        ignore_index=True)
     rates = sp_model.marcel_rates(counts, bp_ctx["season"], lg,
-                                  ballast=bp_ctx["ballast"])
+                                  ballast=bp_ctx["ballast"],
+                                  engine=bp_ctx["engines"], as_of=date)
     ra9 = sp_model.starter_ra9_lookup(rates, lg, lg_ra9)
 
     relief = bp_ctx["relief"]
@@ -593,7 +617,8 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
                      hard_2d: float = BPA_HARD_2D,
                      taper: float = BPA_TAPER,
                      ip_ballast: float = SP_IP_BALLAST,
-                     home_by_game: dict | None = None) -> dict:
+                     home_by_game: dict | None = None,
+                     engines=None) -> dict:
     """Fetch every pitcher's appearances once for the whole backtest.
 
     `sp_ctx` already holds the prior-season pitching totals and league rates —
@@ -623,7 +648,8 @@ def build_bp_context(season: int, ballast, baseline: str, roster_days: int,
             "roster_days": roster_days, "rest_days": rest_days,
             "rest_min_days": rest_min_days, "relief_ip": relief_ip,
             "bpa_baseline": bpa_baseline, "hard_1d": hard_1d,
-            "hard_2d": hard_2d, "taper": taper, "ip_ballast": ip_ballast}
+            "hard_2d": hard_2d, "taper": taper, "ip_ballast": ip_ballast,
+            "engines": engines if engines is not None else eng_model.STOCK}
 
 
 # ─── station C: the bottom-up team run environment ───
@@ -726,7 +752,9 @@ def run_env_day_context(tot: pd.DataFrame, date: str, c_ctx: dict,
                                       park_ballast=c_ctx.get("park_ballast",
                                                              PARK_BALLAST),
                                       def_ballast=c_ctx.get("def_ballast",
-                                                            DEF_BALLAST)))
+                                                            DEF_BALLAST),
+                                      engines=c_ctx.get("engines",
+                                                        eng_model.STOCK)))
 
         # The gate baseline carries `ip_level=0.0` explicitly rather than by
         # default, so the rung the new term is measured against stays the chain
@@ -912,7 +940,11 @@ def build_c_context(season: int, lu_ctx: dict, bp_ctx: dict, weight: float,
             # Carried through so the shared per-game function reads the same
             # lineup knobs the `_lu` ladder above it does.
             "lu_weight": lu_ctx["weight"], "lu_baseline": lu_ctx["baseline"],
-            "lineups": lu_ctx["lineups"], "bpa_baseline": bp_ctx["bpa_baseline"]}
+            "lineups": lu_ctx["lineups"], "bpa_baseline": bp_ctx["bpa_baseline"],
+            # The one engines object every context in this harness shares, so
+            # the shared chain (`game_model.build_slate`) prices a game on the
+            # same rung the day contexts above it were built on.
+            "engines": lu_ctx["engines"]}
 
 
 def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
@@ -1118,6 +1150,25 @@ def main() -> None:
                              "priced from. Off by default: the learned model "
                              "has not cleared the station E gate "
                              "(docs/market-benchmark-2026.md)")
+    parser.add_argument("--engine-rung", type=int, default=0,
+                        choices=(0, 1, 2, 3),
+                        help="which of station A's engines the pitcher and "
+                             "hitter rate tables under the chain run on "
+                             "(src/sim/engines.py): 0 = the chain as served, "
+                             "1 = the tuned Marcel constants, 2 = + the served "
+                             "stuff correction on the pitcher components, "
+                             "3 = + the served contact correction on the hitter "
+                             "components. The rungs nest, and 0 reproduces the "
+                             "served columns to the last bit")
+    parser.add_argument("--engine-recalibration", action="store_true",
+                        help="rung 1 with the tuned age slopes zeroed — the "
+                             "recalibration control that says how much of a "
+                             "rung's gain is the age curve and how much is "
+                             "re-ballasting")
+    parser.add_argument("--engine-pa-dir", type=Path,
+                        default=Path("data/parquet/pa_outcomes"),
+                        help="plate-appearance outcomes by season, for the "
+                             "walk-forward correction fits (rungs 2 and 3)")
     parser.add_argument("--out", type=Path, default=None,
                         help="write the per-game prediction frame here (parquet) "
                              "for follow-up analysis")
@@ -1139,12 +1190,32 @@ def main() -> None:
     scored["home_win"] = scored["home_score"] > scored["away_score"]
     scored = scored[scored["game_type"] == "R"]
 
+    # One engines object for the whole walk-forward. Every fit inside it is on
+    # cell seasons strictly before `--season`, so nothing it carries has seen a
+    # game of the season being scored; rung 0 is the chain as served.
+    engines = eng_model.build_engines(
+        args.engine_rung, args.season,
+        recalibration=args.engine_recalibration,
+        pitcher_seasons=(P_EVAL.normalize_pitcher_seasons(
+            pd.read_parquet("data/parquet/pitcher_seasons_api.parquet"))
+            if args.engine_rung >= 2 else None),
+        hitter_seasons=(pd.read_parquet("data/parquet/hitter_seasons_api.parquet")
+                        if args.engine_rung >= 3 else None),
+        pa_dir=args.engine_pa_dir,
+        stuff_monthly=(pd.read_parquet("data/features/pitching_stuff_monthly.parquet")
+                       if args.engine_rung >= 2 else None),
+        contact_monthly=(pd.read_parquet("data/features/contact_quality_monthly.parquet")
+                         if args.engine_rung >= 3 else None))
+    print(f"engines: rung {args.engine_rung} "
+          f"(tuned={engines.tuned}, stuff={engines.stuff}, "
+          f"contact={engines.contact}, age_slopes={engines.age_slopes})")
+
     sp_ctx = None
     if not args.no_starters:
         sp_ctx = build_sp_context(
             args.season, scored,
             sp_model.BALLAST_BF if args.sp_ballast is None else args.sp_ballast,
-            args.starter_ip)
+            args.starter_ip, engines=engines)
 
     lu_ctx = None
     if sp_ctx is not None and not args.no_lineups:
@@ -1154,7 +1225,8 @@ def main() -> None:
             args.lu_weight, args.lu_baseline, args.lu_baseline_ballast,
             # Plate appearances per team-game, taken from the league's own
             # batters-faced-per-inning rather than assumed.
-            pa_per_game=sp_ctx["league"]["bf_per_ip"] * 9.0)
+            pa_per_game=sp_ctx["league"]["bf_per_ip"] * 9.0,
+            engines=engines)
 
     bp_ctx = None
     if lu_ctx is not None and not args.no_bullpen:
@@ -1168,7 +1240,8 @@ def main() -> None:
             hard_2d=args.bpa_hard_2d, taper=args.bpa_taper,
             ip_ballast=args.sp_ip_ballast,
             home_by_game={int(pk): int(t) for pk, t
-                          in zip(sched["game_pk"], sched["home_id"])})
+                          in zip(sched["game_pk"], sched["home_id"])},
+            engines=engines)
 
     c_ctx = None
     if bp_ctx is not None and not args.no_run_env:

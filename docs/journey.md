@@ -90,8 +90,16 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
 4. **Per-game win probability** — the largest unclosed gap to the market.
    Scoping found the per-game chain still prices every game from stock
    Marcel on both sides: none of the served layer-2 engines reach it.
-   Putting them in is pre-registered (BAS-90, `docs/chain-engines.md`)
-   and is the cheapest truth-moving lever on the board.
+   Putting them in was pre-registered and run (BAS-90,
+   `docs/chain-engines.md`) and **lost**: tuned Marcel, stuff and contact
+   each make the game price worse against the close (+.00076 Brier on the
+   756 market games, same sign on all of 2025 and 2026, vacuity passed).
+   The engines widen the rate tables by 18–37% and every downstream
+   constant in the chain was tuned to the narrower ones; the tuned age
+   curve alone is 70% of the cost. Nothing shipped, the switch stays in
+   the code. The next lever is a spread-aware chain (re-fit the chain's
+   constants to the engine tables on 2025 only, or shrink the engine
+   tables by one pre-registered factor), under its own pre-registration.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
 

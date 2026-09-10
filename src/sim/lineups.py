@@ -30,6 +30,16 @@ Pythagenpat → log5 → HFA pipeline in place of the team's RS/G, alongside the
 starter's runs-allowed number. `scripts/backtest_game_odds.py` scores it as
 `pythag_60_sp_lu`.
 
+**Which engine `marcel_rates` runs.** By default, the arithmetic in this file:
+5/4/3 recency, twice the published stabilization point as ballast, no age
+term. Its `engine` argument (`src/sim/engines.ChainEngines`, carried on
+`game_model.ChainConfig.engines`) routes the table through the harness's own
+`marcel_tuned` on the *fitted* constants instead, and above them the
+`contact_additive` correction the site serves on all five components. The
+default is every rung off and this file's own arithmetic, unchanged — which is
+also why `src/market/props.py` still reaches the Beta pseudo-counts below; the
+tuned path has none to expose.
+
 Provenance of every constant, in the same discipline `starters.py` uses:
 Marcel's published 5/4/3 recency weights; published rate-stabilization points
 for the five components; the same 2x projection multiplier on those points;
@@ -197,9 +207,35 @@ def _ballast_map(ballast) -> dict:
     return {c: float(ballast) for c in COMPONENTS}
 
 
+def marcel_params(weights: tuple = MARCEL_WEIGHTS, ballast=BALLAST) -> dict:
+    """This module's constants as the harness's `MarcelParams`, per component.
+
+    The hitter mirror of `starters.marcel_params`, and the same single
+    translation: a ballast here (and in every published stabilization table) is
+    real plate appearances — or at-bats, or balls in play — which land on the
+    *most recent* season's weight, while `MarcelParams.ballast` is denominated
+    at the *average* year weight, because that is what makes the estimator
+    scale-free in the weights. The two differ by `w0 / mean(w)`, 1.25 for 5/4/3.
+
+    Keyed by the station A component name so it drops into `marcel_tuned`
+    beside the fitted params it is the stock counterpart of; `engines`'
+    `HITTER_COMPONENTS` is the map from this module's short names.
+    """
+    from src.eval.baselines import MarcelParams
+    from src.sim.engines import HITTER_COMPONENTS
+
+    bal = _ballast_map(ballast)
+    scale = float(weights[0]) / float(np.mean(weights))
+    return {component: MarcelParams(ballast=bal[c] * scale,
+                                    weights=tuple(float(x) for x in weights),
+                                    peak_age=27.0, age_slope_young=0.0,
+                                    age_slope_old=0.0)
+            for c, component in HITTER_COMPONENTS.items()}
+
+
 def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
                  weights: tuple = MARCEL_WEIGHTS,
-                 ballast=BALLAST) -> pd.DataFrame:
+                 ballast=BALLAST, engine=None, as_of=None) -> pd.DataFrame:
     """Per-batter K, BB+HBP, HR (per PA), ISO (per AB) and BABIP (per BIP).
 
     `counts` holds one row per batter-season (normalize_counts schema) and may
@@ -222,7 +258,23 @@ def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
     docs/posterior-props.md) — the Beta was already implicit in the ballast
     arithmetic above, this just returns the two numbers that define it instead
     of collapsing them into their ratio.
+
+    `engine` is the one switch station A's engines reach the chain through
+    (`src/sim/engines.ChainEngines`, carried on `ChainConfig.engines`). Left
+    None it is `engines.STOCK` and this function runs its own arithmetic below,
+    unchanged; a rung above zero routes the table through `marcel_tuned` on the
+    fitted constants and, higher still, adds the served `contact_additive`
+    correction. That path returns the five rates and `pa_weighted` but no
+    `alpha_`/`beta_` — an age curve is not a ballast on a count and has no
+    pseudo-counts to expose — so `src/market/props.py`, the only caller that
+    reads them, keeps calling this function with no engine. `as_of` is the date
+    being priced, needed only by the correction, which reads its covariates at
+    the last month boundary on or before it.
     """
+    if engine is not None and engine.tuned:
+        return engine.hitter_rates(counts, as_of_season, lg,
+                                   stock=marcel_params(weights, ballast),
+                                   as_of=as_of)
     w = {as_of_season - i: weights[i] / weights[0] for i in range(len(weights))}
     used = counts[counts["season"].isin(w)].copy()
     num_den = sorted(set(RATE_NUM.values()) | set(RATE_DEN.values()))

@@ -50,6 +50,14 @@ An infinite ballast on either one (`ChainConfig.park_ballast`,
 is how the nightly asks for the gated model and how the sweeps stay clean
 nestings.
 
+`ChainConfig.engines` is the same idea one layer down: which of station A's
+engines the two rate tables underneath every term above run on
+(`src/sim/engines.py` — the tuned Marcel constants, then the served stuff and
+contact corrections, as three nested rungs). The default is every rung off,
+which is stock Marcel under both tables and therefore this file exactly as it
+was; `tests/test_sim/test_engines.py` asserts the default slate's `sp_ra9` and
+`runs_lookup` are bit-for-bit what they were before the switch existed.
+
 Two objects and two functions:
 
     ChainInputs.from_logs()  season-long frames (pitching logs, hitting logs,
@@ -76,6 +84,7 @@ import pandas as pd
 
 from src.sim import bullpen as bp_model
 from src.sim import defence as df_model
+from src.sim import engines as eng_model
 from src.sim import lineups as lu_model
 from src.sim import park as pk_model
 from src.sim import reliever_usage as ru_model
@@ -130,6 +139,15 @@ class ChainConfig:
     # park neutralisation has to happen to the *totals*, before the league
     # ballast is added (`park.neutral_run_rates`).
     regress_games: float = 60.0
+    # Which of station A's engines the two rate tables underneath the chain run
+    # on (`src/sim/engines.py`). The default is every rung off, which is the
+    # chain as served, to the last bit — `engines.ChainEngines()` puts stock
+    # Marcel under both tables and adds no correction, so a caller that says
+    # nothing gets exactly the number this file computed before the switch
+    # existed. Both callers of the chain read it through here, so the live odds
+    # and the scored backtest cannot end up on different engines.
+    engines: eng_model.ChainEngines = field(
+        default_factory=lambda: eng_model.STOCK)
 
 
 @dataclass(frozen=True)
@@ -439,7 +457,8 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
          sp_model.appearances_before(inputs.pitcher_counts, as_of)],
         ignore_index=True)
     rates = sp_model.marcel_rates(counts, inputs.season, inputs.pitcher_league,
-                                  ballast=cfg.sp_ballast)
+                                  ballast=cfg.sp_ballast,
+                                  engine=cfg.engines, as_of=as_of)
     sp_ra9 = sp_model.starter_ra9_lookup(rates, inputs.pitcher_league, lg_ra9)
 
     # ── the pen: who is in it, how much he works, how available he is ──
@@ -461,7 +480,8 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
         [inputs.hitter_prior_counts,
          lu_model.games_before(inputs.hitter_counts, as_of)], ignore_index=True)
     h_rates = lu_model.marcel_rates(h_counts, inputs.season,
-                                    inputs.hitter_league, ballast=cfg.lu_ballast)
+                                    inputs.hitter_league, ballast=cfg.lu_ballast,
+                                    engine=cfg.engines, as_of=as_of)
     runs_lookup = lu_model.batter_runs_lookup(h_rates, inputs.hitter_league)
 
     pa_per_game = inputs.pa_per_game
@@ -503,6 +523,13 @@ def build_slate(as_of: str, inputs: ChainInputs, top_down: pd.DataFrame,
         "ra_missing": sorted(int(t) for t in team_ids
                              if int(t) not in rot_ra9 or int(t) not in pen_full),
         "blend_weight": float(cfg.blend_weight),
+        # Which rung of station A's engines the two rate tables above ran on,
+        # so a served document can say so rather than leaving it to be inferred
+        # from a config that is not written down anywhere.
+        "engine_rung": {"tuned": bool(cfg.engines.tuned),
+                        "stuff": bool(cfg.engines.stuff),
+                        "contact": bool(cfg.engines.contact),
+                        "age_slopes": bool(cfg.engines.age_slopes)},
         "n_parks": len(park_factors),
         "park_ballast": float(cfg.park_ballast),
         "park_exposure": {int(t): float(v) for t, v in exposure.items()},
