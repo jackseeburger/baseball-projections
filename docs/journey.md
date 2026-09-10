@@ -100,9 +100,14 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    the code. The next lever is a spread-aware chain (re-fit the chain's
    constants to the engine tables on 2025 only, or shrink the engine
    tables by one pre-registered factor), under its own pre-registration:
-   BAS-91 (`docs/chain-engines-matched.md`) matches each engine table's
+   BAS-91 (`docs/chain-engines-matched.md`) matched each engine table's
    level and spread to the stock table's at the same as-of, parameter
-   free, and isolates the age curve as a second factor.
+   free, and isolated the age curve. **A real null:** the match removes
+   essentially all of the engines' cost (pooled +.00026 → −.00002) and the
+   candidate arm is the first engine arm not worse than stock on any full
+   season, but its gain is −.00008 ± .00015 on 3,988 games. The per-game
+   exam cannot see a 1% player-grain gain. Nothing shipped; the game price
+   is moved by terms the chain lacks, not by a better rate table.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
 
