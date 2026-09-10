@@ -208,11 +208,18 @@ def prepare_model_data(
     log_pf = np.zeros((n_teams, n_seasons), dtype=np.float64)
     if park_factors is not None:
         yr_col = "game_year" if "game_year" in park_factors.columns else "year"
+        # ISO's own factor when the table carries one (BAS-86 does), the HR
+        # factor otherwise: ISO is extra-base points per AB, so a park's HR
+        # effect is the biggest part of it but not the whole of it — the
+        # doubles a deep gap gives back are in `iso_park_factor` and not in
+        # `hr_park_factor`.
         pf_col = next(
-            (c for c in park_factors.columns if c.lower() in ("pf_hr", "hr_park_factor")),
-            next((c for c in park_factors.columns
-                  if "hr" in c.lower() and ("park" in c.lower() or "pf" in c.lower() or "factor" in c.lower())),
-                 None),
+            (c for c in park_factors.columns if c.lower() == "iso_park_factor"),
+            next((c for c in park_factors.columns if c.lower() in ("pf_hr", "hr_park_factor")),
+                 next((c for c in park_factors.columns
+                       if "hr" in c.lower() and ("park" in c.lower() or "pf" in c.lower() or "factor" in c.lower())),
+                      None),
+                 ),
         )
         if pf_col:
             for _, row in park_factors.iterrows():
