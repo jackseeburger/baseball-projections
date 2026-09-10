@@ -38,6 +38,14 @@ pinned together in the tests. That is what keeps station A's site number and
 station E's odds from drifting apart: there is one estimator, and changing it
 moves both, visibly.
 
+**Which engine that provider runs.** By default, stock Marcel — the constants
+below. `marcel_rates`'s `engine` argument (`src/sim/engines.ChainEngines`,
+carried on `game_model.ChainConfig.engines` so both callers of the chain read
+one object) puts the *tuned* constants under the same provider instead, and
+above them the `stuff_additive` correction the site serves on two of these
+three components. The default is every rung off, which is this module exactly
+as it was; `tests/test_sim/test_engines.py` pins that at the slate level.
+
 Every constant below comes from outside the test set: Marcel's published
 recency weights, the standard FIP coefficients, published rate-stabilization
 points for the ballasts, 5.5 innings for an average start. The one free knob
@@ -212,7 +220,8 @@ def marcel_params(weights: tuple = MARCEL_WEIGHTS, ballast=BALLAST_BF) -> dict:
 
 def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
                  weights: tuple = MARCEL_WEIGHTS,
-                 ballast=BALLAST_BF, legacy: bool = False) -> pd.DataFrame:
+                 ballast=BALLAST_BF, legacy: bool = False,
+                 engine=None, as_of=None) -> pd.DataFrame:
     """Per-pitcher K, BB+HBP and HR rates per batter faced.
 
     `counts` holds one row per pitcher-season (normalize_counts schema) and may
@@ -234,14 +243,23 @@ def marcel_rates(counts: pd.DataFrame, as_of_season: int, lg: dict,
     and so a regression here could never be silent;
     `tests/test_sim/test_starters.py` pins the two together on a fixed
     pitcher-season.
+
+    `engine` is the one switch station A's engines reach the chain through
+    (`src/sim/engines.ChainEngines`, carried on `ChainConfig.engines`). Left
+    None it is `engines.STOCK`, which is this function as it has always been to
+    the last bit; a rung above zero puts the tuned constants underneath and,
+    higher still, the served `stuff_additive` correction on top. `as_of` is the
+    date being priced, needed only by that correction, which reads its
+    covariates at the last month boundary on or before it.
     """
     if legacy:
         return _marcel_rates_legacy(counts, as_of_season, lg, weights, ballast)
-    from src.eval.pitchers import pitcher_rates
+    from src.sim import engines as eng_model
 
-    return pitcher_rates(counts, as_of_season, lg,
-                         params=marcel_params(weights, ballast),
-                         components=PITCHER_COMPONENTS)
+    engine = engine if engine is not None else eng_model.STOCK
+    return engine.pitcher_rates(counts, as_of_season, lg,
+                                stock=marcel_params(weights, ballast),
+                                as_of=as_of)
 
 
 def _marcel_rates_legacy(counts: pd.DataFrame, as_of_season: int, lg: dict,
@@ -467,7 +485,7 @@ def rate_inputs(season: int, pitcher_ids, prior_seasons: int = 2,
 
 
 def rate_table(inputs: dict, as_of: str, lg_ra9: float,
-               ballast=BALLAST_BF, legacy: bool = False) -> dict:
+               ballast=BALLAST_BF, legacy: bool = False, engine=None) -> dict:
     """{pitcher_id: FIP runs/9} using only appearances *strictly before* `as_of`.
 
     Pure — `inputs` is what `rate_inputs` returns. For the nightly job `as_of`
@@ -483,13 +501,15 @@ def rate_table(inputs: dict, as_of: str, lg_ra9: float,
     current = appearances_before(inputs["game_logs"], as_of)
     counts = pd.concat([inputs["prior_counts"], current], ignore_index=True)
     rates = marcel_rates(counts, inputs["season"], inputs["league"],
-                         ballast=ballast, legacy=legacy)
+                         ballast=ballast, legacy=legacy, engine=engine,
+                         as_of=as_of)
     return starter_ra9_lookup(rates, inputs["league"], lg_ra9)
 
 
 def build_rate_table(as_of: str, pitcher_ids, season: int, lg_ra9: float,
                      ballast=BALLAST_BF, prior_seasons: int = 2,
-                     refresh: bool = False, legacy: bool = False) -> dict:
+                     refresh: bool = False, legacy: bool = False,
+                     engine=None) -> dict:
     """`rate_inputs` + `rate_table` for a single date (the nightly job's case).
 
     The backtest wants the two halves apart — it fetches once and re-slices for
@@ -498,7 +518,8 @@ def build_rate_table(as_of: str, pitcher_ids, season: int, lg_ra9: float,
     """
     inputs = rate_inputs(season, pitcher_ids, prior_seasons=prior_seasons,
                          refresh=refresh)
-    return rate_table(inputs, as_of, lg_ra9, ballast=ballast, legacy=legacy)
+    return rate_table(inputs, as_of, lg_ra9, ballast=ballast, legacy=legacy,
+                      engine=engine)
 
 
 def game_home_prob(team_rates: pd.DataFrame, home_id, away_id, sp_ids,
