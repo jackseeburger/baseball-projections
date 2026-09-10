@@ -185,31 +185,43 @@ def join_market(preds: pd.DataFrame, closes: pd.DataFrame) -> pd.DataFrame:
 
 
 def load_rungs(pred_dir: Path, season: int) -> pd.DataFrame:
-    """One frame: `game_pk`, the outcome, and one column per rung.
+    """One frame: the harness's own scored rows, plus one column per rung.
 
-    Every rung walks the same season with the same date cut and the same
-    `--min-games`, so the game sets should be identical — but a live season
-    finishes games while the batch runs, and a rung walked an hour later would
-    otherwise carry two more of them. The merge is an inner join for that
-    reason, and it is the *paired* set every difference below is computed on;
-    `dropped` says how many games any rung had that the intersection did not,
-    which is the number that would have to be non-trivial before this mattered.
+    **Aligned by position, not joined on `game_pk`**, and that is not a
+    shortcut. `backtest_game_odds.walk_forward` emits one row per scored game
+    in a deterministic order — the same `scored` frame, sorted the same way,
+    walked date by date — so row *i* is the same game in every rung's output.
+    It also emits a handful of repeated `game_pk`s (one in 2026, four in 2025:
+    a suspended game that appears twice on the schedule), which is the
+    population every published Brier in docs/market-benchmark-2026.md is
+    computed on. Merging on `game_pk` would turn each of those into 2^5 rows
+    and quietly inflate every set; aligning by position keeps exactly the
+    harness's rows and nothing else.
+
+    The keys are checked rather than assumed: if any rung's `game_pk`, date or
+    clubs differ row for row, the runs are not the same walk-forward and this
+    raises instead of pairing two different populations.
     """
     out, sizes = None, {}
+    keys = ["game_pk", "date", "home_id", "away_id", "home_win"]
     for name in RUNG_ORDER:
-        df = pd.read_parquet(pred_path(pred_dir, season, name))
+        df = pd.read_parquet(pred_path(pred_dir, season, name)
+                             ).reset_index(drop=True)
         sizes[name] = len(df)
-        ladder = {c: f"{name}::{c}" for c in LADDER}
-        keep = df[["game_pk", "date", "home_id", "away_id", "home_win",
-                   PRODUCTION, *LADDER]].rename(
-            columns={**ladder, f"{name}::{CHAIN}": name})
-        keep[f"{name}::{CHAIN}"] = keep[name]
-        out = keep if out is None else out.merge(
-            keep[["game_pk", name, *ladder.values()]], on="game_pk",
-            how="inner")
-    out = out.sort_values("game_pk").reset_index(drop=True)
+        if out is None:
+            out = df[[*keys, PRODUCTION]].copy()
+        elif not out[keys].equals(df[keys]):
+            raise ValueError(
+                f"{season}: rung {name!r} scored a different set of games than "
+                f"{RUNG_ORDER[0]!r} — re-run the batch so every rung walks the "
+                "same season")
+        for column in LADDER:
+            out[f"{name}::{column}"] = df[column].to_numpy(dtype="float64")
+        # The served chain is both this rung's own column and the top of its
+        # ladder; carrying it twice keeps every table below reading one name.
+        out[name] = out[f"{name}::{CHAIN}"]
     out.attrs["per_rung_games"] = sizes
-    out.attrs["dropped"] = int(max(sizes.values()) - len(out))
+    out.attrs["repeated_game_pks"] = int(len(out) - out["game_pk"].nunique())
     return out
 
 
@@ -361,7 +373,29 @@ def score_predictions(market: pd.DataFrame, all_2026: pd.DataFrame,
     }
 
 
-def blend_sweep(pred_dir: Path, market_closes: pd.DataFrame | None) -> dict:
+def verdict(predictions: dict) -> dict:
+    """The pre-registration's own failure conditions, applied to its own numbers.
+
+    docs/chain-engines.md: "Prediction 1 fails, or the sign disagrees across
+    the three sets, or the recalibration control matches rung 3 within .00005
+    ... nothing ships." Each is a separate boolean here, and `ships` is their
+    conjunction, so the verdict is read off the file rather than off a table.
+    Note that the third condition firing is the *bad* case: a control that
+    matches rung 3 means the gain was the ballasts.
+    """
+    fails = {
+        "prediction_1_failed": not predictions["1_rung3_vs_served"]["passes"],
+        "sign_disagrees_across_sets":
+            not predictions["1_rung3_vs_served"]["same_sign_on_all_sets"],
+        "recalibration_control_matches_rung3":
+            predictions["recalibration_control"]["matches_rung3"],
+    }
+    return {**fails,
+            "vacuous": not predictions["vacuity_mean_abs_delta_p_home"]["passes"],
+            "ships": not any(fails.values())}
+
+
+def blend_sweep(pred_dir: Path) -> dict:
     """The station C blend weight, re-swept on 2025 at rungs 0 and 3."""
     out: dict = {"season": BLEND_SEASON, "grid": list(BLEND_GRID), "rows": {}}
     for name in BLEND_RUNGS:
@@ -432,8 +466,7 @@ def engine_provenance(season: int, pa_dir: Path) -> dict:
     }
 
 
-def rate_table_spread(season: int, as_of: str, pa_dir: Path,
-                      min_games: int) -> dict:
+def rate_table_spread(season: int, as_of: str, pa_dir: Path) -> dict:
     """What each rung does to the two rate tables themselves, on one date.
 
     A Brier difference says the chain got worse; it does not say what moved.
@@ -476,6 +509,15 @@ def rate_table_spread(season: int, as_of: str, pa_dir: Path,
     stuff_monthly = pd.read_parquet(ROOT / "data/features/pitching_stuff_monthly.parquet")
     contact_monthly = pd.read_parquet(ROOT / "data/features/contact_quality_monthly.parquet")
 
+    # The fetches do not depend on the engine — the rung only enters at rate
+    # time — so both contexts are built once and the engine is swapped in.
+    sp_ctx = bgo.build_sp_context(season, scored, sp_model.BALLAST_BF,
+                                  sp_model.STARTER_IP)
+    lu_ctx = bgo.build_lu_context(
+        season, scored, lu_model.BALLAST, lu_model.WEIGHT,
+        lu_model.BASELINE, lu_model.BASELINE_BALLAST_GAMES,
+        pa_per_game=sp_ctx["league"]["bf_per_ip"] * 9.0)
+
     out: dict = {"season": season, "as_of": as_of}
     for name in RUNG_ORDER:
         engine = eng_model.build_engines(
@@ -483,13 +525,6 @@ def rate_table_spread(season: int, as_of: str, pa_dir: Path,
             recalibration=RUNGS[name]["recalibration"],
             pitcher_seasons=p_seasons, hitter_seasons=h_seasons, pa_dir=pa_dir,
             stuff_monthly=stuff_monthly, contact_monthly=contact_monthly)
-        sp_ctx = bgo.build_sp_context(season, scored, sp_model.BALLAST_BF,
-                                      sp_model.STARTER_IP, engines=engine)
-        lu_ctx = bgo.build_lu_context(
-            season, scored, lu_model.BALLAST, lu_model.WEIGHT,
-            lu_model.BASELINE, lu_model.BASELINE_BALLAST_GAMES,
-            pa_per_game=sp_ctx["league"]["bf_per_ip"] * 9.0, engines=engine)
-
         ra9 = pd.Series(sp_model.rate_table(sp_ctx, as_of, 4.5,
                                             ballast=sp_ctx["ballast"],
                                             engine=engine))
@@ -580,7 +615,18 @@ def main() -> None:
     closes = pd.read_parquet(args.market)
     frames = {season: load_rungs(args.pred_dir, season) for season in seasons}
     market = join_market(frames[2026], closes).sort_values("game_pk")
+    # The pre-registration names a 737-game Kalshi re-pull, 07-07 -> 09-02.
+    # That re-pull is not in the committed archive (`data/parquet/` is
+    # gitignored and the file on disk is the earlier one: Kalshi from 06-26,
+    # Polymarket from 07-04, 756 games priced by both), and pulling the
+    # exchanges again today would produce a third set rather than that one. So
+    # the primary set here is the 756 the archive supports, and this is the
+    # same archive cut to the pre-registered window — the two bracket the set
+    # the prediction was written against, and every number is reported on both.
+    window = market[(market["date"].astype(str) >= "2026-07-07")
+                    & (market["date"].astype(str) <= "2026-09-02")]
     models = [*RUNG_ORDER, PRODUCTION, KALSHI, POLYMARKET]
+    predictions = score_predictions(market, frames[2026], frames[2025])
 
     payload = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -597,24 +643,34 @@ def main() -> None:
             "game_ids": [int(g) for g in market["game_pk"]],
             "scores": score_set(market, models),
         },
+        "market_window_0707": {
+            "n_games": int(len(window)),
+            "first_date": str(window["date"].min()),
+            "last_date": str(window["date"].max()),
+            "game_ids": [int(g) for g in window["game_pk"]],
+            "scores": score_set(window, models),
+            "predictions": score_predictions(window, frames[2026],
+                                             frames[2025]),
+        },
         "sets": {
             f"all_{season}": {
                 "n_games": int(len(frames[season])),
                 "per_rung_games": frames[season].attrs["per_rung_games"],
-                "dropped_to_pair": frames[season].attrs["dropped"],
+                "repeated_game_pks": frames[season].attrs["repeated_game_pks"],
                 "first_date": str(frames[season]["date"].min()),
                 "last_date": str(frames[season]["date"].max()),
                 "scores": score_set(frames[season], [*RUNG_ORDER, PRODUCTION])}
             for season in seasons
         },
-        "predictions": score_predictions(market, frames[2026], frames[2025]),
+        "predictions": predictions,
+        "verdict": verdict(predictions),
         "engines": {str(season): engine_provenance(season, args.pa_dir)
                     for season in seasons},
         "mean_p_home_shift": league_shift(frames, market),
         "rate_table_spread": (
             {} if args.no_rate_spread
-            else rate_table_spread(2026, args.rate_spread_date, args.pa_dir,
-                                   args.min_games)),
+            else rate_table_spread(2026, args.rate_spread_date,
+                                   args.pa_dir)),
         # Where in the chain each engine rung's effect enters: one Brier per
         # (engine rung, chain rung), all on the same games.
         "ladder": {
@@ -628,15 +684,23 @@ def main() -> None:
         "spread": {
             label: {name: recalibration_slope(df, name) for name in RUNG_ORDER}
             for label, df in [("market", market),
+                              ("market_window_0707", window),
                               *[(f"all_{s}", f) for s, f in frames.items()]]
         },
         "calibration": {
-            "market": {name: calibration(market, name) for name in RUNG_ORDER},
-            "all_2026": {name: calibration(frames[2026], name)
-                         for name in RUNG_ORDER},
+            label: {name: calibration(df, name) for name in RUNG_ORDER}
+            for label, df in [("market", market),
+                              ("market_window_0707", window),
+                              *[(f"all_{s}", f) for s, f in frames.items()]]
+        },
+        "top_bucket": {
+            label: {name: top_bucket(df, name) for name in RUNG_ORDER}
+            for label, df in [("market", market),
+                              ("market_window_0707", window),
+                              *[(f"all_{s}", f) for s, f in frames.items()]]
         },
         "blend_sweep": ({} if args.no_blend_sweep
-                        else blend_sweep(args.pred_dir, closes)),
+                        else blend_sweep(args.pred_dir)),
     }
     args.json_out.parent.mkdir(parents=True, exist_ok=True)
     args.json_out.write_text(json.dumps(payload, indent=1) + "\n")
@@ -650,7 +714,16 @@ def main() -> None:
         for r in payload["market"]["scores"]])
     print(table.to_string(index=False))
     for key, value in payload["predictions"].items():
-        print(f"{key}: {'PASS' if value.get('passes', value.get('matches_rung3')) else 'fail'}")
+        if "passes" in value:
+            print(f"{key}: {'PASS' if value['passes'] else 'fail'}")
+        else:
+            print(f"{key}: matches rung 3 = {value['matches_rung3']}")
+    v = payload["verdict"]
+    print(f"\nverdict: {'SHIPS' if v['ships'] else 'nothing ships'} "
+          f"(prediction 1 failed={v['prediction_1_failed']}, "
+          f"sign disagrees={v['sign_disagrees_across_sets']}, "
+          f"control matches rung 3={v['recalibration_control_matches_rung3']}, "
+          f"vacuous={v['vacuous']})")
 
 
 if __name__ == "__main__":
