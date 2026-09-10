@@ -99,7 +99,10 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    curve alone is 70% of the cost. Nothing shipped, the switch stays in
    the code. The next lever is a spread-aware chain (re-fit the chain's
    constants to the engine tables on 2025 only, or shrink the engine
-   tables by one pre-registered factor), under its own pre-registration.
+   tables by one pre-registered factor), under its own pre-registration:
+   BAS-91 (`docs/chain-engines-matched.md`) matches each engine table's
+   level and spread to the stock table's at the same as-of, parameter
+   free, and isolates the age curve as a second factor.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
 
