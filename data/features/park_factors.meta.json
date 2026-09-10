@@ -1,0 +1,4210 @@
+{
+ "built_at": "2026-09-10T08:19:33.948180+00:00",
+ "source": "data/parquet/pa_outcomes/pa_outcomes_<year>.parquet",
+ "seasons_with_data": [
+  2015,
+  2016,
+  2017,
+  2018,
+  2019,
+  2020,
+  2021,
+  2022,
+  2023,
+  2024,
+  2025,
+  2026
+ ],
+ "seasons_stamped": [
+  2016,
+  2017,
+  2018,
+  2019,
+  2020,
+  2021,
+  2022,
+  2023,
+  2024,
+  2025,
+  2026
+ ],
+ "n_pa": 2069765,
+ "components": [
+  "k_rate",
+  "bb_rate",
+  "hr_rate",
+  "babip",
+  "iso"
+ ],
+ "factor_columns": {
+  "k_rate": "k_park_factor",
+  "bb_rate": "bb_park_factor",
+  "hr_rate": "hr_park_factor",
+  "babip": "babip_park_factor",
+  "iso": "iso_park_factor"
+ },
+ "window_seasons": 3,
+ "windows": {
+  "2016": [
+   2015
+  ],
+  "2017": [
+   2015,
+   2016
+  ],
+  "2018": [
+   2015,
+   2016,
+   2017
+  ],
+  "2019": [
+   2016,
+   2017,
+   2018
+  ],
+  "2020": [
+   2017,
+   2018,
+   2019
+  ],
+  "2021": [
+   2018,
+   2019,
+   2020
+  ],
+  "2022": [
+   2019,
+   2020,
+   2021
+  ],
+  "2023": [
+   2020,
+   2021,
+   2022
+  ],
+  "2024": [
+   2021,
+   2022,
+   2023
+  ],
+  "2025": [
+   2022,
+   2023,
+   2024
+  ],
+  "2026": [
+   2023,
+   2024,
+   2025
+  ]
+ },
+ "ballast": {
+  "k_rate": 2000.0,
+  "bb_rate": 8000.0,
+  "hr_rate": 3000.0,
+  "babip": 3000.0,
+  "iso": 4000.0
+ },
+ "ballast_chosen_on": [
+  2015,
+  2016,
+  2017,
+  2018,
+  2019
+ ],
+ "ballast_grid": [
+  0.0,
+  500.0,
+  1000.0,
+  1500.0,
+  2000.0,
+  3000.0,
+  4000.0,
+  6000.0,
+  8000.0,
+  12000.0,
+  16000.0,
+  32000.0,
+  64000.0,
+  Infinity
+ ],
+ "ballast_selection_rule": "minimum pooled leave-one-season-out RMSE of log factor against the held-out season's own single-season split; ties break toward the larger ballast",
+ "ballast_would_choose_now": {
+  "babip": 3000.0,
+  "bb_rate": 8000.0,
+  "hr_rate": 3000.0,
+  "iso": 4000.0,
+  "k_rate": 2000.0
+ },
+ "loso_persistence": [
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0597925736,
+   "corr": 0.7624372296
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0535259037,
+   "corr": 0.7778547945
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0462358734,
+   "corr": 0.8354565176
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521554904,
+   "corr": 0.8151573787
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0534827803,
+   "corr": 0.7933643927
+  },
+  {
+   "component": "k_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0532137824,
+   "corr": 0.7949841275
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0560286369,
+   "corr": 0.6897279199
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0639409222,
+   "corr": 0.5632352334
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0745439995,
+   "corr": 0.5047143203
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0829953058,
+   "corr": 0.4188197761
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0733657585,
+   "corr": 0.4056878249
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0707887178,
+   "corr": 0.5120768737
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1005705349,
+   "corr": 0.7698833219
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1095382321,
+   "corr": 0.7536046573
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1114075644,
+   "corr": 0.737883104
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0954563377,
+   "corr": 0.8023749479
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1180217624,
+   "corr": 0.6916800381
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1072993485,
+   "corr": 0.750191219
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0350915223,
+   "corr": 0.7578188407
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0331637806,
+   "corr": 0.7635134087
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0388840042,
+   "corr": 0.6135606221
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0369495715,
+   "corr": 0.6854662761
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0355122887,
+   "corr": 0.6889886286
+  },
+  {
+   "component": "babip",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0359711289,
+   "corr": 0.6988026298
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0674120283,
+   "corr": 0.770899916
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.082962586,
+   "corr": 0.6980422749
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0926388818,
+   "corr": 0.6282815171
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0859981956,
+   "corr": 0.7440460152
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0942168566,
+   "corr": 0.6111337632
+  },
+  {
+   "component": "iso",
+   "ballast": 0.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0851840834,
+   "corr": 0.684686455
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0596126518,
+   "corr": 0.7623927124
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0529426843,
+   "corr": 0.7779850602
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0459754532,
+   "corr": 0.8353018852
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521305372,
+   "corr": 0.8151756805
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0532480268,
+   "corr": 0.7932569725
+  },
+  {
+   "component": "k_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0529590099,
+   "corr": 0.7949570949
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0558562328,
+   "corr": 0.6895124962
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0633007424,
+   "corr": 0.563625953
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0740903733,
+   "corr": 0.5048987379
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0827104837,
+   "corr": 0.418394944
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0727449553,
+   "corr": 0.405245789
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0703550123,
+   "corr": 0.5119845039
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0998429387,
+   "corr": 0.7695024035
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.109079872,
+   "corr": 0.7535021883
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.110656183,
+   "corr": 0.7379811437
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0952371323,
+   "corr": 0.802582337
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1170696759,
+   "corr": 0.691460811
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1066651228,
+   "corr": 0.7501103783
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0351204924,
+   "corr": 0.7580476392
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0330926611,
+   "corr": 0.7636434301
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0380300162,
+   "corr": 0.6137703797
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0367217336,
+   "corr": 0.6859646621
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0351809303,
+   "corr": 0.6895243262
+  },
+  {
+   "component": "babip",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0356680218,
+   "corr": 0.6990835834
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0665683942,
+   "corr": 0.7708903011
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0823169577,
+   "corr": 0.6981406703
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0917129341,
+   "corr": 0.628570336
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0862011862,
+   "corr": 0.7440337285
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0933577583,
+   "corr": 0.6112123295
+  },
+  {
+   "component": "iso",
+   "ballast": 500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0845754225,
+   "corr": 0.6847895007
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0595063015,
+   "corr": 0.7623499716
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0524644725,
+   "corr": 0.7781078824
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0458114475,
+   "corr": 0.835154721
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0521780387,
+   "corr": 0.8151923006
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530967199,
+   "corr": 0.793154788
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0527901864,
+   "corr": 0.7949308728
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0557321264,
+   "corr": 0.6893082895
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0627318658,
+   "corr": 0.5639947969
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0736925138,
+   "corr": 0.5050727254
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0824618464,
+   "corr": 0.4179921967
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0721809567,
+   "corr": 0.4048276366
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0699742669,
+   "corr": 0.5118964602
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0992837953,
+   "corr": 0.7691388434
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1087702221,
+   "corr": 0.7534001117
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1100732777,
+   "corr": 0.7380714746
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0951648643,
+   "corr": 0.8027710222
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1162778613,
+   "corr": 0.6912487782
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1061896908,
+   "corr": 0.7500293118
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0352104551,
+   "corr": 0.7582587343
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0330938795,
+   "corr": 0.7637600033
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0372932945,
+   "corr": 0.61396132
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0365688578,
+   "corr": 0.6864219116
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0349362031,
+   "corr": 0.6900192991
+  },
+  {
+   "component": "babip",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.03545022,
+   "corr": 0.6993406116
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0658753135,
+   "corr": 0.7708796557
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0817946474,
+   "corr": 0.6982313116
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.090919158,
+   "corr": 0.6288400955
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0864634387,
+   "corr": 0.7440185126
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0926203336,
+   "corr": 0.6112859599
+  },
+  {
+   "component": "iso",
+   "ballast": 1000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0840840853,
+   "corr": 0.6848846004
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0594634402,
+   "corr": 0.7623089114
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0520794492,
+   "corr": 0.7782238799
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0457311182,
+   "corr": 0.8350144974
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0522870033,
+   "corr": 0.8152074222
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530177433,
+   "corr": 0.7930574665
+  },
+  {
+   "component": "k_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0526959519,
+   "corr": 0.7949054443
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0556500966,
+   "corr": 0.6891144434
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0622269726,
+   "corr": 0.5643435601
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.073344275,
+   "corr": 0.5052371405
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0822452797,
+   "corr": 0.4176098479
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0716682397,
+   "corr": 0.4044314769
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0696406988,
+   "corr": 0.5118124515
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0988717269,
+   "corr": 0.7687915138
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1085886321,
+   "corr": 0.7532988301
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1096370833,
+   "corr": 0.7381548416
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0952175705,
+   "corr": 0.8029431192
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1156271578,
+   "corr": 0.6910437238
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1058521845,
+   "corr": 0.7499483968
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0353478645,
+   "corr": 0.7584541115
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0331528186,
+   "corr": 0.7638649769
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0366586265,
+   "corr": 0.6141358018
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0364775123,
+   "corr": 0.686842899
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0347634565,
+   "corr": 0.6904780266
+  },
+  {
+   "component": "babip",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0353030951,
+   "corr": 0.6995766071
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0653150125,
+   "corr": 0.7708681838
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0813799431,
+   "corr": 0.6983150075
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0902419495,
+   "corr": 0.6290925733
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0867738668,
+   "corr": 0.7440008815
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0919902229,
+   "corr": 0.611355109
+  },
+  {
+   "component": "iso",
+   "ballast": 1500.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0836949945,
+   "corr": 0.6849725738
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0594752399,
+   "corr": 0.7622694419
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0517769781,
+   "corr": 0.7783336049
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0457231121,
+   "corr": 0.8348807356
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0524478672,
+   "corr": 0.8152212047
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0530012846,
+   "corr": 0.7929646696
+  },
+  {
+   "component": "k_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0526662654,
+   "corr": 0.7948807895
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.055604692,
+   "corr": 0.6889301866
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0617795419,
+   "corr": 0.5646738455
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0730402376,
+   "corr": 0.5053927497
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0820571782,
+   "corr": 0.4172463791
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0712018843,
+   "corr": 0.404055614
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0693492014,
+   "corr": 0.511732212
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0985878693,
+   "corr": 0.7684593771
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1085171389,
+   "corr": 0.7531986557
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1093285082,
+   "corr": 0.7382319036
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.095376201,
+   "corr": 0.8031004539
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1151006828,
+   "corr": 0.6908454175
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1056343192,
+   "corr": 0.7498679332
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0355218379,
+   "corr": 0.7586354692
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0332575305,
+   "corr": 0.7639598883
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0361128916,
+   "corr": 0.6142958122
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0364365916,
+   "corr": 0.6872317598
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0346504456,
+   "corr": 0.6909043534
+  },
+  {
+   "component": "babip",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0352144397,
+   "corr": 0.6997940184
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0648716256,
+   "corr": 0.7708560556
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.081059084,
+   "corr": 0.6983924627
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0896675966,
+   "corr": 0.6293293359
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0871231665,
+   "corr": 0.743981267
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0914548187,
+   "corr": 0.611420177
+  },
+  {
+   "component": "iso",
+   "ballast": 2000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0833949768,
+   "corr": 0.6850541357
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0596329203,
+   "corr": 0.7621949417
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0513824566,
+   "corr": 0.778536164
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0458849434,
+   "corr": 0.8346308913
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0528932178,
+   "corr": 0.8152452934
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0531224077,
+   "corr": 0.792791446
+  },
+  {
+   "component": "k_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0527661876,
+   "corr": 0.7948337136
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0556052362,
+   "corr": 0.688587721
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0610344223,
+   "corr": 0.5652845821
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0725461724,
+   "corr": 0.5056802281
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0817540872,
+   "corr": 0.4165707288
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0703911619,
+   "corr": 0.4033588268
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0688748671,
+   "corr": 0.5115820848
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0983402549,
+   "corr": 0.767836936
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1086440182,
+   "corr": 0.7530025283
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1090293269,
+   "corr": 0.7383693857
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0959475176,
+   "corr": 0.8033769619
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1143626433,
+   "corr": 0.6904680931
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1054954623,
+   "corr": 0.749709261
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.035946291,
+   "corr": 0.7589617745
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0335670991,
+   "corr": 0.7641244708
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0352443423,
+   "corr": 0.6145789096
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.036470873,
+   "corr": 0.6879267272
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0345643788,
+   "corr": 0.691672642
+  },
+  {
+   "component": "babip",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0351734857,
+   "corr": 0.700181133
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0642805776,
+   "corr": 0.7708303769
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0806521903,
+   "corr": 0.6985310425
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0887806505,
+   "corr": 0.6297611031
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0879084154,
+   "corr": 0.7439374856
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0906251322,
+   "corr": 0.6115394447
+  },
+  {
+   "component": "iso",
+   "ballast": 3000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0830175601,
+   "corr": 0.685200454
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0599286174,
+   "corr": 0.7621258549
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0512157791,
+   "corr": 0.7787189444
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0462297539,
+   "corr": 0.8344021354
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0534602943,
+   "corr": 0.8152654906
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0534028655,
+   "corr": 0.7926329647
+  },
+  {
+   "component": "k_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0530312257,
+   "corr": 0.7947894611
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0557021807,
+   "corr": 0.6882760685
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0604570142,
+   "corr": 0.5658368544
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0721782465,
+   "corr": 0.5059398713
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0815315146,
+   "corr": 0.4159557525
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.069718927,
+   "corr": 0.4027267604
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0685209448,
+   "corr": 0.5114443572
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0984304212,
+   "corr": 0.767264739
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1090489203,
+   "corr": 0.7528130189
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.109065171,
+   "corr": 0.7384878683
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0967721159,
+   "corr": 0.8036109251
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.113964514,
+   "corr": 0.6901148842
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1056675724,
+   "corr": 0.7495546467
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0364328346,
+   "corr": 0.759247165
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0339644269,
+   "corr": 0.7642618365
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0346137376,
+   "corr": 0.6148213699
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.036615641,
+   "corr": 0.6885295767
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0346146965,
+   "corr": 0.6923458593
+  },
+  {
+   "component": "babip",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.035264506,
+   "corr": 0.7005153588
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0640067742,
+   "corr": 0.7708035035
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0804944155,
+   "corr": 0.698651146
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0881780623,
+   "corr": 0.6301447368
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.088770664,
+   "corr": 0.7438894515
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.090057598,
+   "corr": 0.6116461454
+  },
+  {
+   "component": "iso",
+   "ballast": 4000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0828760405,
+   "corr": 0.685327718
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0607891463,
+   "corr": 0.7620018182
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.051368568,
+   "corr": 0.7790357073
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0472733838,
+   "corr": 0.8339980487
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0548101022,
+   "corr": 0.8152969316
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0542766552,
+   "corr": 0.7923533004
+  },
+  {
+   "component": "k_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0538867804,
+   "corr": 0.7947086721
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0560937212,
+   "corr": 0.6877299058
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0596850101,
+   "corr": 0.566796739
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0717251408,
+   "corr": 0.5063903551
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0812657757,
+   "corr": 0.4148777265
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0686984404,
+   "corr": 0.4016237116
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0680836307,
+   "corr": 0.5112004861
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0993020505,
+   "corr": 0.766248797
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1104042205,
+   "corr": 0.752456181
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1098225223,
+   "corr": 0.7386798218
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0988849258,
+   "corr": 0.8039813348
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1138957766,
+   "corr": 0.6894734189
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1066409415,
+   "corr": 0.7492604541
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0374737972,
+   "corr": 0.7597226071
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.034881995,
+   "corr": 0.7644768684
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0338562627,
+   "corr": 0.6152144028
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0370948492,
+   "corr": 0.6895234588
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0349608203,
+   "corr": 0.6934699321
+  },
+  {
+   "component": "babip",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0356807297,
+   "corr": 0.7010629389
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0641266177,
+   "corr": 0.7707484798
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0806962873,
+   "corr": 0.6988480493
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0875900075,
+   "corr": 0.6307959521
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0906000397,
+   "corr": 0.7437867169
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0894925583,
+   "corr": 0.6118290774
+  },
+  {
+   "component": "iso",
+   "ballast": 6000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.083082379,
+   "corr": 0.6855374367
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0618475906,
+   "corr": 0.7618937247
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0519358834,
+   "corr": 0.7793006777
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0485717002,
+   "corr": 0.8336523419
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0562878071,
+   "corr": 0.8153196484
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0553829514,
+   "corr": 0.7921143329
+  },
+  {
+   "component": "k_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0549859237,
+   "corr": 0.7946369729
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0566446173,
+   "corr": 0.6872669597
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0592774177,
+   "corr": 0.5676025577
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0715354809,
+   "corr": 0.5067676674
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.081166215,
+   "corr": 0.4139636308
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.067997752,
+   "corr": 0.4006933155
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0678990408,
+   "corr": 0.5109913134
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1007293881,
+   "corr": 0.7653745164
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1121687329,
+   "corr": 0.7521296651
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1111333746,
+   "corr": 0.7388263884
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1012988763,
+   "corr": 0.8042568201
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1144580175,
+   "corr": 0.6889073622
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1081119432,
+   "corr": 0.7489881385
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0385032714,
+   "corr": 0.7601028221
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0358362564,
+   "corr": 0.7646362434
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0335351652,
+   "corr": 0.6155186866
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0376893288,
+   "corr": 0.6903087924
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0354714576,
+   "corr": 0.6943710689
+  },
+  {
+   "component": "babip",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0362492932,
+   "corr": 0.701492353
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0648060913,
+   "corr": 0.7706940649
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0813275584,
+   "corr": 0.6990016582
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.087550727,
+   "corr": 0.6313271643
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0924442434,
+   "corr": 0.743681412
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0894361648,
+   "corr": 0.611980259
+  },
+  {
+   "component": "iso",
+   "ballast": 8000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0836945598,
+   "corr": 0.6857021669
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.064133482,
+   "corr": 0.761714729
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0536435912,
+   "corr": 0.7797188566
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0513660238,
+   "corr": 0.8330918705
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0592337672,
+   "corr": 0.8153485625
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0578038554,
+   "corr": 0.7917274914
+  },
+  {
+   "component": "k_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0574092879,
+   "corr": 0.7945158536
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0579366203,
+   "corr": 0.6865245916
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0591090558,
+   "corr": 0.5688800758
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0716084437,
+   "corr": 0.507363989
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0812503629,
+   "corr": 0.4124971261
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0672050908,
+   "corr": 0.3992100648
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0679653549,
+   "corr": 0.5106512748
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1042512104,
+   "corr": 0.7639472706
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1160898954,
+   "corr": 0.7515613599
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1144337034,
+   "corr": 0.7390291986
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1062412778,
+   "corr": 0.8046271572
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1165098508,
+   "corr": 0.6879569337
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1116261668,
+   "corr": 0.7485079112
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0403505152,
+   "corr": 0.760673012
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0376093373,
+   "corr": 0.7648539325
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0335595589,
+   "corr": 0.6159577994
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0389203717,
+   "corr": 0.6914705064
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0366135528,
+   "corr": 0.6957259835
+  },
+  {
+   "component": "babip",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0374812431,
+   "corr": 0.7021217525
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0669189719,
+   "corr": 0.7705922275
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0831628935,
+   "corr": 0.699223103
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0883328875,
+   "corr": 0.632139782
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0959030398,
+   "corr": 0.7434783004
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0901274166,
+   "corr": 0.6122156673
+  },
+  {
+   "component": "iso",
+   "ballast": 12000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0854602351,
+   "corr": 0.685941914
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0663352645,
+   "corr": 0.7615727752
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0555649841,
+   "corr": 0.7800338929
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0540268505,
+   "corr": 0.8326570741
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0619172879,
+   "corr": 0.8153644785
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0601461097,
+   "corr": 0.7914278921
+  },
+  {
+   "component": "k_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0597629323,
+   "corr": 0.7944178855
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0592541066,
+   "corr": 0.6859554231
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0593882515,
+   "corr": 0.5698475276
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0719793725,
+   "corr": 0.5078138552
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0815195239,
+   "corr": 0.4113721485
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0668847122,
+   "corr": 0.3980800742
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0683198963,
+   "corr": 0.5103867944
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1078895456,
+   "corr": 0.7628316979
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1199234259,
+   "corr": 0.7510893094
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1178783887,
+   "corr": 0.7391566699
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1108172935,
+   "corr": 0.8048532174
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1189927623,
+   "corr": 0.6871925132
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1152014294,
+   "corr": 0.7481035963
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0418741029,
+   "corr": 0.7610802589
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0391069019,
+   "corr": 0.7649935057
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0339591462,
+   "corr": 0.6162584205
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0400365204,
+   "corr": 0.6922883244
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0376910429,
+   "corr": 0.6966961903
+  },
+  {
+   "component": "babip",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0386252549,
+   "corr": 0.7025602734
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0693003771,
+   "corr": 0.770502232
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0851965611,
+   "corr": 0.6993725898
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0895958185,
+   "corr": 0.6327305291
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0989233965,
+   "corr": 0.7432945148
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0912751098,
+   "corr": 0.6123906146
+  },
+  {
+   "component": "iso",
+   "ballast": 16000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.087413261,
+   "corr": 0.6861057956
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0730005143,
+   "corr": 0.7612138342
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0620185652,
+   "corr": 0.7807734262
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0618899265,
+   "corr": 0.83159105
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0696108092,
+   "corr": 0.8153806202
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0672217902,
+   "corr": 0.7906952173
+  },
+  {
+   "component": "k_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0668882267,
+   "corr": 0.7941636581
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.063495736,
+   "corr": 0.6845836144
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0614825327,
+   "corr": 0.5721375259
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0739730107,
+   "corr": 0.5088716291
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0828950246,
+   "corr": 0.4086583235
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0671754061,
+   "corr": 0.3953820086
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0702395002,
+   "corr": 0.509736238
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1194688037,
+   "corr": 0.7600647874
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1316496453,
+   "corr": 0.7498260828
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1289380152,
+   "corr": 0.7393574702
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1241085171,
+   "corr": 0.8051993878
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1278685376,
+   "corr": 0.6852211381
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1264774469,
+   "corr": 0.7470004071
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0457159614,
+   "corr": 0.7619689533
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.042961632,
+   "corr": 0.7652510533
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.035917449,
+   "corr": 0.6168752614
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0430963085,
+   "corr": 0.6940378941
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0407249356,
+   "corr": 0.6988201755
+  },
+  {
+   "component": "babip",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0418127404,
+   "corr": 0.7034840413
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0772050793,
+   "corr": 0.7702440179
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.091973408,
+   "corr": 0.6996627862
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0947162884,
+   "corr": 0.6340412207
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1072721194,
+   "corr": 0.7427539124
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0960010532,
+   "corr": 0.6127940978
+  },
+  {
+   "component": "iso",
+   "ballast": 32000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0939302051,
+   "corr": 0.6864317861
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0797404118,
+   "corr": 0.7608962216
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0689221798,
+   "corr": 0.7813692303
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0696008543,
+   "corr": 0.8306821542
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0770457735,
+   "corr": 0.8153701485
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0743253655,
+   "corr": 0.7900726685
+  },
+  {
+   "component": "k_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0740451082,
+   "corr": 0.7939320987
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.068045517,
+   "corr": 0.6834390056
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0646548244,
+   "corr": 0.574004264
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0767618533,
+   "corr": 0.5097249996
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0848105974,
+   "corr": 0.4063911949
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0685756795,
+   "corr": 0.3931580273
+  },
+  {
+   "component": "bb_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0729359748,
+   "corr": 0.5091796365
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1315385967,
+   "corr": 0.7576676237
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1435934871,
+   "corr": 0.7486399783
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1405473167,
+   "corr": 0.7394012545
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1370772101,
+   "corr": 0.8052809732
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1379132414,
+   "corr": 0.6834334454
+  },
+  {
+   "component": "hr_rate",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1381920865,
+   "corr": 0.7459395586
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0489397349,
+   "corr": 0.7626241285
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0462480778,
+   "corr": 0.7653986711
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0382451375,
+   "corr": 0.617294098
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0458394721,
+   "corr": 0.6952963702
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0434859677,
+   "corr": 0.700391679
+  },
+  {
+   "component": "babip",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0446966654,
+   "corr": 0.7041346683
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0855084118,
+   "corr": 0.7699852157
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.09921883,
+   "corr": 0.6998316665
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1008368215,
+   "corr": 0.6350145037
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1151346416,
+   "corr": 0.742199865
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1017196806,
+   "corr": 0.6131128618
+  },
+  {
+   "component": "iso",
+   "ballast": 64000.0,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.100922751,
+   "corr": 0.6866314258
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.091906886,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0816461879,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0830978728,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0900287965,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0870233971,
+   "corr": null
+  },
+  {
+   "component": "k_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0868291287,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0767128961,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0718584677,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.082990666,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0891591706,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0728148936,
+   "corr": null
+  },
+  {
+   "component": "bb_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0789776233,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1537022989,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1653093976,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1619663902,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1599089284,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1574376148,
+   "corr": null
+  },
+  {
+   "component": "hr_rate",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1597136018,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.0538260137,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.0512827863,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.0424981507,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.0501894929,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.0478880831,
+   "corr": null
+  },
+  {
+   "component": "babip",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.0492859218,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2015.0,
+   "n_parks": 30,
+   "rmse": 0.1004979121,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2016.0,
+   "n_parks": 30,
+   "rmse": 0.1126200615,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2017.0,
+   "n_parks": 30,
+   "rmse": 0.1129266415,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2018.0,
+   "n_parks": 30,
+   "rmse": 0.1286578148,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": 2019.0,
+   "n_parks": 30,
+   "rmse": 0.1131423179,
+   "corr": null
+  },
+  {
+   "component": "iso",
+   "ballast": null,
+   "season": null,
+   "n_parks": 150,
+   "rmse": 0.1139206323,
+   "corr": null
+  }
+ ],
+ "log_factor_sd_by_season": [
+  {
+   "component": "babip",
+   "game_year": 2016,
+   "sd": 0.03257697,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2017,
+   "sd": 0.0364390845,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2018,
+   "sd": 0.0348073506,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2019,
+   "sd": 0.0333233376,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2020,
+   "sd": 0.03268175,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2021,
+   "sd": 0.0340254849,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2022,
+   "sd": 0.0349872482,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2023,
+   "sd": 0.0370843036,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2024,
+   "sd": 0.0357841114,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2025,
+   "sd": 0.0362075773,
+   "n_parks": 30
+  },
+  {
+   "component": "babip",
+   "game_year": 2026,
+   "sd": 0.0384441038,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2016,
+   "sd": 0.0339716497,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2017,
+   "sd": 0.0410508976,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2018,
+   "sd": 0.0445547592,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2019,
+   "sd": 0.0431895734,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2020,
+   "sd": 0.0426335897,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2021,
+   "sd": 0.0406760774,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2022,
+   "sd": 0.0345843049,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2023,
+   "sd": 0.0384520344,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2024,
+   "sd": 0.0409526206,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2025,
+   "sd": 0.0440007438,
+   "n_parks": 30
+  },
+  {
+   "component": "bb_rate",
+   "game_year": 2026,
+   "sd": 0.0402325672,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2016,
+   "sd": 0.1033394929,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2017,
+   "sd": 0.1145210013,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2018,
+   "sd": 0.1195873092,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2019,
+   "sd": 0.1232919838,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2020,
+   "sd": 0.1220870109,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2021,
+   "sd": 0.1174936733,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2022,
+   "sd": 0.1205142263,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2023,
+   "sd": 0.1167183223,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2024,
+   "sd": 0.1138966051,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2025,
+   "sd": 0.1103155039,
+   "n_parks": 30
+  },
+  {
+   "component": "hr_rate",
+   "game_year": 2026,
+   "sd": 0.0984171212,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2016,
+   "sd": 0.0599148208,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2017,
+   "sd": 0.0722835293,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2018,
+   "sd": 0.0755714477,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2019,
+   "sd": 0.0813283178,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2020,
+   "sd": 0.0818218282,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2021,
+   "sd": 0.0785834096,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2022,
+   "sd": 0.0759979809,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2023,
+   "sd": 0.0716403014,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2024,
+   "sd": 0.0712795886,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2025,
+   "sd": 0.0666279862,
+   "n_parks": 30
+  },
+  {
+   "component": "iso",
+   "game_year": 2026,
+   "sd": 0.0555832445,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2016,
+   "sd": 0.0699691952,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2017,
+   "sd": 0.0700368879,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2018,
+   "sd": 0.0705894639,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2019,
+   "sd": 0.0701535411,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2020,
+   "sd": 0.0726640736,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2021,
+   "sd": 0.0700267694,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2022,
+   "sd": 0.0671749502,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2023,
+   "sd": 0.0715024169,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2024,
+   "sd": 0.0718444263,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2025,
+   "sd": 0.070202163,
+   "n_parks": 30
+  },
+  {
+   "component": "k_rate",
+   "game_year": 2026,
+   "sd": 0.0632759744,
+   "n_parks": 30
+  }
+ ],
+ "year_over_year_correlation": [
+  {
+   "component": "babip",
+   "season": 2017.0,
+   "n_parks": 30,
+   "corr": 0.9325508846
+  },
+  {
+   "component": "babip",
+   "season": 2018.0,
+   "n_parks": 30,
+   "corr": 0.9685354339
+  },
+  {
+   "component": "babip",
+   "season": 2019.0,
+   "n_parks": 30,
+   "corr": 0.9483544784
+  },
+  {
+   "component": "babip",
+   "season": 2020.0,
+   "n_parks": 30,
+   "corr": 0.9161393542
+  },
+  {
+   "component": "babip",
+   "season": 2021.0,
+   "n_parks": 30,
+   "corr": 0.9621668192
+  },
+  {
+   "component": "babip",
+   "season": 2022.0,
+   "n_parks": 30,
+   "corr": 0.8728311719
+  },
+  {
+   "component": "babip",
+   "season": 2023.0,
+   "n_parks": 30,
+   "corr": 0.9272670586
+  },
+  {
+   "component": "babip",
+   "season": 2024.0,
+   "n_parks": 30,
+   "corr": 0.9457226594
+  },
+  {
+   "component": "babip",
+   "season": 2025.0,
+   "n_parks": 30,
+   "corr": 0.9392160927
+  },
+  {
+   "component": "babip",
+   "season": 2026.0,
+   "n_parks": 30,
+   "corr": 0.9287411893
+  },
+  {
+   "component": "babip",
+   "season": null,
+   "n_parks": 300,
+   "corr": 0.9331335853
+  },
+  {
+   "component": "bb_rate",
+   "season": 2017.0,
+   "n_parks": 30,
+   "corr": 0.900552999
+  },
+  {
+   "component": "bb_rate",
+   "season": 2018.0,
+   "n_parks": 30,
+   "corr": 0.9178997678
+  },
+  {
+   "component": "bb_rate",
+   "season": 2019.0,
+   "n_parks": 30,
+   "corr": 0.8894264866
+  },
+  {
+   "component": "bb_rate",
+   "season": 2020.0,
+   "n_parks": 30,
+   "corr": 0.8801155401
+  },
+  {
+   "component": "bb_rate",
+   "season": 2021.0,
+   "n_parks": 30,
+   "corr": 0.8503585446
+  },
+  {
+   "component": "bb_rate",
+   "season": 2022.0,
+   "n_parks": 30,
+   "corr": 0.8090434627
+  },
+  {
+   "component": "bb_rate",
+   "season": 2023.0,
+   "n_parks": 30,
+   "corr": 0.8525743944
+  },
+  {
+   "component": "bb_rate",
+   "season": 2024.0,
+   "n_parks": 30,
+   "corr": 0.8236103507
+  },
+  {
+   "component": "bb_rate",
+   "season": 2025.0,
+   "n_parks": 30,
+   "corr": 0.8501671216
+  },
+  {
+   "component": "bb_rate",
+   "season": 2026.0,
+   "n_parks": 30,
+   "corr": 0.8515479177
+  },
+  {
+   "component": "bb_rate",
+   "season": null,
+   "n_parks": 300,
+   "corr": 0.8605324888
+  },
+  {
+   "component": "hr_rate",
+   "season": 2017.0,
+   "n_parks": 30,
+   "corr": 0.8571843174
+  },
+  {
+   "component": "hr_rate",
+   "season": 2018.0,
+   "n_parks": 30,
+   "corr": 0.9599942285
+  },
+  {
+   "component": "hr_rate",
+   "season": 2019.0,
+   "n_parks": 30,
+   "corr": 0.9679349649
+  },
+  {
+   "component": "hr_rate",
+   "season": 2020.0,
+   "n_parks": 30,
+   "corr": 0.9059470204
+  },
+  {
+   "component": "hr_rate",
+   "season": 2021.0,
+   "n_parks": 30,
+   "corr": 0.9510662253
+  },
+  {
+   "component": "hr_rate",
+   "season": 2022.0,
+   "n_parks": 30,
+   "corr": 0.9323915925
+  },
+  {
+   "component": "hr_rate",
+   "season": 2023.0,
+   "n_parks": 30,
+   "corr": 0.9042478071
+  },
+  {
+   "component": "hr_rate",
+   "season": 2024.0,
+   "n_parks": 30,
+   "corr": 0.9529032127
+  },
+  {
+   "component": "hr_rate",
+   "season": 2025.0,
+   "n_parks": 30,
+   "corr": 0.883569154
+  },
+  {
+   "component": "hr_rate",
+   "season": 2026.0,
+   "n_parks": 30,
+   "corr": 0.8804314393
+  },
+  {
+   "component": "hr_rate",
+   "season": null,
+   "n_parks": 300,
+   "corr": 0.9204938773
+  },
+  {
+   "component": "iso",
+   "season": 2017.0,
+   "n_parks": 30,
+   "corr": 0.8864315248
+  },
+  {
+   "component": "iso",
+   "season": 2018.0,
+   "n_parks": 30,
+   "corr": 0.9444434965
+  },
+  {
+   "component": "iso",
+   "season": 2019.0,
+   "n_parks": 30,
+   "corr": 0.9578726918
+  },
+  {
+   "component": "iso",
+   "season": 2020.0,
+   "n_parks": 30,
+   "corr": 0.9062966356
+  },
+  {
+   "component": "iso",
+   "season": 2021.0,
+   "n_parks": 30,
+   "corr": 0.9412235873
+  },
+  {
+   "component": "iso",
+   "season": 2022.0,
+   "n_parks": 30,
+   "corr": 0.9143581018
+  },
+  {
+   "component": "iso",
+   "season": 2023.0,
+   "n_parks": 30,
+   "corr": 0.8682534899
+  },
+  {
+   "component": "iso",
+   "season": 2024.0,
+   "n_parks": 30,
+   "corr": 0.9451069489
+  },
+  {
+   "component": "iso",
+   "season": 2025.0,
+   "n_parks": 30,
+   "corr": 0.8815995617
+  },
+  {
+   "component": "iso",
+   "season": 2026.0,
+   "n_parks": 30,
+   "corr": 0.8600247158
+  },
+  {
+   "component": "iso",
+   "season": null,
+   "n_parks": 300,
+   "corr": 0.9106852665
+  },
+  {
+   "component": "k_rate",
+   "season": 2017.0,
+   "n_parks": 30,
+   "corr": 0.9316813451
+  },
+  {
+   "component": "k_rate",
+   "season": 2018.0,
+   "n_parks": 30,
+   "corr": 0.9717939016
+  },
+  {
+   "component": "k_rate",
+   "season": 2019.0,
+   "n_parks": 30,
+   "corr": 0.9391525696
+  },
+  {
+   "component": "k_rate",
+   "season": 2020.0,
+   "n_parks": 30,
+   "corr": 0.9535132218
+  },
+  {
+   "component": "k_rate",
+   "season": 2021.0,
+   "n_parks": 30,
+   "corr": 0.9656119578
+  },
+  {
+   "component": "k_rate",
+   "season": 2022.0,
+   "n_parks": 30,
+   "corr": 0.921361334
+  },
+  {
+   "component": "k_rate",
+   "season": 2023.0,
+   "n_parks": 30,
+   "corr": 0.9468130861
+  },
+  {
+   "component": "k_rate",
+   "season": 2024.0,
+   "n_parks": 30,
+   "corr": 0.9619285171
+  },
+  {
+   "component": "k_rate",
+   "season": 2025.0,
+   "n_parks": 30,
+   "corr": 0.9504711706
+  },
+  {
+   "component": "k_rate",
+   "season": 2026.0,
+   "n_parks": 30,
+   "corr": 0.9591580075
+  },
+  {
+   "component": "k_rate",
+   "season": null,
+   "n_parks": 300,
+   "corr": 0.9495013701
+  }
+ ],
+ "single_season_persistence": [
+  {
+   "component": "k_rate",
+   "n_pairs": 330,
+   "corr": 0.7043492704
+  },
+  {
+   "component": "bb_rate",
+   "n_pairs": 330,
+   "corr": 0.2929177418
+  },
+  {
+   "component": "hr_rate",
+   "n_pairs": 330,
+   "corr": 0.4386993467
+  },
+  {
+   "component": "babip",
+   "n_pairs": 330,
+   "corr": 0.6181861338
+  },
+  {
+   "component": "iso",
+   "n_pairs": 330,
+   "corr": 0.3826912352
+  }
+ ],
+ "known_park_changes": {
+  "ATH": {
+   "from": "Oakland Coliseum",
+   "to": "Sutter Health Park (Sacramento)",
+   "first_season": 2025
+  },
+  "TB": {
+   "from": "Tropicana Field",
+   "to": "George M. Steinbrenner Field",
+   "first_season": 2025,
+   "note": "Tropicana Field in 2026 again"
+  }
+ },
+ "notes": [
+  "The key is the hosting club, not a venue id: the PA parquet has no venue column, and the rate models index their park offset on the batting team. A club that changes parks carries its old park's factor until the window rolls over (see known_park_changes); neutral-site games are charged to the nominal home club.",
+  "2020 is in the pool as a 60-game season. It is not weighted down or up: the counts are summed, so it contributes about a third of a normal season's trials to the windows stamped for 2021, 2022 and 2023.",
+  "Factors are renormalised to a trials-weighted mean of 1 within each season and component, so applying one cannot move the projected league level."
+ ]
+}

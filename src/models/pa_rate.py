@@ -113,6 +113,7 @@ logger = logging.getLogger(__name__)
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 PARQUET_DIR = DATA_DIR / "parquet"
+FEATURES_DIR = DATA_DIR / "features"
 
 # Model hyperparameters
 REFERENCE_AGE = 27.0       # center of age curve (typical peak)
@@ -293,27 +294,48 @@ def load_pa_data(
     return data
 
 
+# Where the park factors live, in the order they are looked for. The committed
+# artifact (BAS-86, `scripts/build_park_factors.py`, docs/park-factors.md) is
+# the walk-forward one: home/away paired, a three-season window ending strictly
+# before the stamped season, regressed toward 1 and centred on the league, with
+# a column per component. The gitignored `data/parquet` file is what
+# `scripts/generate_pa_parquet.py` writes — the same season's home rate over
+# the league rate, which is neither paired nor walk-forward — and is kept only
+# as a fallback so a checkout that has that file and not the artifact behaves
+# as it did before.
+PARK_FACTOR_PATHS = (FEATURES_DIR / "park_factors.parquet",
+                     PARQUET_DIR / "park_factors.parquet")
+
+
 def load_park_factors(pf_path: Path | str | None = None) -> pd.DataFrame:
     """Load park-factor parquet.
 
     Args:
-        pf_path: Path to park_factors.parquet.
+        pf_path: Path to park_factors.parquet. `None` tries
+            `PARK_FACTOR_PATHS` in order and takes the first that exists.
 
     Returns:
-        DataFrame with columns: team, game_year, k_park_factor.
+        DataFrame with columns `team`, `game_year` and one factor column per
+        component (`k_park_factor`, `bb_park_factor`, `hr_park_factor`,
+        `babip_park_factor`, `iso_park_factor` — the names
+        `RateComponent.park_factor_col` carries). A component whose column is
+        absent runs at a neutral offset; see `prepare_model_data`.
+
+        `None` when no file is found, which is what leaves every offset at
+        exactly zero — the path the K% bit-for-bit reference test fits under.
     """
-    if pf_path is None:
-        pf_path = PARQUET_DIR / "park_factors.parquet"
-    pf_path = Path(pf_path)
-
-    if not pf_path.exists():
-        logger.warning(f"Park factors not found at {pf_path}; using neutral (1.0)")
-        return None
-
-    pf = pd.read_parquet(pf_path)
-    logger.info(f"Loaded park factors: {len(pf)} rows, "
-                f"{pf['team'].nunique()} teams")
-    return pf
+    candidates = ([Path(pf_path)] if pf_path is not None
+                  else list(PARK_FACTOR_PATHS))
+    for path in candidates:
+        if path.exists():
+            pf = pd.read_parquet(path)
+            logger.info(f"Loaded park factors from {path}: {len(pf)} rows, "
+                        f"{pf['team'].nunique()} teams, components "
+                        f"{[c for c in pf.columns if c.endswith('_park_factor')]}")
+            return pf
+    logger.warning("Park factors not found at %s; using neutral (1.0)",
+                   ", ".join(str(p) for p in candidates))
+    return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

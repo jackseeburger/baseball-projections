@@ -38,7 +38,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from tests.test_models.reference_k_rate import (  # noqa: E402
-    FAST_SAMPLER, fixture_pa_rows, summarise_k_rate,
+    FAST_SAMPLER, FIXTURE_SEASONS, fixture_pa_rows, summarise_k_rate,
 )
 
 HAS_PYMC = all(importlib.util.find_spec(m) is not None
@@ -364,3 +364,93 @@ def test_the_wrapper_still_exports_the_age_peak_window():
     from src.models import pa_k_rate
 
     assert pa_k_rate.AGE_PEAK_WINDOW == tuning.AGE_PEAK_WINDOW
+
+
+# ─── 6. park factors, per component (BAS-86, docs/park-factors.md) ──────────
+
+@needs_pymc
+class TestParkFactorLoading:
+    """`load_park_factors` picks the file up; `prepare_model_data` picks the
+    *component's own column* out of it.
+
+    The K% path when no file exists is the one that has to stay bit-for-bit
+    (test 1 above fits under exactly that condition, passing `None`), so the
+    first test here states that condition directly rather than leaving it
+    implied by the reference fit.
+    """
+
+    # `fixture_pa_rows` is HOU hosting SEA in the top of the inning, so the
+    # *batting* club — the one `prepare_model_data` keys the offset on, since
+    # a hitter's park is his own club's — is SEA in every row. Both clubs are
+    # in the table, in every fixture season, so a test that asserts SEA's
+    # numbers is asserting the lookup and not the absence of HOU's.
+    FACTORS = {"SEA": {"k": 0.90, "bb": 1.25, "hr": 0.70},
+               "HOU": {"k": 1.10, "bb": 0.80, "hr": 1.40}}
+
+    def _pf(self):
+        rows = [{"team": team, "game_year": year,
+                 "k_park_factor": f["k"], "bb_park_factor": f["bb"],
+                 "hr_park_factor": f["hr"]}
+                for team, f in self.FACTORS.items()
+                for year in FIXTURE_SEASONS]
+        return pd.DataFrame(rows)
+
+    def test_no_file_anywhere_is_none_and_a_zero_offset(self, tmp_path):
+        from src.models.pa_rate import load_park_factors, prepare_model_data
+
+        assert load_park_factors(tmp_path / "nope.parquet") is None
+        data = prepare_model_data(fixture_pa_rows(), None, min_pa=1)
+        assert (data["log_pf_k"] == 0.0).all()
+
+    def test_the_features_artifact_wins_over_the_legacy_parquet(self, tmp_path,
+                                                                monkeypatch):
+        from src.models import pa_rate
+
+        new = tmp_path / "features.parquet"
+        old = tmp_path / "legacy.parquet"
+        self._pf().to_parquet(new, index=False)
+        self._pf().assign(k_park_factor=2.0).to_parquet(old, index=False)
+        monkeypatch.setattr(pa_rate, "PARK_FACTOR_PATHS", (new, old))
+        assert (pa_rate.load_park_factors()["k_park_factor"] != 2.0).all()
+
+        monkeypatch.setattr(pa_rate, "PARK_FACTOR_PATHS", (tmp_path / "x", old))
+        assert (pa_rate.load_park_factors()["k_park_factor"] == 2.0).all()
+
+    @pytest.mark.parametrize("component,factor", [
+        ("k_rate", 0.90), ("bb_rate", 1.25), ("hr_rate", 0.70)])
+    def test_each_component_reads_its_own_column(self, component, factor):
+        """A shared table with three columns in it: BB% must not be handed
+        K%'s factor."""
+        from src.models.pa_rate import prepare_model_data
+
+        data = prepare_model_data(fixture_pa_rows(), self._pf(), min_pa=1,
+                                  component=component)
+        assert np.allclose(data["log_pf_k"], np.log(factor))
+
+    def test_a_missing_component_column_is_neutral_not_borrowed(self):
+        from src.models.pa_rate import prepare_model_data
+
+        pf = self._pf().drop(columns=["hr_park_factor"])
+        data = prepare_model_data(fixture_pa_rows(), pf, min_pa=1,
+                                  component="hr_rate")
+        assert (data["log_pf_k"] == 0.0).all()
+
+    def test_the_joint_model_stacks_one_column_per_component(self):
+        from src.models.pa_joint import prepare_joint_data
+
+        joint = prepare_joint_data(fixture_pa_rows(), self._pf(), min_pa=1,
+                                   components=("k_rate", "bb_rate", "hr_rate"))
+        expected = np.log([0.90, 1.25, 0.70])
+        assert np.allclose(joint.log_pf, expected[None, :])
+
+    def test_the_committed_artifact_covers_every_component(self):
+        from src.data.park_components import DEFAULT_PATH
+        from src.models.pa_components import RATE_COMPONENTS
+        from src.models.pa_rate import PROJECT_ROOT, load_park_factors
+
+        path = PROJECT_ROOT / DEFAULT_PATH
+        if not path.exists():
+            pytest.skip(f"{path} not built")
+        pf = load_park_factors(path)
+        for comp in RATE_COMPONENTS.values():
+            assert comp.park_factor_col in pf.columns

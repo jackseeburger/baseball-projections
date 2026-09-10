@@ -322,6 +322,10 @@ def load_pa_by_year(seasons: tuple[int, ...],
             "batter", "pitcher", "game_pk", "game_date", "game_year", "event",
             "is_k", "is_bb", "is_hbp", "is_hit", "is_hr", "is_single",
             "is_double", "is_triple",
+            # Who was batting, for the park arm's "which park is his" (BAS-86).
+            # Three string columns on 180k rows a season; the aggregators
+            # ignore them.
+            "home_team", "away_team", "inning_topbot",
         ])
         df["game_date"] = pd.to_datetime(df["game_date"])
         out[year] = df
@@ -423,7 +427,17 @@ def run_cheap(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              components: list[str], seasons: tuple[int, ...],
              cutoffs_mmdd: list[str], projections_dir: Path,
              min_trials: int = MIN_TRIALS,
-             checkpoint: Path | None = None) -> pd.DataFrame:
+             checkpoint: Path | None = None,
+             park_factors: pd.DataFrame | None = None,
+             park_coverage: list[dict] | None = None) -> pd.DataFrame:
+    """The closed-form arms at every (component, season, cutoff).
+
+    `park_factors` adds BAS-86's `marcel_tuned_park` (and its half-strength
+    diagnostic) to every cell — see `src.eval.park_arm`. It covers exactly
+    the batters `marcel_tuned` covers, so the common-player set the other
+    arms are scored on does not move; a cell whose season or component the
+    table says nothing about simply has no park arm.
+    """
     done = set()
     frames = []
     if checkpoint is not None and checkpoint.exists():
@@ -446,6 +460,15 @@ def run_cheap(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
                 pre = preseason_bayes_provider(component, projections_dir, year)
                 if pre is not None:
                     providers["bayes_preseason"] = pre
+                if park_factors is not None:
+                    from src.eval import park_arm
+
+                    park = park_arm.park_providers(
+                        park_factors, pa, cutoff, year, component)
+                    if not park:
+                        logger.warning("no park factors for %s %d — park arm "
+                                       "absent from this cell", component, year)
+                    providers.update(park)
                 try:
                     results = backtest(
                         component, cutoff_date=cutoff, predict_year=year,
@@ -457,6 +480,17 @@ def run_cheap(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
                     continue
                 results = results.assign(season=year, cutoff=cutoff)
                 frames.append(results)
+                if park_coverage is not None and park_factors is not None:
+                    from src.eval import park_arm
+
+                    scored = results[results["model"] == PAIRED_BASE]["batter"]
+                    park_coverage.append({
+                        "component": component, "season": year, "cutoff": cutoff,
+                        **park_arm.coverage(
+                            park_arm.home_team_map(pa, cutoff),
+                            park_arm.park_multipliers(park_factors, year, component),
+                            scored),
+                    })
                 if checkpoint is not None:
                     pd.concat(frames, ignore_index=True).to_parquet(checkpoint, index=False)
             logger.info("cheap: %s done", cutoff)
@@ -1063,6 +1097,191 @@ def variant_comparison(cells: pd.DataFrame, arm: str, base: str,
     }
 
 
+def paired_mae(cells: pd.DataFrame, arm: str, base: str,
+               component: str) -> dict:
+    """Trials-weighted MAE of each arm over the rows the two share.
+
+    `variant_comparison` reports the *difference* of these two, which is the
+    number that carries a standard error; the levels are what turn it into
+    "a percent of the baseline's MAE", which is the unit architecture.md §3's
+    effect floor is written in.
+    """
+    g = cells[cells["component"] == component]
+    a, b = g[g["model"] == arm], g[g["model"] == base]
+    if a.empty or b.empty:
+        return {}
+    key = lambda d: (d["season"].astype(str) + "|" + d["cutoff"] + "|"  # noqa: E731
+                     + d["batter"].astype(str))
+    a = a.assign(_key=key(a)).set_index("_key")
+    b = b.assign(_key=key(b)).set_index("_key")
+    common = a.index.intersection(b.index)
+    a, b = a.loc[common], b.loc[common]
+    w = a["trials"].to_numpy(dtype="float64")
+    mae_a = float(np.sum(w * (a["predicted"] - a["realized_rate"]).abs()) / w.sum())
+    mae_b = float(np.sum(w * (b["predicted"] - b["realized_rate"]).abs()) / w.sum())
+    return {"arm_mae": mae_a, "base_mae": mae_b}
+
+
+def arm_comparison(cells: pd.DataFrame, arm: str, base: str = PAIRED_BASE,
+                   component: str = "k_rate", season: int | None = None) -> dict:
+    """`variant_comparison` for any arm, with the two MAE levels and the gain
+    as a percent of the base's MAE attached.
+
+    Negative `diff` (and negative `pct_of_base`) is the arm winning, the same
+    sign convention `paired_abs_error_diff` uses everywhere else.
+    """
+    g = cells if season is None else cells[cells["season"] == int(season)]
+    out = variant_comparison(g, arm, base, component)
+    if not out:
+        return {}
+    out.update(paired_mae(g, arm, base, component))
+    base_mae = out.get("base_mae") or float("nan")
+    out["pct_of_base"] = 100.0 * out["diff"] / base_mae if base_mae else float("nan")
+    out["season"] = None if season is None else int(season)
+    return out
+
+
+def park_arm_analysis(cells: pd.DataFrame, components: list[str] | None = None,
+                      base: str = PAIRED_BASE) -> dict:
+    """BAS-86's scoreboard: the park arm against tuned Marcel, per component,
+    pooled over the grid and again per season.
+
+    The half-strength arm is reported in the same shape and is *not* the
+    pre-registered comparison — see `src.eval.park_arm`'s docstring for why it
+    is scored at all.
+    """
+    from src.eval.park_arm import ARM, HALF_ARM
+
+    if cells.empty or ARM not in set(cells["model"].unique()):
+        return {}
+    components = components or sorted(cells["component"].unique())
+    pooled, by_season = [], []
+    for arm in (ARM, HALF_ARM):
+        if arm not in set(cells["model"].unique()):
+            continue
+        for component in components:
+            r = arm_comparison(cells, arm, base, component)
+            if r:
+                pooled.append(r)
+            for season in sorted(cells["season"].unique()):
+                s = arm_comparison(cells, arm, base, component, season=int(season))
+                if s:
+                    by_season.append(s)
+    return {"pooled": pooled, "by_season": by_season, "base": base,
+            "tilt": park_tilt(cells, components)}
+
+
+def park_tilt(cells: pd.DataFrame, components: list[str] | None = None) -> list[dict]:
+    """How much of the park is already in the baseline's projection.
+
+    The park arm is the base times a factor, so the factor each batter got is
+    recoverable from the cells themselves — `predicted_park / predicted_base`
+    — with no need to re-read the factor table here. Against that, three
+    trials-weighted slopes, each of the *relative* quantity (own value over
+    its cell's mean, minus one) on the log factor:
+
+        realized   how much the thing being predicted actually tilts with the
+                   park. Not 1: a hitter takes about half his PA at home, and
+                   the rest-of-season sample being scored is the same mix.
+        base       how much `marcel_tuned` already tilts with it, having been
+                   fitted on rates the hitter accrued in that same mix.
+        arm        base + 1, by construction — the arm multiplies by the whole
+                   factor.
+
+    If `base` already sits near `realized`, the arm is not adding a missing
+    correction, it is applying a correction that is already in its input, and
+    the excess is `arm - realized`. That is a measurement of double counting,
+    not an inference from one.
+    """
+    from src.eval.park_arm import ARM
+
+    components = components or sorted(cells["component"].unique())
+    rows = []
+    for component in components:
+        g = cells[cells["component"] == component]
+        base = g[g["model"] == PAIRED_BASE]
+        arm = g[g["model"] == ARM]
+        if base.empty or arm.empty:
+            continue
+        key = lambda d: (d["season"].astype(str) + "|" + d["cutoff"] + "|"  # noqa: E731
+                         + d["batter"].astype(str))
+        b = base.assign(_key=key(base), _cell=base["season"].astype(str)
+                        + "|" + base["cutoff"]).set_index("_key")
+        a = arm.assign(_key=key(arm)).set_index("_key")
+        common = b.index.intersection(a.index)
+        b, a = b.loc[common], a.loc[common]
+        x = np.log(a["predicted"].to_numpy() / b["predicted"].to_numpy())
+        w = b["trials"].to_numpy(dtype="float64")
+        cell = b["_cell"].to_numpy()
+
+        def relative(values):
+            """value / (its cell's trials-weighted mean) - 1."""
+            s = pd.Series(values, index=cell)
+            mean = (s.mul(w, axis=0).groupby(level=0).sum()
+                    / pd.Series(w, index=cell).groupby(level=0).sum())
+            return (s / s.index.map(mean).to_numpy() - 1.0).to_numpy()
+
+        def slope(y):
+            xc = x - np.average(x, weights=w)
+            yc = y - np.average(y, weights=w)
+            var = float(np.sum(w * xc ** 2))
+            return float(np.sum(w * xc * yc) / var) if var > 0 else float("nan")
+
+        s_real = slope(relative(b["realized_rate"].to_numpy()))
+        s_base = slope(relative(b["predicted"].to_numpy()))
+        s_arm = slope(relative(a["predicted"].to_numpy()))
+        rows.append({
+            "component": component, "n": int(len(common)),
+            "sd_log_factor": float(np.std(x)),
+            "slope_realized": s_real, "slope_base": s_base, "slope_arm": s_arm,
+            "excess_over_realized": s_arm - s_real,
+            "base_share_of_realized": (s_base / s_real if s_real else float("nan")),
+        })
+    return rows
+
+
+def render_park_tilt(rows: list[dict]) -> str:
+    if not rows:
+        return "(no park-tilt rows)"
+    header = (f"{'component':<11}{'n':>7}{'sd log f':>10}{'realized':>10}"
+              f"{'base':>9}{'arm':>9}{'arm-realized':>14}")
+    lines = [header, "-" * len(header)]
+    for r in rows:
+        lines.append(f"{r['component']:<11}{int(r['n']):>7}"
+                     f"{r['sd_log_factor']:>10.4f}{r['slope_realized']:>10.2f}"
+                     f"{r['slope_base']:>9.2f}{r['slope_arm']:>9.2f}"
+                     f"{r['excess_over_realized']:>+14.2f}")
+    return "\n".join(lines)
+
+
+def render_park_table(rows: list[dict]) -> str:
+    """`park_arm_analysis`'s rows as a table: the gain, what it is worth as a
+    share of the baseline it has to beat, and the two clusterings."""
+    if not rows:
+        return "(no park-arm rows)"
+    df = pd.DataFrame(rows)
+    if "season" in df.columns:
+        df["season"] = df["season"].map(lambda s: "pooled" if s is None or
+                                        (isinstance(s, float) and np.isnan(s))
+                                        else str(int(s)))
+    arm_w = max([len(str(v)) for v in df["arm"]] + [len("arm")]) + 2
+    header = (f"{'arm':<{arm_w}}{'component':<11}{'season':>7}{'n':>7}"
+              f"{'diff':>11}{'% of base':>11}{'t(player)':>11}{'t(cell)':>9}"
+              f"{'W-L':>10}")
+    lines = [header, "-" * len(header)]
+    for _, r in df.iterrows():
+        t_p = r.get("clustered_by_player_t")
+        t_c = r.get("clustered_by_cell_t")
+        fmt = lambda v, w: (f"{'-':>{w}}" if v is None or not np.isfinite(  # noqa: E731
+            float(v)) else f"{float(v):>{w}.2f}")
+        lines.append(
+            f"{r['arm']:<{arm_w}}{r['component']:<11}{r.get('season', ''):>7}"
+            f"{int(r['n']):>7}{r['diff']:>+11.6f}{r['pct_of_base']:>+11.2f}"
+            f"{fmt(t_p, 11)}{fmt(t_c, 9)}"
+            f"{r['arm_wins_cells']:>5d}-{r['arm_loses_cells']:<4d}")
+    return "\n".join(lines)
+
+
 def build_variant_comparison_table(bayes: pd.DataFrame, component: str = "k_rate",
                                    bases: tuple[str, ...] = ("marcel_tuned", "marcel",
                                                              "bayes_flat", "bayes_walk",
@@ -1152,6 +1371,9 @@ def build_analysis(cheap_path: Path, bayes_path: Path, out_json: Path) -> dict:
             cheap[cheap["model"] == "marcel_tuned"]
             .groupby(["component", "season", "cutoff"]).size()
             .rename("n").reset_index().to_json(orient="records"))
+        park = park_arm_analysis(cheap)
+        if park:
+            payload["park_arm"] = park
 
     if not bayes.empty:
         bayes_components = sorted(bayes["component"].unique().tolist())
@@ -1216,6 +1438,22 @@ def main() -> None:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--stage", choices=("cheap", "bayes", "analyze", "all"), default="all")
     ap.add_argument("--components", nargs="+", default=DEFAULT_COMPONENTS)
+    ap.add_argument("--cheap-seasons", nargs="+", type=int,
+                    default=list(CHEAP_SEASONS),
+                    help="seasons for the cheap sweep (default: all of "
+                         f"{' '.join(str(s) for s in CHEAP_SEASONS)})")
+    ap.add_argument("--cheap-cadence", choices=("weekly", "biweekly"),
+                    default="weekly",
+                    help="cutoff grid for the cheap sweep; biweekly is the "
+                         "bayes sweep's 12 dates, which is what BAS-86's park "
+                         "arm was pre-registered on")
+    ap.add_argument("--park-arm", action="store_true",
+                    help="also score `marcel_tuned_park` — tuned Marcel times "
+                         "the batter's home-park factor (BAS-86, "
+                         "docs/park-factors.md) — in every cheap cell, plus "
+                         "its half-strength diagnostic")
+    ap.add_argument("--park-factors", type=Path,
+                    default=ROOT / "data/features/park_factors.parquet")
     ap.add_argument("--seasons-table", type=Path,
                     default=ROOT / "data/parquet/hitter_seasons_api.parquet")
     ap.add_argument("--pa-dir", type=Path, default=ROOT / "data/parquet/pa_outcomes")
@@ -1275,10 +1513,24 @@ def main() -> None:
     seasons_table = pd.read_parquet(args.seasons_table)
 
     if args.stage in ("cheap", "all"):
-        pa_by_year = load_pa_by_year(CHEAP_SEASONS, args.pa_dir)
-        cheap = run_cheap(seasons_table, pa_by_year, args.components, CHEAP_SEASONS,
-                          WEEKLY_MMDD, args.projections_dir, args.min_trials,
-                          checkpoint=cheap_ckpt)
+        cheap_seasons = tuple(sorted(set(args.cheap_seasons)))
+        cutoffs = (BIWEEKLY_MMDD if args.cheap_cadence == "biweekly"
+                   else WEEKLY_MMDD)
+        park_factors = None
+        park_coverage: list[dict] = []
+        if args.park_arm:
+            if not args.park_factors.exists():
+                ap.error(f"--park-arm needs {args.park_factors}; build it with "
+                         "scripts/build_park_factors.py")
+            park_factors = pd.read_parquet(args.park_factors)
+        pa_by_year = load_pa_by_year(cheap_seasons, args.pa_dir)
+        cheap = run_cheap(seasons_table, pa_by_year, args.components, cheap_seasons,
+                          cutoffs, args.projections_dir, args.min_trials,
+                          checkpoint=cheap_ckpt, park_factors=park_factors,
+                          park_coverage=park_coverage)
+        if park_coverage:
+            (args.out_dir / "park_arm_coverage.json").write_text(
+                json.dumps(park_coverage, indent=1))
         print(f"cheap sweep: {len(cheap)} rows -> {cheap_ckpt}")
 
     if args.stage in ("bayes", "all"):
@@ -1324,6 +1576,15 @@ def main() -> None:
                           if k in ("cheap_scope", "bayes_scope", "common_set_sizes",
                                    "bayes_overall_clustered_vs_unclustered")},
                          indent=1))
+        if payload.get("park_arm"):
+            print("\npark arm vs marcel_tuned (BAS-86; pooled over the grid, "
+                  "t(player) is the one to trust):")
+            print(render_park_table(payload["park_arm"]["pooled"]))
+            print("\n... per season:")
+            print(render_park_table(payload["park_arm"]["by_season"]))
+            print("\nhow much of the park is already in the baseline "
+                  "(slope on the log factor; see park_tilt):")
+            print(render_park_tilt(payload["park_arm"].get("tilt", [])))
         for component, table in payload.get(
                 "bayes_variant_comparison_by_component", {}).items():
             print(f"\nvariant comparison ({component}, pooled; t(player) is "

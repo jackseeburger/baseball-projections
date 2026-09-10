@@ -74,8 +74,11 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    nothing on HR/PA, and contact quality still beats it, so it is kept as
    the base for the next model and not served), and the measurement model where Statcast is a
    second observation of the same latent talent rather than a regressor
-   (BAS-85, `docs/bayes-measurement.md`). After those: time and age as a
-   process, and the posterior width scored at layer 7.
+   (BAS-85, `docs/bayes-measurement.md`). Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
+   real, and useless multiplied onto Marcel because Marcel's inputs already
+   carry the park; their place is the hierarchical models' offset, to be
+   scored there. After those: time and age as a process, and the posterior
+   width scored at layer 7.
 2. **BAS-74**, the pitcher hierarchical model with stuff inside it; a
    command *level* aggregate (BAS-76's follow-up) once pre-registered.
 3. **ISO and BABIP** hierarchical models (their own denominators), after 1.

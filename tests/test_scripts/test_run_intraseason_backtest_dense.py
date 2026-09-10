@@ -674,3 +674,157 @@ class TestJointVariants:
         posterior = {"sigma_step_k_rate": _FakeVar([[0.10, 0.12]])}
         trace = type("FakeTrace", (), {"posterior": posterior})()
         assert dense.variant_param_summary(trace, config) == {}
+
+
+# --- the park arm (BAS-86) ---------------------------------------------------
+
+def _synthetic_park_frame() -> pd.DataFrame:
+    """Two cells, three models, HR/PA. `marcel_tuned_park` is better than
+    `marcel_tuned` by a small consistent margin and the half-strength arm by
+    half of it, so every sign in the table below is unambiguous."""
+    rng = np.random.default_rng(11)
+    rows = []
+    for season, cutoff in [(2024, "2024-07-01"), (2025, "2025-07-01")]:
+        batters = np.arange(1, 41)
+        realized = 0.030 + rng.normal(0, 0.006, len(batters))
+        err = rng.normal(0, 0.004, len(batters))
+        models = {
+            "marcel_tuned": realized + err + 0.0010,
+            "marcel_tuned_park": realized + err + 0.0004,
+            "marcel_tuned_park_half": realized + err + 0.0007,
+        }
+        for model, predicted in models.items():
+            for b, r, p in zip(batters, realized, predicted):
+                rows.append({
+                    "component": "hr_rate", "model": model, "batter": int(b),
+                    "predicted": float(p), "realized_successes": float(r) * 300,
+                    "realized_rate": float(r), "trials": 300.0,
+                    "season": season, "cutoff": cutoff,
+                })
+    return pd.DataFrame(rows)
+
+
+def _park_fixture():
+    """A two-batter season table + PA frame + factor table, enough for
+    `run_cheap` to produce one real cell."""
+    dates = pd.date_range("2024-04-01", periods=120, freq="D")
+    rows = []
+    # Both play at COL; batter 1 is the home club's, batter 2 the visitor's,
+    # so "which park is his" is the batting club and not the venue.
+    for batter, home, away, topbot in ((1, "COL", "SF", "Bot"),
+                                       (2, "COL", "SF", "Top")):
+        for i, d in enumerate(dates):
+            rows.append({
+                "batter": batter, "pitcher": 900 + batter, "game_pk": i,
+                "game_date": d, "game_year": 2024, "event": "strikeout",
+                "is_k": int(i % 4 == 0), "is_bb": 0, "is_hbp": 0,
+                "is_hit": int(i % 5 == 0), "is_hr": int(i % 10 == 0),
+                "is_single": int(i % 5 == 0) - int(i % 10 == 0),
+                "is_double": 0, "is_triple": 0,
+                "home_team": home, "away_team": away, "inning_topbot": topbot,
+            })
+    pa = pd.concat([pd.DataFrame(rows)] * 3, ignore_index=True)
+    seasons = pd.DataFrame({
+        "batter": [1, 2, 1, 2], "season": [2022, 2022, 2023, 2023],
+        "pa": [500] * 4, "ab": [450] * 4, "hr": [20, 12, 22, 10],
+        "k": [110] * 4, "bb": [45] * 4, "hbp": [3] * 4, "sf": [2] * 4,
+        "h": [120] * 4, "doubles": [25] * 4, "triples": [2] * 4,
+        "xb_points": [89, 65, 95, 59], "bip": [300] * 4,
+        "hits_in_play": [100] * 4, "age": [27] * 4,
+    })
+    pf = pd.DataFrame({
+        "team": ["COL", "SF"], "game_year": [2024, 2024],
+        "hr_park_factor": [1.30, 0.70], "k_park_factor": [0.90, 1.05],
+    })
+    return seasons, pa, pf
+
+
+class TestParkArmAnalysis:
+    def test_the_gain_is_reported_as_a_share_of_the_baseline_mae(self):
+        """architecture.md §3's floor is written in percent of the served
+        baseline's MAE, so the table has to carry that percent and not just
+        the raw difference."""
+        cells = _synthetic_park_frame()
+        row = dense.arm_comparison(cells, "marcel_tuned_park", "marcel_tuned",
+                                   "hr_rate")
+        assert row["diff"] < 0                      # the arm wins, by construction
+        assert row["base_mae"] > row["arm_mae"] > 0
+        assert row["pct_of_base"] == pytest.approx(
+            100 * row["diff"] / row["base_mae"])
+        assert row["pct_of_base"] < 0
+        assert row["season"] is None
+
+    def test_per_season_rows_are_scored_on_that_season_only(self):
+        cells = _synthetic_park_frame()
+        row = dense.arm_comparison(cells, "marcel_tuned_park", "marcel_tuned",
+                                   "hr_rate", season=2024)
+        assert row["season"] == 2024
+        assert row["n"] == 40
+        assert row["n_cells_scored"] == 1
+
+    def test_the_analysis_covers_both_arms_pooled_and_per_season(self):
+        out = dense.park_arm_analysis(_synthetic_park_frame())
+        arms = {r["arm"] for r in out["pooled"]}
+        assert arms == {"marcel_tuned_park", "marcel_tuned_park_half"}
+        assert {r["season"] for r in out["by_season"]} == {2024, 2025}
+        # half-strength is half the correction, so it should sit between the
+        # base and the full arm — the ordering the diagnostic exists to show.
+        full = [r for r in out["pooled"] if r["arm"] == "marcel_tuned_park"][0]
+        half = [r for r in out["pooled"] if r["arm"] == "marcel_tuned_park_half"][0]
+        assert full["diff"] < half["diff"] < 0
+
+    def test_no_park_arm_in_the_frame_is_an_empty_section(self):
+        cells = _synthetic_park_frame()
+        assert dense.park_arm_analysis(
+            cells[cells["model"] != "marcel_tuned_park"]) == {}
+
+    def test_the_rendered_table_survives_a_json_round_trip(self):
+        """`build_analysis` writes the payload to JSON and the analyze stage
+        renders it back, so NaN has become None by the time it is printed."""
+        import json
+
+        out = dense.park_arm_analysis(_synthetic_park_frame())
+        rows = json.loads(json.dumps(out["pooled"]))
+        text = dense.render_park_table(rows)
+        assert "marcel_tuned_park" in text and "% of base" in text
+        assert dense.render_park_table([]) == "(no park-arm rows)"
+
+    def test_build_analysis_carries_the_park_section(self, tmp_path):
+        cheap = tmp_path / "cells_cheap.parquet"
+        _synthetic_park_frame().to_parquet(cheap, index=False)
+        payload = dense.build_analysis(cheap, tmp_path / "missing.parquet",
+                                       tmp_path / "analysis.json")
+        assert payload["park_arm"]["base"] == "marcel_tuned"
+        assert payload["park_arm"]["pooled"]
+
+    def test_the_cheap_sweep_adds_the_arm_without_moving_the_common_set(self,
+                                                                       tmp_path):
+        """The whole reason the park arm can join the cheap cells at all: it
+        projects exactly the batters `marcel_tuned` projects, so the other
+        arms' populations are untouched."""
+        seasons, pa, pf = _park_fixture()
+        without = dense.run_cheap(seasons, {2024: pa}, ["hr_rate"], (2024,),
+                                  ["05-01"], tmp_path, min_trials=1)
+        with_arm = dense.run_cheap(seasons, {2024: pa}, ["hr_rate"], (2024,),
+                                   ["05-01"], tmp_path, min_trials=1,
+                                   park_factors=pf)
+        assert "marcel_tuned_park" in set(with_arm["model"])
+        base_before = without[without["model"] == "marcel_tuned"]
+        base_after = with_arm[with_arm["model"] == "marcel_tuned"]
+        assert set(base_before["batter"]) == set(base_after["batter"])
+        assert (base_before.sort_values("batter")["predicted"].to_numpy()
+                == pytest.approx(
+                    base_after.sort_values("batter")["predicted"].to_numpy()))
+
+    def test_the_arm_moves_a_batter_in_the_direction_of_his_park(self, tmp_path):
+        seasons, pa, pf = _park_fixture()
+        cells = dense.run_cheap(seasons, {2024: pa}, ["hr_rate"], (2024,),
+                                ["05-01"], tmp_path, min_trials=1,
+                                park_factors=pf)
+        base = cells[cells["model"] == "marcel_tuned"].set_index("batter")
+        arm = cells[cells["model"] == "marcel_tuned_park"].set_index("batter")
+        # batter 1 plays in the 1.30 park, batter 2 in the 0.70 one
+        assert arm.loc[1, "predicted"] == pytest.approx(
+            base.loc[1, "predicted"] * 1.30)
+        assert arm.loc[2, "predicted"] == pytest.approx(
+            base.loc[2, "predicted"] * 0.70)
