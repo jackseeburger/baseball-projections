@@ -91,3 +91,36 @@ rule applies from the next serving decision (BAS-76's, first).
    (K% share t −2.96 at 66% of a 1.57% gain ≈ 1.0%; BB% t −2.10 at 0.77%)
    and would be withheld on BB% and at the edge on K% — consistent with
    its own verdict that nothing ships.
+
+## Amendment 2 (2026-09-10, BAS-89): vacuity on a block is a joint test
+
+**The finding.** BAS-88's serving check pre-registered "if the 2026 served
+fit's command coefficients straddle zero (|t| < 2 on `cmd_csw`), the
+serving is withheld", and it fired: `cmd_csw` came in at t −0.55. In the
+same fit `waste_share` was t +7.49, `zone_share` t −2.15, and the three
+command coefficients rejected zero jointly at χ² 118 on 3 df. The block
+was in the model; the one coefficient the clause named was the one BAS-87
+had already flagged as unreadable on its own (R² 0.53 on the stuff
+controls, so the covariates share their variance and any single
+coefficient's t is arbitrary). The clause tested the wrong thing.
+
+**Why it did not matter, and why it is fixed now.** BAS-88 was withheld
+on prediction 1 independently (−1.11% at t −1.13 on the served season),
+so no decision hinged on the clause. That is exactly when a rule should
+be changed: after it misfired, before it decides anything.
+
+**The rule.** A covariate block's vacuity check is judged on the block:
+the block entered the model if a joint test of its coefficients rejects
+zero, χ² on the block's degrees of freedom at p < 0.01, computed with the
+same clustered covariance the harness uses for the t statistics.
+Individual coefficients are reported alongside and are not gated on. A
+pre-registration may still write a single-coefficient clause when it names
+one measurement as the mechanism under test (BAS-83's `beta_cov_barrel`
+on HR/PA was such a case), and then it must say so explicitly rather than
+by a parenthetical.
+
+**What it does not change.** The effect floor, the covariate-only share
+against the recalibration control, and the |t| > 2.0 on that share are
+untouched. This amendment only says how the *entered-the-model* question
+is asked. BAS-88 stands as scored under the rule in force at the time; the
+amendment applies from the next serving decision.

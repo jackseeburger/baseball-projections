@@ -183,6 +183,17 @@ Consequences:
   `serving-rules.md` scores the candidates on every decision to date. The
   rule in force at the time is the one that counts, so BAS-72 and BAS-79
   stand; this applies from the next serving decision.
+- **A covariate block's vacuity is a joint test (from 2026-09-10, BAS-89).**
+  Whether a block of measurements entered the model is judged on the block
+  — a χ² test of its coefficients against zero on the block's degrees of
+  freedom, p < 0.01, with the same clustered covariance the harness uses
+  for t — not on any single coefficient. Individual coefficients are
+  reported but not gated on. A single-coefficient clause may still be
+  pre-registered when one measurement is named as the mechanism under
+  test, and then it says so. BAS-88 fired its clause on one coefficient
+  (t −0.55) while the block was jointly significant (χ² 118 on 3 df); it
+  stands as scored because its prediction 1 failed independently, and this
+  applies from the next decision. Amendment 2 in `docs/serving-rules.md`.
 
 Which *method* a station reaches for — hierarchical Bayes, machine learning,
 or neither — is a separate question from the bar it has to clear, and is
