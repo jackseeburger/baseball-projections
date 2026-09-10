@@ -21,6 +21,16 @@ nested rungs:
                    serves that correction on
     3. `contact`   ...and `contact_additive` on the five hitter components
 
+and one transform across the ladder, `match` (BAS-91,
+docs/chain-engines-matched.md): each rate column of a rung's table centred on
+the stock table's weighted mean at the same `as_of` and its deviations rescaled
+to the stock table's weighted sd. BAS-90 found the chain's ballasts, blend and
+lineup weights were all chosen against the stock tables' spread and that the
+rungs widen it; `match` puts a rung's *ordering* of players into the stock
+table's level and spread, so the two mechanisms can be scored apart. It fits
+nothing — the stock table is the rung-0 table on the identical count frame —
+and it is a no-op at rung 0 by construction.
+
 Each rung *contains* the one below it, and rung 0 — `ChainEngines()`, the
 default — is the chain exactly as it is served today, to the last bit:
 `starters.marcel_params(weights, ballast)` is the same MarcelParams translation
@@ -99,6 +109,27 @@ def month_boundary(as_of) -> pd.Timestamp:
     return pd.Timestamp(year=d.year, month=d.month, day=1)
 
 
+def weighted_moments(x: np.ndarray, w: np.ndarray) -> tuple[float, float]:
+    """The weighted mean and weighted sd of `x`, on the rows both are finite on.
+
+    The population form (`Σw(x-m)² / Σw`, no ddof correction), because the
+    number this is used for is a ratio of two of them measured the same way on
+    the same population, and a correction that cancels is a correction that can
+    only be got wrong. A row with no weight — a player the weight column has no
+    entry for — is out of both moments rather than counted as zero.
+    """
+    x = np.asarray(x, dtype="float64")
+    w = np.asarray(w, dtype="float64")
+    ok = np.isfinite(x) & np.isfinite(w) & (w > 0)
+    if not ok.any():
+        return float("nan"), float("nan")
+    x, w = x[ok], w[ok]
+    total = float(w.sum())
+    mean = float((w * x).sum() / total)
+    var = float((w * (x - mean) ** 2).sum() / total)
+    return mean, float(np.sqrt(var))
+
+
 def zero_slopes(params: dict) -> dict:
     """The recalibration control: tuned ballasts and weights, no age curve.
 
@@ -130,6 +161,11 @@ class ChainEngines:
     # the recalibration control: the fitted ballasts and recency weights with
     # the age slopes zeroed.
     age_slopes: bool = True
+    # Whether each rate column is centred and rescaled onto the stock table's
+    # weighted mean and weighted sd at the same `as_of` (`_match` below). A
+    # parameter-free transform: the stock table is the rung-0 table on the
+    # identical count frame, so nothing is fitted and nothing is read forward.
+    match: bool = False
 
     # {station A component: MarcelParams}; None means the fitted files'.
     pitcher_params: dict | None = None
@@ -149,6 +185,10 @@ class ChainEngines:
     # boundaries and ~160 dates, and the pitcher table is rebuilt twice a date,
     # so without this the same window is summed twenty-odd times a day.
     _z: dict = field(default_factory=dict, compare=False, repr=False)
+    # The rung-0 tables `match` centres onto, memoised per (side, as_of, rows).
+    # Matching doubles the rate-table work of a walk-forward without this,
+    # because both tables are rebuilt more than once a date.
+    _stock: dict = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self):
         if self.contact and not self.stuff:
@@ -251,6 +291,90 @@ class ChainEngines:
             out[f"rate_{short}"] = np.clip(pred, *RATE_CLIP)
         return out
 
+    # --- the level and spread match ---------------------------------------
+
+    def _stock_table(self, side: str, counts: pd.DataFrame,
+                     as_of_season: int, lg: dict, stock: dict,
+                     as_of) -> pd.DataFrame:
+        """The rung-0 table on the identical count frame, memoised.
+
+        `STOCK` is the module's own every-flag-off engine, so this is literally
+        the table the served chain prices that date from — not a re-derivation
+        of it — and it is built from the same `counts`, `as_of_season`, league
+        rates and `stock` params the rung above was handed. The memo key
+        carries the row count as well as the date because the chain rebuilds a
+        table from a *different* count frame on the same date only if a caller
+        hands it one, and that has to miss the memo rather than silently reuse
+        another population's moments.
+        """
+        key = (side, str(as_of), int(len(counts)))
+        table = self._stock.get(key)
+        if table is None:
+            table = (STOCK.pitcher_rates(counts, as_of_season, lg, stock)
+                     if side == "pitcher"
+                     else STOCK.hitter_rates(counts, as_of_season, lg, stock))
+            self._stock[key] = table
+        return table
+
+    def _match(self, rates: pd.DataFrame, side: str, counts: pd.DataFrame,
+               as_of_season: int, lg: dict, stock: dict, as_of) -> pd.DataFrame:
+        """Centre and rescale every rate column onto the stock table's moments.
+
+        For each rate column, with `m` and `s` the weighted mean and weighted
+        sd over the table's own population (weights `bf_weighted` for pitchers,
+        `pa_weighted` for hitters — the effective sample behind each row):
+
+            matched = (rung - m_rung) * (s_stock / s_rung) + m_stock
+
+        so the matched table has the stock table's weighted level and the stock
+        table's weighted spread, and keeps the rung's ordering of players
+        inside them. That is the whole transform: no parameter is chosen, and
+        the moments come from data through `as_of` on the same population, so
+        there is nothing here to leak.
+
+        Each side is weighted by its own table's weight column rather than by a
+        shared one, because the tuned recency weights change `pa_weighted`
+        itself; the equality that holds afterwards is "the matched table's
+        weighted moments are the stock table's weighted moments", each read
+        with the weights that table carries.
+
+        Two things are deliberately not done. A player missing from the stock
+        table keeps his rung value (same count frame, so none is expected).
+        And at rung 0 the table *is* the stock table, so this returns it
+        untouched rather than putting it through an arithmetic identity that
+        IEEE 754 would round: `match=True` with every other flag off is the
+        served chain to the bit, which `tests/test_sim/test_engines.py` pins.
+
+        The rate clip is applied after, as it is after a correction.
+        """
+        if rates.empty or not (self.tuned or self.stuff or self.contact):
+            return rates
+        stock_table = self._stock_table(side, counts, as_of_season, lg, stock,
+                                        as_of)
+        if stock_table.empty:
+            return rates
+        weight_col = "bf_weighted" if side == "pitcher" else "pa_weighted"
+        w_rung = rates[weight_col].to_numpy(dtype="float64")
+        w_stock = stock_table[weight_col].to_numpy(dtype="float64")
+        aligned = stock_table.reindex(rates.index.to_numpy())
+        present = aligned[weight_col].notna().to_numpy()
+        out = rates.copy()
+        for column in [c for c in rates.columns if c.startswith("rate_")]:
+            if column not in stock_table.columns:
+                continue
+            x = rates[column].to_numpy(dtype="float64")
+            m_rung, s_rung = weighted_moments(x, w_rung)
+            m_stock, s_stock = weighted_moments(
+                stock_table[column].to_numpy(dtype="float64"), w_stock)
+            if not (np.isfinite(m_rung) and np.isfinite(m_stock)):
+                continue
+            scale = (s_stock / s_rung
+                     if np.isfinite(s_rung) and s_rung > 0
+                     and np.isfinite(s_stock) else 1.0)
+            matched = np.clip((x - m_rung) * scale + m_stock, *RATE_CLIP)
+            out[column] = np.where(present, matched, x)
+        return out
+
     # --- the two rate tables ----------------------------------------------
 
     def pitcher_rates(self, counts: pd.DataFrame, as_of_season: int, lg: dict,
@@ -270,6 +394,9 @@ class ChainEngines:
         if self.stuff:
             rates = self._correct(rates, "pitcher", as_of, self.stuff_fits,
                                   STUFF_COMPONENTS)
+        if self.match:
+            rates = self._match(rates, "pitcher", counts, as_of_season, lg,
+                                stock, as_of)
         return rates
 
     def hitter_rates(self, counts: pd.DataFrame, as_of_season: int, lg: dict,
@@ -330,7 +457,11 @@ class ChainEngines:
         if self.contact:
             out = self._correct(out, "hitter", as_of, self.contact_fits,
                                 CONTACT_COMPONENTS)
-        return out[cols]
+        out = out[cols]
+        if self.match:
+            out = self._match(out, "hitter", counts, as_of_season, lg, stock,
+                              as_of)
+        return out
 
 
 # The chain as served: every flag off, no artifact, no correction. A module
@@ -389,6 +520,7 @@ def fit_side(side: str, seasons_table, monthly, pa_dir, predict_year,
 
 
 def build_engines(rung: int, predict_year: int, *, recalibration: bool = False,
+                  age_slopes: bool = True, match: bool = False,
                   pitcher_seasons=None, hitter_seasons=None, pa_dir=None,
                   stuff_monthly=None, contact_monthly=None,
                   birthdates=None) -> ChainEngines:
@@ -396,15 +528,23 @@ def build_engines(rung: int, predict_year: int, *, recalibration: bool = False,
 
     `rung` is 0 (the served chain), 1 (`tuned`), 2 (`+stuff`) or 3
     (`+contact`); `recalibration` turns rung 1 into the control with the age
-    slopes zeroed. Every fit is walk-forward on cell seasons strictly before
-    `predict_year`, because `fit_side` passes that year to the same filter the
-    served nightly uses — nothing here can see the season being scored.
+    slopes zeroed, and `age_slopes=False` does the same at any rung (the two
+    are the same switch — `recalibration` is the name BAS-90's control was
+    scored under and is kept so its arms still build). `match` centres and
+    rescales each rate column onto the stock table's weighted moments. Every
+    fit is walk-forward on cell seasons strictly before `predict_year`, because
+    `fit_side` passes that year to the same filter the served nightly uses —
+    nothing here can see the season being scored.
     """
     if rung == 0:
-        return ChainEngines()
+        # Matching a rung-0 table is the identity (`_match`), so this is the
+        # served chain whatever `match` says; it is carried on the object so a
+        # caller inspecting the engine sees the flag it asked for.
+        return ChainEngines(match=match)
     ages = age_map(int(predict_year), birthdates)
     eng = ChainEngines(tuned=True, ages=ages,
-                       age_slopes=not recalibration,
+                       age_slopes=age_slopes and not recalibration,
+                       match=match,
                        predict_year=int(predict_year))
     if rung >= 2:
         fits = fit_side("pitcher", pitcher_seasons, stuff_monthly, pa_dir,
@@ -422,4 +562,4 @@ def build_engines(rung: int, predict_year: int, *, recalibration: bool = False,
 __all__ = ["CONTACT_COMPONENTS", "ChainEngines", "HITTER_COLUMNS",
            "HITTER_COMPONENTS", "PITCHER_COMPONENTS", "RATE_CLIP", "STOCK",
            "STUFF_COMPONENTS", "age_map", "build_engines", "fit_side",
-           "month_boundary", "zero_slopes"]
+           "month_boundary", "weighted_moments", "zero_slopes"]
