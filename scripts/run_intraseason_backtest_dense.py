@@ -70,6 +70,20 @@ baseline pinned at 1, fitted walk-forward on cell seasons strictly before the
 predict year) into the same cell, which is what makes the comparison paired on
 identical information rather than two tables read side by side.
 
+**The joint model (BAS-84, docs/bayes-joint.md).** `--variants joint_walk`
+(alias for `joint+ability_walk`; `joint_flat` for `joint`) fits K%, BB% and
+HR/PA in *one* model, with a per-batter ability vector across components under
+an LKJ(2) correlation prior (`src.models.pa_joint`). The checkpoint still keys
+on (component, season, cutoff) exactly as before — a joint arm's rows are
+written per component like every other arm's — but the arithmetic underneath
+runs the other way: one MCMC fit per (season, cutoff) fills all three
+components, memoized in `src.eval.bayes_arm`, so
+`--bayes-components k_rate bb_rate hr_rate --variants joint_walk` costs one
+fit per cutoff and not three. Every fit record carries `joint_params`: the
+posterior mean and 95% interval of each pairwise ability correlation and each
+per-component `sigma_step`.
+
+
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
     python -c "from src.data.pa_outcomes_pipeline import build_pa_dataset; \\
@@ -155,6 +169,23 @@ VARIANT_ARM_NAMES = {
     "ability_walk": "bayes_walk",
     "constrained_age": "bayes_age",
     "ability_walk+constrained_age": "bayes_walk_age",
+    # BAS-84, docs/bayes-joint.md: one fit over K%, BB% and HR/PA with a
+    # per-batter ability vector and an LKJ(2) correlation between them. The
+    # flag joins the same "+"-slug vocabulary, first because
+    # `BayesArmConfig.variant()` lists it first, and the fit behind a joint
+    # arm is one MCMC run per (season, cutoff) that fills all three
+    # components -- the checkpoint still keys on (component, season, cutoff),
+    # so nothing downstream has to know that.
+    "joint": "bayes_joint",
+    "joint+ability_walk": "bayes_joint_walk",
+    # BAS-85, docs/bayes-measurement.md: the joint graph over K% and HR/PA
+    # with barrel rate, mean exit velocity and whiff share added as extra
+    # OBSERVED channels on the two latent states. `measurement` replaces
+    # `joint` in the slug rather than joining it (see
+    # `BayesArmConfig.variant()`), because the channels read a latent the
+    # joint graph writes -- there is one structure here, not two.
+    "measurement": "bayes_measurement",
+    "measurement+ability_walk": "bayes_measurement_walk",
 }
 
 # ─── layer-1 covariates (BAS-83, docs/bayes-covariates.md) ───
@@ -181,13 +212,41 @@ VARIANT_ARM_NAMES.update({
     for v in list(VARIANT_ARM_NAMES) for c in COVARIATE_SETS
 })
 ARM_NAME_VARIANT = {arm: variant for variant, arm in VARIANT_ARM_NAMES.items()}
-# The BAS-69 pre-registration's full design: the two flags each on their own,
-# and together. Default sweep scope, overridable with --variants. Covariate
-# twins are *not* in the default — they are opted into with
-# `--bayes-covariates`, so a command written before BAS-83 runs the sweep it
-# always ran.
+# Spellings `--variants` accepts for the joint arms, because "joint_walk" is
+# what docs/bayes-joint.md calls the arm and "joint+ability_walk" is what
+# `BayesArmConfig.variant()` calls the same structure. Resolved once, on the
+# way in, so everything downstream (arm names, the checkpoint, the fit
+# records) speaks the config's own vocabulary and only one of the two names
+# can ever appear in a results table.
+VARIANT_ALIASES = {
+    "joint_flat": "joint",
+    "joint_walk": "joint+ability_walk",
+    "measurement_flat": "measurement",
+    "measurement_walk": "measurement+ability_walk",
+}
+
+
+# The 80% posterior interval docs/bayes-measurement.md's prediction 4 is
+# scored on: covered 75-85% of the time for `measurement`, under 75% at May
+# for `bayes_walk`.
+COVERAGE_QUANTILES = (10.0, 90.0)
+
+
+def resolve_variant(name: str) -> str:
+    """`VARIANT_ALIASES` applied, unknown names left alone so the caller's
+    own error message is the one that fires."""
+    return VARIANT_ALIASES.get(name, name)
+
+
+# BAS-69's full design: the two single-component flags each on their own, and
+# together. Default sweep scope, overridable with --variants. Spelled out
+# rather than read off `VARIANT_ARM_NAMES` so that adding an arm to that
+# registry (the joint ones, BAS-84) does not silently quadruple what a
+# command with no `--variants` fits.
 DEFAULT_VARIANTS = ["flat", "ability_walk", "constrained_age",
                     "ability_walk+constrained_age"]
+assert set(DEFAULT_VARIANTS) <= set(VARIANT_ARM_NAMES)
+
 
 # Posterior scalars a variant's own structure adds, named exactly as
 # docs/bayes-variants.md's math names them. `model_diagnostics()` (src/models/
@@ -200,6 +259,17 @@ DEFAULT_VARIANTS = ["flat", "ability_walk", "constrained_age",
 # variants are actually implemented without touching either file.
 VARIANT_OWN_PARAMS = {
     "ability_walk": ["sigma_step"],
+    # No entry for "joint" (BAS-84). Its own scalars are per component --
+    # three `sigma_step`s and three pairwise ability correlations, named after
+    # the components they belong to -- so a flat list of names here could not
+    # say which is which, and a joint trace carries no plain `sigma_step` at
+    # all (it is a vector; averaging three components' step sizes into one
+    # number is worse than reporting none), so the walk entry above finds
+    # nothing and is skipped exactly as this function's docstring says it
+    # should be. What the joint fit records instead is `joint_params` in its
+    # data summary: mean and 95% interval per correlation and per sigma_step,
+    # written by `src.models.pa_joint.joint_param_summary`, which is what
+    # docs/bayes-joint.md's predictions 1 and 5 are read off.
     # `peak_age`, not `peak`: the model names the Deterministic that scales
     # `peak_frac` onto AGE_PEAK_WINDOW `peak_age` (src/models/pa_k_rate.py).
     # The mismatch cost the first sweep the single most interesting number
@@ -401,14 +471,25 @@ def _variant_config(variant: str, **kwargs):
     names, the config's own flags) cannot silently drift apart."""
     from src.eval.bayes_arm import BayesArmConfig
 
+    variant = resolve_variant(variant)
     on = set(variant.split("+"))
     cov = sorted(on & set(COVARIATE_SETS))
     if len(cov) > 1:
         raise ValueError(f"variant {variant!r} names more than one covariate "
                          f"set ({cov}); one block per arm")
+    measurement = "measurement" in on
     config = BayesArmConfig(
         ability_walk="ability_walk" in on, constrained_age="constrained_age" in on,
         covariates=(cov[0] if cov else None),
+        joint="joint" in on or measurement,
+        measurement=measurement,
+        # docs/bayes-measurement.md prediction 4 scores the 80% posterior
+        # interval's coverage, so the measurement arm and the `bayes_walk`
+        # it is read against both keep the 10th and 90th percentiles of the
+        # projected rate. Nothing else does, so no other arm's projection
+        # frame gains a column.
+        extra_quantiles=(COVERAGE_QUANTILES
+                         if measurement or variant == "ability_walk" else ()),
         **kwargs,
     )
     assert config.variant() == variant, (
@@ -661,7 +742,8 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
     list (the common case, where every touched cell is already complete and
     costs nothing to skip).
     """
-    variants = list(variants) if variants else DEFAULT_VARIANTS
+    variants = ([resolve_variant(v) for v in variants] if variants
+                else list(DEFAULT_VARIANTS))
     if covariates:
         if covariates not in COVARIATE_SETS:
             raise ValueError(f"unknown covariate set {covariates!r}; known: "
@@ -990,11 +1072,11 @@ def build_variant_comparison_table(bayes: pd.DataFrame, component: str = "k_rate
     `bases`, skipping a variant against itself (diff is identically zero and
     says nothing).
 
-    `bayes_walk` and `contact_additive` joined the base list for BAS-83: the
-    covariate arms have to be read against their own no-covariate twin (does
-    the covariate pay?) and against Marcel carrying the same covariate (does
-    the hierarchy pay?), and a base absent from the checkpoint is skipped by
-    `variant_comparison` returning `{}` rather than erroring."""
+    `bayes_walk` and `contact_additive` joined the base list for BAS-83/84:
+    a new arm has to be read against its own no-covariate, single-component
+    twin (does the structure pay?) and against the served engine (does it beat
+    what is on the board?), and a base absent from the checkpoint is skipped
+    by `variant_comparison` returning `{}` rather than erroring."""
     present = set(bayes["model"].unique()) if not bayes.empty else set()
     arms = [a for a in VARIANT_ARM_NAMES.values() if a in present]
     rows = []
@@ -1151,7 +1233,8 @@ def main() -> None:
     ap.add_argument("--bayes-seasons", nargs="+", type=int, default=list(BAYES_SEASONS))
     ap.add_argument("--variants", type=str, default=",".join(DEFAULT_VARIANTS),
                     help="comma-separated bayes structural variants to sweep; "
-                         f"known: {','.join(VARIANT_ARM_NAMES)}")
+                         f"known: {','.join(VARIANT_ARM_NAMES)} "
+                         f"(aliases: {','.join(VARIANT_ALIASES)})")
     # Separate from --components, which scopes the *cheap* sweep across all
     # five hitter components. The bayes arm only serves the three per-PA
     # binomials, and its default stays k_rate alone so a command that names
@@ -1171,10 +1254,16 @@ def main() -> None:
                          f"(default: {' '.join(DEFAULT_BAYES_COMPONENTS)})")
     args = ap.parse_args()
 
-    variants = [v.strip() for v in args.variants.split(",") if v.strip()]
+    # Aliases resolve here, before validation, so `--variants joint_walk` (the
+    # spelling docs/bayes-joint.md uses) reaches the same config as
+    # `joint+ability_walk` and everything downstream sees one vocabulary.
+    variants = [resolve_variant(v.strip())
+                for v in args.variants.split(",") if v.strip()]
     unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
     if unknown:
-        ap.error(f"unknown --variants {unknown}; known: {sorted(VARIANT_ARM_NAMES)}")
+        ap.error(f"unknown --variants {unknown}; known: "
+                 f"{sorted(VARIANT_ARM_NAMES)} (aliases: "
+                 f"{sorted(VARIANT_ALIASES)})")
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
     cheap_ckpt = args.out_dir / "cells_cheap.parquet"

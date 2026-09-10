@@ -618,3 +618,59 @@ class TestBayesComponentsCli:
         with pytest.raises(ValueError, match="unknown bayes component"):
             dense.run_bayes(pd.DataFrame(), {}, (2026,), [],
                             components=["babip"])
+
+
+# --- the joint variants (BAS-84) ---------------------------------------------
+
+class TestJointVariants:
+    """`--variants joint_walk` has to reach `BayesArmConfig(joint=True,
+    ability_walk=True)` and nothing else, and must not change what a command
+    that names no variants fits."""
+
+    def test_the_joint_variants_round_trip_through_the_config(self):
+        for variant in ("joint", "joint+ability_walk"):
+            config = dense._variant_config(variant)
+            assert config.variant() == variant
+            assert config.joint is True
+        assert dense._variant_config("joint+ability_walk").ability_walk is True
+        assert dense._variant_config("joint").ability_walk is False
+
+    def test_the_doc_spellings_resolve_to_the_config_vocabulary(self):
+        assert dense.resolve_variant("joint_walk") == "joint+ability_walk"
+        assert dense.resolve_variant("joint_flat") == "joint"
+        # Everything else passes through untouched, so an unknown name still
+        # produces the caller's own error rather than a KeyError here.
+        assert dense.resolve_variant("ability_walk") == "ability_walk"
+        assert dense.resolve_variant("nonsense") == "nonsense"
+
+    def test_an_alias_and_its_target_are_the_same_config(self):
+        assert (dense._variant_config("joint_walk")
+                == dense._variant_config("joint+ability_walk"))
+
+    def test_every_alias_points_at_a_real_variant(self):
+        for alias, target in dense.VARIANT_ALIASES.items():
+            assert target in dense.VARIANT_ARM_NAMES
+            assert alias not in dense.VARIANT_ARM_NAMES
+
+    def test_the_joint_arms_have_their_own_names_on_the_board(self):
+        assert dense.VARIANT_ARM_NAMES["joint+ability_walk"] == "bayes_joint_walk"
+        assert dense.VARIANT_ARM_NAMES["joint"] == "bayes_joint"
+        assert dense.ARM_NAME_VARIANT["bayes_joint_walk"] == "joint+ability_walk"
+
+    def test_the_default_sweep_is_still_the_four_single_component_variants(self):
+        """The joint arms are opt-in. `DEFAULT_VARIANTS` used to be read off
+        `VARIANT_ARM_NAMES`, which would have quadrupled the cost of every
+        command that names no variants the moment a new arm was registered."""
+        assert dense.DEFAULT_VARIANTS == [
+            "flat", "ability_walk", "constrained_age",
+            "ability_walk+constrained_age"]
+
+    def test_the_variant_summary_records_nothing_misleading_for_a_joint_fit(self):
+        """A joint trace carries no scalar `sigma_step` -- it is a vector,
+        one per component. The summary must skip it rather than average three
+        components' step sizes into one number; the per-component values go
+        into the fit record's `joint_params` instead."""
+        config = dense._variant_config("joint+ability_walk")
+        posterior = {"sigma_step_k_rate": _FakeVar([[0.10, 0.12]])}
+        trace = type("FakeTrace", (), {"posterior": posterior})()
+        assert dense.variant_param_summary(trace, config) == {}
