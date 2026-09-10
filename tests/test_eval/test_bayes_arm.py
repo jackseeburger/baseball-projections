@@ -111,3 +111,44 @@ def test_unseen_survives_a_training_frame_with_no_ages():
     unseen = unseen_from_train(train, [1], 2026)
     assert list(unseen["batter"]) == [2]
     assert np.isnan(unseen["age"]).all()
+
+
+# --- the joint arm (BAS-84) -------------------------------------------------
+
+class TestJointConfig:
+    """`joint=True` is a structure, not a component: one MCMC fit over K%,
+    BB% and HR/PA, and `component` still says which of the three this arm
+    serves. None of this needs pymc — `src.models.pa_joint` is imported
+    inside the fit functions, like every other model import here."""
+
+    def test_the_joint_flag_names_itself_in_the_variant_slug(self):
+        assert BayesArmConfig(joint=True).variant() == "joint"
+        assert BayesArmConfig(joint=True, ability_walk=True).variant() == (
+            "joint+ability_walk")
+
+    def test_the_default_arm_is_unchanged_by_the_new_flag(self):
+        assert BayesArmConfig().joint is False
+        assert BayesArmConfig().variant() == "flat"
+        assert BayesArmConfig(ability_walk=True).variant() == "ability_walk"
+
+    def test_the_label_says_a_joint_fit_is_joint(self):
+        assert "(joint)" in BayesArmConfig(joint=True, component="hr_rate").label()
+        assert "(joint)" not in BayesArmConfig(component="hr_rate").label()
+
+    def test_the_joint_memo_key_is_blind_to_the_component_and_nothing_else(self):
+        """Three components share one fit, so the key that decides "same fit"
+        must differ in `component` alone — and must still separate two arms
+        that differ in anything else."""
+        k = BayesArmConfig(joint=True, component="k_rate")
+        hr = BayesArmConfig(joint=True, component="hr_rate")
+        assert k.joint_key() == hr.joint_key()
+        assert k.joint_key() != BayesArmConfig(
+            joint=True, component="k_rate", draws=17).joint_key()
+        assert k.joint_key() != BayesArmConfig(
+            joint=True, component="k_rate", ability_walk=True).joint_key()
+        assert k.joint_key() != BayesArmConfig(
+            joint=True, component="k_rate", seasons=(2024,)).joint_key()
+
+    def test_a_joint_config_still_validates_its_component(self):
+        with pytest.raises(ValueError):
+            BayesArmConfig(joint=True, component="babip").rate_component()

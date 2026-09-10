@@ -69,7 +69,10 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    models in order, each pre-registered and each kept whatever the
    verdict: the covariates inside the likelihood (BAS-83: measured, and worse; the block imports the thin current window's noise at a coefficient fitted on full seasons, which is the case for a measurement model rather than a regressor), the
    joint multi-component model with correlated player effects (BAS-84,
-   `docs/bayes-joint.md`), and the measurement model where Statcast is a
+   `docs/bayes-joint.md`: measured; the correlations are real in three
+   seasons of four, the gain is a third of a percent on K% and BB% and
+   nothing on HR/PA, and contact quality still beats it, so it is kept as
+   the base for the next model and not served), and the measurement model where Statcast is a
    second observation of the same latent talent rather than a regressor
    (BAS-85, `docs/bayes-measurement.md`). After those: time and age as a
    process, and the posterior width scored at layer 7.

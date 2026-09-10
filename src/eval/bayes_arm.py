@@ -70,6 +70,28 @@ class BayesArmConfig:
     # `src.data.contact_quality.load_monthly` unless one is handed in.
     covariates: str | None = None
     monthly_path: Path | None = None
+    # Fit all three per-PA components at once, with a per-batter ability
+    # vector and an LKJ correlation between components (BAS-84,
+    # docs/bayes-joint.md, `src.models.pa_joint`). `component` still says
+    # which of them *this* arm serves: one joint MCMC fit backs all three,
+    # and `fit_bayes_k_rate` hands each caller its own component's
+    # projections out of that one posterior.
+    joint: bool = False
+    # Measurement model (BAS-85, docs/bayes-measurement.md). Two latent
+    # states, theta_hr and theta_k, each read by extra OBSERVED channels
+    # with their own counts: barrel rate and mean exit velocity per batted
+    # ball load on theta_hr, whiff share per swing loads on theta_k. Implies
+    # `joint` over the two components in scope (k_rate, hr_rate).
+    measurement: bool = False
+    # Where the channel artifacts come from. `None` is the committed default
+    # path in each loader; a test hands in its own frame instead.
+    swing_path: Path | None = None
+    # Posterior percentiles of the projected rate to keep alongside the point
+    # estimate. `docs/bayes-measurement.md`'s prediction 4 scores the 80%
+    # interval's coverage, so the sweep asks for the 10th and the 90th; every
+    # other arm leaves this empty and writes exactly the columns it always
+    # wrote.
+    extra_quantiles: tuple[float, ...] = ()
     # Sampler
     draws: int = 500
     tune: int = 500
@@ -97,6 +119,15 @@ class BayesArmConfig:
                             constrained_age=self.constrained_age,
                             covariates=self.covariates)
 
+    def joint_key(self) -> tuple:
+        """Everything about a joint fit *except* which component it is asked
+        for — the memo key that lets three components share one MCMC run.
+        Built by blanking `component` rather than by listing fields, so a new
+        field that changes the fit cannot be forgotten here."""
+        from dataclasses import replace
+
+        return replace(self, component="__joint__")
+
     def rate_component(self):
         """The `RateComponent` this arm fits, validated. Raises for a
         component this model cannot serve (BABIP, ISO) rather than at the
@@ -116,7 +147,15 @@ class BayesArmConfig:
         it is a slug, not prose: joined flag names in declaration order, and
         the empty set is "flat" rather than "" so no row is ever unlabelled.
         """
-        on = [n for n in ("ability_walk", "constrained_age") if getattr(self, n)]
+        # `measurement` implies `joint` — the channels read a latent the
+        # joint graph writes — so it *replaces* it in the name rather than
+        # joining it: "measurement+ability_walk", not
+        # "measurement+joint+ability_walk", which would read as two
+        # structures where there is one.
+        on = [n for n in ("measurement", "joint", "ability_walk",
+                          "constrained_age") if getattr(self, n)]
+        if self.measurement and "joint" in on:
+            on.remove("joint")
         slug = "+".join(on) if on else "flat"
         # The covariate block is a *suffix*, not another flag in the join, so
         # "flat" stays "flat" and "ability_walk" stays "ability_walk" —
@@ -129,7 +168,9 @@ class BayesArmConfig:
         ability = "ability=walk" if self.ability_walk else "ability=flat"
         age = "age=constrained" if self.constrained_age else "age=quadratic"
         cov = f", covariates={self.covariates}" if self.covariates else ""
-        return (f"{self.component}, "
+        kind = (" (measurement)" if self.measurement
+                else " (joint)" if self.joint else "")
+        return (f"{self.component}{kind}, "
                 f"{self.chains}x{self.draws} draws (tune {self.tune}), "
                 f"{self.nuts_sampler}, {pitch}, {ability}, {age}{cov}"
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
@@ -146,6 +187,9 @@ class BayesFit:
     data_summary: dict = field(default_factory=dict)
     trace: object = None
     model_data: dict | None = None
+    # Set on a joint fit (`src.models.pa_joint.JointData`): the three
+    # components' shared cells and the posterior they all came from.
+    joint_data: object = None
 
     @property
     def component(self) -> str:
@@ -163,9 +207,19 @@ class BayesFit:
 
         if self.trace is None or self.model_data is None:
             raise RuntimeError("this fit did not keep its posterior")
+        if self.joint_data is not None:
+            from src.models.pa_joint import generate_joint_projections
+
+            self.projections = generate_joint_projections(
+                self.trace, self.joint_data, self.component,
+                projection_year=self.predict_year, unseen=unseen,
+                extra_quantiles=self.config.extra_quantiles,
+            )
+            return self.projections
         self.projections = generate_projections(
             self.trace, self.model_data,
             projection_year=self.predict_year, unseen=unseen,
+            extra_quantiles=self.config.extra_quantiles,
         )
         return self.projections
 
@@ -213,6 +267,14 @@ def fit_bayes_k_rate(
     comp = config.rate_component()
     predict_year = predict_year or pd.Timestamp(cutoff_date).year
 
+    if config.joint:
+        # One MCMC fit over every joint component; this call gets its own
+        # component's projections out of it. Dispatched here rather than at
+        # the provider so every existing caller of this function -- the
+        # sweep, the tests' monkeypatches -- reaches the joint arm the same
+        # way it reaches every other variant.
+        return fit_joint_rate(cutoff_date, predict_year, config, unseen)
+
     pa = _load_cut_pa(config, cutoff_date)
     exposure = cutoff_exposure(pa, cutoff_date)
     logger.info("bayes arm [%s] @ %s: %s", comp.name, cutoff_date, exposure)
@@ -235,6 +297,7 @@ def fit_bayes_k_rate(
 
     projections = generate_projections(
         trace, data, projection_year=predict_year, unseen=unseen,
+        extra_quantiles=config.extra_quantiles,
     )
     return BayesFit(
         cutoff_date=str(cutoff_date),
@@ -255,6 +318,170 @@ def fit_bayes_k_rate(
             "n_pitchers": int(data["n_pitchers"]),
             "n_seasons": int(data["n_seasons"]),
             "seasons": [int(s) for s in data["seasons"]],
+        },
+    )
+
+
+def joint_components(config: BayesArmConfig) -> tuple[str, ...]:
+    """Which components one joint fit covers.
+
+    The measurement model (BAS-85) is pre-registered over K% and HR/PA only
+    — `docs/bayes-measurement.md` names those two, and there is no whiff or
+    barrel channel that loads on a walk-rate latent — so it fits two
+    components where the plain joint arm fits three. Read here rather than at
+    the model so the cache key, the data load and the graph cannot disagree
+    about which components a fit covers.
+    """
+    from src.models.pa_joint import JOINT_COMPONENTS
+    from src.models.pa_measurement import MEASUREMENT_COMPONENTS
+
+    return MEASUREMENT_COMPONENTS if config.measurement else JOINT_COMPONENTS
+
+
+def _measurement_summary(trace, channels) -> dict:
+    from src.models.pa_measurement import measurement_param_summary
+
+    return measurement_param_summary(trace, channels)
+
+
+# --- the joint arm (BAS-84) ------------------------------------------------
+# One joint fit backs all three components at a cutoff, so the sweep's
+# per-component loop must not pay for three. The cache holds exactly one
+# entry: the sweep walks (cutoff, component) with the cutoff on the outer
+# loop, so the three components of one cell hit the same entry back to back,
+# and holding more than one posterior at a time is a memory bill this grid
+# cannot afford. Keyed on the *whole* config with `component` blanked
+# (`BayesArmConfig.joint_key`) plus the cutoff and predict year, so a
+# different sampler scale, variant or season set never reuses a fit.
+_JOINT_CACHE: dict = {}
+
+
+def _load_cut_pa_joint(config: BayesArmConfig, cutoff_date: str,
+                       components) -> pd.DataFrame:
+    """`_load_cut_pa` reading every joint component's numerator in one pass."""
+    from src.models.pa_joint import load_joint_pa_data
+
+    pa = load_joint_pa_data(config.pa_dir, cutoff_date=cutoff_date,
+                            include_pitcher=False, components=components)
+    if config.seasons is not None:
+        pa = pa[pa["game_year"].isin(config.seasons)].copy()
+    if config.max_batters:
+        counts = pa.groupby("batter").size().sort_values(ascending=False)
+        keep = set(counts.index[: config.max_batters])
+        pa = pa[pa["batter"].isin(keep)].copy()
+    return pa
+
+
+def _joint_posterior(cutoff_date: str, predict_year: int,
+                     config: BayesArmConfig):
+    """`(trace, JointData, diagnostics, exposure, channels)` for this cutoff,
+    fit once. `channels` is None unless this is a measurement fit."""
+    from src.models.pa_joint import build_joint_model, prepare_joint_data
+    from src.models.pa_rate import (
+        load_park_factors, model_diagnostics, sample_model,
+    )
+    from src.models.cutoff import cutoff_exposure
+
+    key = (config.joint_key(), str(cutoff_date), int(predict_year))
+    hit = _JOINT_CACHE.get(key)
+    if hit is not None:
+        return hit
+
+    components = joint_components(config)
+    pa = _load_cut_pa_joint(config, cutoff_date, components)
+    exposure = cutoff_exposure(pa, cutoff_date)
+    logger.info("joint bayes arm [%s] @ %s: %s",
+                ",".join(components), cutoff_date, exposure)
+
+    data = prepare_joint_data(pa, load_park_factors(), min_pa=config.min_pa,
+                              cutoff_date=cutoff_date, components=components)
+    channels = None
+    if config.measurement:
+        # The channels are OBSERVED nodes with their own counts, prepared on
+        # exactly the model's own batter and season arrays, summed strictly
+        # before the cutoff under the artifact's month-lagged rule.
+        from src.data.contact_quality import load_monthly as load_contact
+        from src.data.swing_decisions import load_monthly as load_swing
+        from src.models.pa_measurement import (
+            build_measurement_model, prepare_channels,
+        )
+
+        contact = (load_contact(config.monthly_path) if config.monthly_path
+                   else load_contact())
+        swing = (load_swing(config.swing_path) if config.swing_path
+                 else load_swing())
+        channels = prepare_channels(data.shared["batters"],
+                                    data.shared["seasons"],
+                                    contact, swing, cutoff_date)
+        model = build_measurement_model(data, channels, config.model_options())
+    else:
+        model = build_joint_model(data, config.model_options())
+    trace = sample_model(model, **config.sampler_kwargs())
+    diagnostics = model_diagnostics(trace)
+
+    _JOINT_CACHE.clear()   # one entry only -- see the comment above
+    _JOINT_CACHE[key] = (trace, data, diagnostics, exposure, channels)
+    return _JOINT_CACHE[key]
+
+
+def fit_joint_rate(
+    cutoff_date: str,
+    predict_year: int | None = None,
+    config: BayesArmConfig | None = None,
+    unseen: pd.DataFrame | None = None,
+) -> BayesFit:
+    """One component's `BayesFit` out of the joint posterior.
+
+    The fit itself covers every component in
+    `src.models.pa_joint.JOINT_COMPONENTS`; `config.component` says which of
+    them this arm serves, and the projections come from
+    `pa_rate.generate_projections` on a one-component view of the joint trace
+    (`pa_joint.component_posterior`), so the projection arithmetic is the
+    single-component arm's, unchanged, and any difference between the two
+    arms is the posterior.
+    """
+    from src.models.pa_joint import (
+        generate_joint_projections, joint_param_summary,
+    )
+
+    config = config or BayesArmConfig()
+    comp = config.rate_component()
+    predict_year = predict_year or pd.Timestamp(cutoff_date).year
+    if config.include_pitcher:
+        raise ValueError(
+            "the joint arm is pre-registered without a pitcher effect "
+            "(docs/bayes-joint.md): a pitcher term puts pitcher_idx in the "
+            "cell key, and the joint model's whole construction is that the "
+            "three components share one cell table")
+
+    trace, data, diagnostics, exposure, channels = _joint_posterior(
+        cutoff_date, predict_year, config)
+    projections = generate_joint_projections(
+        trace, data, comp.name, projection_year=predict_year, unseen=unseen,
+        extra_quantiles=config.extra_quantiles)
+    return BayesFit(
+        cutoff_date=str(cutoff_date),
+        predict_year=int(predict_year),
+        projections=projections,
+        diagnostics=diagnostics,
+        config=config,
+        trace=trace,
+        model_data=data.component_data(comp.name),
+        joint_data=data,
+        data_summary={
+            **exposure,
+            "component": comp.name,
+            **data.summary(),
+            "league_init_mu": float(
+                data.component_data(comp.name)["league_init_mu"]),
+            # The pre-registration's predictions 1 and 5 are read off these:
+            # every pairwise ability correlation and every sigma_step, with a
+            # 95% interval, on every fit record the sweep writes.
+            "joint_params": joint_param_summary(trace, data.components),
+            # Prediction 1 (the channels load) and prediction 5 (the loadings
+            # are not degenerate) are read off these, on every fit record.
+            **({"measurement_params": _measurement_summary(trace, channels),
+                "channels": channels.summary()} if channels is not None else {}),
         },
     )
 
@@ -357,8 +584,17 @@ def bayes_k_rate_provider(
             if on_fit is not None:
                 on_fit(fit)
         fit = cache[key]
-        out = fit.projections[["batter", comp.projected_col]].rename(
-            columns={comp.projected_col: "predicted"})
+        # `<component>_q10` -> `pred_q10`: the harness carries any `pred_*`
+        # column a provider returns through to the cell frame, which is how
+        # the posterior interval docs/bayes-measurement.md's prediction 4
+        # scores coverage on reaches the parquet. Empty unless the config
+        # asked for quantiles, so every other arm returns the two columns it
+        # always returned.
+        rename = {comp.projected_col: "predicted"}
+        rename.update({f"{comp.name}_q{q:g}": f"pred_q{q:g}"
+                       for q in config.extra_quantiles
+                       if f"{comp.name}_q{q:g}" in fit.projections.columns})
+        out = fit.projections[["batter", *rename]].rename(columns=rename)
         return out[np.isfinite(out["predicted"])]
 
     return provider
