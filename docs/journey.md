@@ -87,8 +87,11 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
 2. **BAS-74**, the pitcher hierarchical model with stuff inside it; a
    command *level* aggregate (BAS-76's follow-up) once pre-registered.
 3. **ISO and BABIP** hierarchical models (their own denominators), after 1.
-4. **Per-game win probability** — the largest unclosed gap to the market;
-   the Bayes talent posteriors feeding the sim is the untested lever.
+4. **Per-game win probability** — the largest unclosed gap to the market.
+   Scoping found the per-game chain still prices every game from stock
+   Marcel on both sides: none of the served layer-2 engines reach it.
+   Putting them in is pre-registered (BAS-90, `docs/chain-engines.md`)
+   and is the cheapest truth-moving lever on the board.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
 
