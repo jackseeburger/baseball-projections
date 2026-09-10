@@ -377,21 +377,29 @@ def season_aggregate(monthly: pd.DataFrame) -> pd.DataFrame:
     two sums that are already additive over months, so a season is the sum of
     its buckets and nothing is re-derived from pitches.
     """
-    cols = ["pitches", "takens", "cmd_csw_sum", "cmd_resid_sum",
+    want = ["pitches", "takens", "cmd_csw_sum", "cmd_resid_sum",
             "cs_taken_sum", "cs_resid_sum", "in_zone",
             *[f"n_{r}" for r in REGIONS]]
+    # A caller may hand in a frame carrying only the sums it needs, so the
+    # aggregate is whatever those sums support rather than a hard schema.
+    cols = [c for c in want if c in monthly.columns]
     g = monthly.groupby(["pitcher", "season"], as_index=False)[cols].sum()
     pitches = g["pitches"].where(g["pitches"] > 0)
-    takens = g["takens"].where(g["takens"] > 0)
-    region_known = sum(g[f"n_{r}"] for r in REGIONS)
-    region_known = region_known.where(region_known > 0)
-    g["cmd_resid"] = g["cmd_resid_sum"] / pitches
-    g["cs_resid"] = g["cs_resid_sum"] / takens
-    g["cmd_csw"] = g["cmd_csw_sum"] / pitches
-    g["cs_taken"] = g["cs_taken_sum"] / takens
-    g["zone_share"] = g["in_zone"] / pitches
-    for r in REGIONS:
-        g[f"{r}_share"] = g[f"n_{r}"] / region_known
+    takens = g["takens"].where(g["takens"] > 0) if "takens" in g else None
+    per_pitch = {"cmd_resid": "cmd_resid_sum", "cmd_csw": "cmd_csw_sum",
+                 "zone_share": "in_zone"}
+    per_take = {"cs_resid": "cs_resid_sum", "cs_taken": "cs_taken_sum"}
+    for name, col in per_pitch.items():
+        if col in g:
+            g[name] = g[col] / pitches
+    for name, col in per_take.items():
+        if col in g and takens is not None:
+            g[name] = g[col] / takens
+    if all(f"n_{r}" in g for r in REGIONS):
+        known = sum(g[f"n_{r}"] for r in REGIONS)
+        known = known.where(known > 0)
+        for r in REGIONS:
+            g[f"{r}_share"] = g[f"n_{r}"] / known
     return g
 
 
