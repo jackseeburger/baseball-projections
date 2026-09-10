@@ -99,6 +99,8 @@ def test_the_engine_is_the_arm_the_harness_scored():
     # the serving gate docs/pitching-stuff.md pre-registered: BB/BF (t -6.13)
     # and HR/BF (t -3.93). K/BF is withheld at t -2.38 against a bar of 2.5,
     # and BABIP was never scored — stuff has no mechanism for balls in play.
+    # BAS-88 measured a third arm for BB/BF and withheld it too; see
+    # `test_the_command_engine_exists_and_is_not_served` below.
     assert pr.LIVE_ENGINE == {
         "p_k_rate": "marcel_pitcher_tuned",
         "p_bb_rate": "stuff_additive",
@@ -336,3 +338,131 @@ def test_engine_providers_say_why_a_component_fell_back(monkeypatch, caplog):
             as_of="2026-09-09", components=("p_bb_rate",))
     assert used["p_bb_rate"] == "marcel_pitcher_tuned"
     assert "p_bb_rate" in caplog.text and "FileNotFoundError" in caplog.text
+
+
+# --- the command engine, built and withheld (BAS-88) --------------------
+
+def test_the_command_engine_exists_and_is_not_served():
+    """BAS-88 built `command_additive` and did not ship it.
+
+    Its serving pre-registration carried a vacuity clause on the coefficient
+    of `cmd_csw` in the fit that would actually serve 2026, and that clause
+    fired: the walk-forward fit on 2017-2025 puts `cmd_csw` at a
+    pitcher-clustered t of -0.55 against a bar of |t| > 2. The same fit
+    scored on 2026's own cutoffs beats `stuff_additive` by 1.11% of MAE at
+    t -1.13, missing the pre-registered effect floor of 1.0% at |t| > 2.0 on
+    its significance. Two clauses say withhold, so BB/BF is still
+    `stuff_additive` and no served component names the command engine.
+
+    This test is the guard on that decision: turning the engine on is a
+    deliberate one-line change to `LIVE_ENGINE` in a ticket that earns it,
+    and it should have to change this test too.
+    """
+    assert pr.COMMAND_ENGINE == "command_additive"
+    assert pr.LIVE_ENGINE["p_bb_rate"] == pr.STUFF_ENGINE
+    assert pr.COMMAND_ENGINE not in pr.LIVE_ENGINE.values()
+
+
+def test_the_command_cutoff_is_the_stuff_cutoff():
+    """Both blocks of the joint fit are read at the same month boundary, so a
+    build cannot pair April command with August stuff."""
+    for as_of in ("2026-09-09", "2026-09-30", "2026-09-01"):
+        assert pr.command_cutoff(as_of) == pr.stuff_cutoff(as_of)
+    assert pr.command_features_through("2026-09-09") == pd.Timestamp("2026-08-31")
+
+
+def test_the_command_engine_never_reads_a_bucket_from_the_as_of_month():
+    """The leakage guard on the command block, at the engine's own cutoff: an
+    as-of date inside September must not see a September command bucket, even
+    though the monthly artifact has one."""
+    from src.data.pitching_command import COUNT_COLUMNS
+    from src.eval.command import LEVEL_FEATURES, features_at_cutoff
+
+    def bucket(pitcher, season, month, pitches, csw, zone_share):
+        row = {"pitcher": pitcher, "season": season, "month": month}
+        row.update({c: 0.0 for c in COUNT_COLUMNS})
+        row["pitches"] = float(pitches)
+        row["takens"] = pitches * 0.53
+        row["cmd_csw_sum"] = pitches * csw
+        row["in_zone"] = pitches * zone_share
+        for r, share in (("heart", 0.25), ("shadow", 0.4), ("chase", 0.25),
+                         ("waste", 0.1)):
+            row[f"n_{r}"] = pitches * share
+        return row
+
+    as_of = "2026-09-09"
+    cutoff = pr.command_cutoff(as_of)
+    normal = [bucket(1, 2026, m, 400, 0.30, 0.48) for m in (5, 6, 7, 8)]
+    normal += [bucket(2, 2026, m, 400, 0.26, 0.42) for m in (5, 6, 7, 8)]
+    clean = features_at_cutoff(pd.DataFrame(normal), cutoff, 2026,
+                               features=LEVEL_FEATURES)
+    leaky = features_at_cutoff(
+        pd.DataFrame(normal + [bucket(1, 2026, 9, 10000, 0.95, 0.99)]),
+        cutoff, 2026, features=LEVEL_FEATURES)
+    pd.testing.assert_frame_equal(
+        clean.sort_values("player").reset_index(drop=True),
+        leaky.sort_values("player").reset_index(drop=True))
+
+
+def test_the_command_engine_falls_back_to_stuff_not_to_marcel(monkeypatch,
+                                                              caplog):
+    """The pre-registration's fallback is one rung at a time: a component
+    whose command fit cannot be built is served on `stuff_additive`, which is
+    a gated engine, rather than dropping all the way to Marcel."""
+    monkeypatch.setitem(pr.LIVE_ENGINE, "p_bb_rate", pr.COMMAND_ENGINE)
+    monkeypatch.setattr(pr, "command_engine_provider", _boom)
+    sentinel = object()
+    monkeypatch.setattr(pr, "stuff_engine_provider",
+                        lambda *a, **k: sentinel)
+    with caplog.at_level("WARNING", logger="src.projections.pitcher_ros"):
+        providers, used = pr.engine_providers(
+            seasons_table=pd.DataFrame(), monthly=pd.DataFrame(), pa_dir=".",
+            as_of="2026-09-09", components=("p_bb_rate",),
+            command_monthly=pd.DataFrame())
+    assert used["p_bb_rate"] == pr.STUFF_ENGINE
+    assert providers["p_bb_rate"] is sentinel
+    assert "p_bb_rate" in caplog.text and "FileNotFoundError" in caplog.text
+
+
+def test_a_missing_command_artifact_falls_back_to_stuff_and_says_so(
+        monkeypatch, caplog):
+    """No command artifact at all is the ordinary stripped-checkout case, and
+    it is logged rather than silently serving a different engine."""
+    monkeypatch.setitem(pr.LIVE_ENGINE, "p_bb_rate", pr.COMMAND_ENGINE)
+    sentinel = object()
+    monkeypatch.setattr(pr, "stuff_engine_provider",
+                        lambda *a, **k: sentinel)
+    with caplog.at_level("WARNING", logger="src.projections.pitcher_ros"):
+        providers, used = pr.engine_providers(
+            seasons_table=pd.DataFrame(), monthly=pd.DataFrame(), pa_dir=".",
+            as_of="2026-09-09", components=("p_bb_rate",),
+            command_monthly=None)
+    assert used["p_bb_rate"] == pr.STUFF_ENGINE
+    assert "no pitching-command artifact" in caplog.text
+
+
+def test_both_engines_failing_still_lands_on_marcel(monkeypatch, caplog):
+    """The bottom of the ladder: a worse projection, served honestly, and the
+    document records Marcel rather than the engine that was intended."""
+    monkeypatch.setitem(pr.LIVE_ENGINE, "p_bb_rate", pr.COMMAND_ENGINE)
+    monkeypatch.setattr(pr, "command_engine_provider", _boom)
+    monkeypatch.setattr(pr, "stuff_engine_provider", _boom)
+    with caplog.at_level("WARNING", logger="src.projections.pitcher_ros"):
+        providers, used = pr.engine_providers(
+            seasons_table=pd.DataFrame(), monthly=pd.DataFrame(), pa_dir=".",
+            as_of="2026-09-09", components=("p_bb_rate",),
+            command_monthly=pd.DataFrame())
+    assert used["p_bb_rate"] == pr.MARCEL_ENGINE
+    assert providers["p_bb_rate"] is pitcher_eval.marcel_pitcher_tuned
+
+
+def test_the_projection_stamps_both_feature_dates(pa, seasons):
+    """Provenance for each block rides along, so the lag on either one is
+    visible rather than implicit — even while the command engine is withheld."""
+    out = build(pa, seasons)
+    assert out.attrs["stuff_features_through"] == "2026-07-31"   # AS_OF is Aug 1
+    assert out.attrs["command_features_through"] == "2026-07-31"
+
+
+def _boom(*args, **kwargs):
+    raise FileNotFoundError("pa_outcomes_2017.parquet")

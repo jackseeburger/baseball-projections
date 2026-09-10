@@ -30,6 +30,22 @@ date (`stuff_cutoff`), never a partial month, and the fit is walk-forward on
 seasons strictly before the one being served; a component whose fit cannot be
 built falls back to `marcel_pitcher_tuned` for that build alone.
 
+**A third arm exists here and is not served.** BAS-88 built
+`command_additive` — the same shape one block further in, with the command
+*level* aggregates of docs/pitching-command-level.md entered in the same fit
+as the stuff controls — for BB/BF, because a walk is a location outcome and
+stuff's kinematic proxy for location does not carry all of it. Pooled over
+2022-2026 it is worth another 1.5% of MAE on top of the served stuff engine.
+On the one season it would have shipped for it is worth 1.11% at t -1.13 and
+its `cmd_csw` coefficient sits at t -0.55, and its serving pre-registration
+withholds on both counts, so `LIVE_ENGINE` below still says `stuff_additive`
+for BB/BF. The arm is kept fitted and tested rather than deleted: the
+withholding is about one season's significance, not about the code. The
+fallback ladder it introduced is live either way — a component whose command
+fit cannot be built is served on `stuff_additive`, and on
+`marcel_pitcher_tuned` if that fails too, each step logged and the engine
+that actually ran stamped into the document.
+
 **The batters faced are gated too, since Sept 3, 2026.** This function used to
 be stamped `structural` because nobody had scored it against anything. Now
 somebody has: `src/projections/pitcher_workload.py` is station B's harness
@@ -74,6 +90,7 @@ import logging
 import numpy as np
 import pandas as pd
 
+from src.eval import command as command_eval
 from src.eval import pitchers as P
 from src.eval import stuff as stuff_eval
 from src.eval.backtest import COMPONENTS
@@ -113,8 +130,36 @@ SEASON = 2026
 # written down first precisely so a near miss on the headline component gets
 # withheld rather than argued with; it goes back in when a later ticket earns
 # it, not when the number is squinted at.
+#
+# `command_additive` (BAS-88) is the arm one block further in: `stuff_additive`
+# with the three command *level* aggregates of docs/pitching-command-level.md
+# — `cmd_csw` (the CSW probability a location-aware model assigns this
+# pitcher's pitches, per pitch), `zone_share` and `waste_share` — entered in
+# the *same* weighted least squares as the six stuff controls, baseline still
+# pinned at exactly 1. It is built here, it is fitted by
+# `command_engine_provider` below, and **it is not served**: BB/BF stays on
+# `stuff_additive`. Its serving pre-registration carried a vacuity clause and
+# the clause fired on the season it would have shipped for:
+#
+#   the 2026 served fit (walk-forward on 2017-2025, 8,231 cells, 1,334
+#   pitchers) puts `cmd_csw` at -0.000316 with a pitcher-clustered t of
+#   -0.55, against a bar of |t| > 2 -> the serving is withheld;
+#   and, independently, the same fit scored on 2026's own May/Jul/Aug
+#   cutoffs beats `stuff_additive` by 1.11% of MAE at t -1.13, against a
+#   pre-registered >= 1.0% at |t| > 2.0 -> the effect floor is missed too.
+#
+# Two clauses of the pre-registration say withhold, so nothing about the
+# served document moved. What did *not* fail is the block: `waste_share`
+# carries t +7.49 and `zone_share` t -2.15 in that same fit, and the three
+# command coefficients are jointly significant at chi2 118 on 3 df. The
+# pooled 2022-2026 gate BAS-87 cleared (-1.52%, t -3.64) is real; one season
+# of it is not, which is what the pre-registration's own note that the share
+# is individually significant in only one of five holdout seasons predicted.
+# Turning this on is a one-line change to the map below and belongs to
+# whichever ticket earns it, not to a re-reading of this table.
 MARCEL_ENGINE = "marcel_pitcher_tuned"
 STUFF_ENGINE = "stuff_additive"
+COMMAND_ENGINE = "command_additive"
 LIVE_ENGINE = {
     "p_k_rate": MARCEL_ENGINE,
     "p_bb_rate": STUFF_ENGINE,
@@ -247,6 +292,68 @@ def stuff_engine_provider(
     return stuff_eval.stuff_provider(config)
 
 
+# --- the command engine (BAS-88) ---------------------------------------
+
+def command_cutoff(as_of) -> pd.Timestamp:
+    """The last pitching-command month boundary on or before `as_of`.
+
+    The same rule as `stuff_cutoff`, for the same reason and enforced by the
+    same guard: `command.window_counts` refuses a cutoff that is not the first
+    of a month rather than rounding one forward, since rounding forward is
+    leakage. The command artifact is monthly on the same grain as the stuff
+    one, so both blocks of the joint fit are read at the same boundary — a
+    build on Sept 9 and one on Sept 30 both read through Aug 31.
+
+    Note the artifact behind this one does **not** yet join the nightly path.
+    While the engine is withheld nothing served reads it, so
+    `scripts/build_pitching_command.py --update-season <year>` is run by hand
+    and `check_freshness.py` does not watch its sidecar. Both of those go in
+    alongside the one-line change to `LIVE_ENGINE`, not before it — a
+    required freshness check on an artifact no served model reads is an alarm
+    that cannot mean anything.
+    """
+    return stuff_cutoff(as_of)
+
+
+def command_features_through(as_of) -> pd.Timestamp:
+    """The last day command features actually cover, for provenance."""
+    return command_cutoff(as_of) - pd.Timedelta(days=1)
+
+
+def command_engine_provider(
+    component: str,
+    seasons_table: pd.DataFrame,
+    command_monthly: pd.DataFrame,
+    stuff_monthly: pd.DataFrame,
+    pa_dir,
+    as_of,
+    predict_year: int = SEASON,
+):
+    """A `LIVE_PROVIDERS`-shaped provider for the `command_additive` engine.
+
+    The mirror of `stuff_engine_provider` one block further in. Fits the joint
+    additive correction walk-forward on cell seasons strictly before
+    `predict_year` (`command_eval.fit_live_command`, `fixed_base=True` — never
+    on the season being served) at the hyperparameters BAS-87 tuned and pinned
+    (`command_eval.SERVED_WEIGHTS`, `SERVED_BALLAST`; the stuff controls stay
+    at stuff's own), and builds both covariate blocks as of the last month
+    boundary on or before `as_of`, never a partial month. The baseline
+    underneath is the same untouched `marcel_pitcher_tuned`.
+    """
+    fit = command_eval.fit_live_command(
+        component, seasons_table, command_monthly, stuff_monthly, pa_dir,
+        predict_year)
+    config = command_eval.CommandProviderConfig(
+        command_monthly=command_monthly,
+        stuff_monthly=stuff_monthly,
+        cutoff=command_cutoff(as_of),
+        predict_year=predict_year,
+        fit=fit,
+        base_provider=P.marcel_pitcher_tuned,
+    )
+    return command_eval.command_provider(config)
+
+
 def engine_providers(
     seasons_table: pd.DataFrame | None = None,
     monthly: pd.DataFrame | None = None,
@@ -254,26 +361,47 @@ def engine_providers(
     as_of=None,
     predict_year: int = SEASON,
     components=SERVED_COMPONENTS,
+    *,
+    command_monthly: pd.DataFrame | None = None,
 ) -> tuple[dict[str, object], dict[str, str]]:
     """(component -> provider, component -> engine actually used) for the
     `marcel` (live) arm, per `LIVE_ENGINE`.
 
-    A component whose engine is `stuff_additive` but is missing what the stuff
-    engine needs (the monthly artifact, the PA outcomes directory, the as-of
-    date, or a walk-forward fit that raises) falls back to
-    `marcel_pitcher_tuned` for that component alone rather than failing the
-    whole build — the same honest fallback the hitter side makes
-    (`ros.engine_providers`), and what the pre-registration's fourth serving
-    prediction promises. `engine_used` is what the builder stamps into the
-    document, so it can differ from `LIVE_ENGINE` on a bad night without ever
-    claiming a model that did not run.
+    A component whose engine is missing what that engine needs (an artifact,
+    the PA outcomes directory, the as-of date, or a walk-forward fit that
+    raises) falls back **one rung at a time** rather than failing the whole
+    build: `command_additive` to `stuff_additive` to `marcel_pitcher_tuned`,
+    each step logged. That is the same honest fallback the hitter side makes
+    (`ros.engine_providers`) and what both serving pre-registrations promise —
+    a component whose command fit cannot be built is served on stuff, and one
+    whose stuff fit cannot be built is served on Marcel. `engine_used` is what
+    the builder stamps into the document, so it can differ from `LIVE_ENGINE`
+    on a bad night without ever claiming a model that did not run.
     """
     have_stuff_inputs = (seasons_table is not None and monthly is not None
                          and pa_dir is not None and as_of is not None)
+    have_command_inputs = have_stuff_inputs and command_monthly is not None
     providers, engine_used = {}, {}
     for component in components:
         engine = LIVE_ENGINE.get(component, MARCEL_ENGINE)
-        if engine == STUFF_ENGINE and have_stuff_inputs:
+        if engine == COMMAND_ENGINE:
+            if have_command_inputs:
+                try:
+                    providers[component] = command_engine_provider(
+                        component, seasons_table, command_monthly, monthly,
+                        pa_dir, as_of, predict_year)
+                    engine_used[component] = COMMAND_ENGINE
+                    continue
+                except Exception as exc:                        # noqa: BLE001
+                    logger.warning(
+                        "%s: the command engine could not be built (%s: %s); "
+                        "falling back to the stuff engine for this component",
+                        component, type(exc).__name__, exc)
+            elif have_stuff_inputs:
+                logger.warning(
+                    "%s: no pitching-command artifact; falling back to the "
+                    "stuff engine for this component", component)
+        if engine in (STUFF_ENGINE, COMMAND_ENGINE) and have_stuff_inputs:
             try:
                 providers[component] = stuff_engine_provider(
                     component, seasons_table, monthly, pa_dir, as_of,
@@ -357,7 +485,8 @@ def pitcher_rates(seasons_table: pd.DataFrame, partial: pd.DataFrame,
                   *,
                   stuff_monthly: pd.DataFrame | None = None,
                   stuff_pa_dir=None,
-                  as_of=None) -> pd.DataFrame:
+                  as_of=None,
+                  command_monthly: pd.DataFrame | None = None) -> pd.DataFrame:
     """The live arm and its preseason control, one row per pitcher.
 
     Columns: `pitcher` plus `{prefix}_rate_marcel` and
@@ -380,7 +509,7 @@ def pitcher_rates(seasons_table: pd.DataFrame, partial: pd.DataFrame,
 
     live_providers, engine_used = engine_providers(
         seasons_table, stuff_monthly, stuff_pa_dir, as_of, predict_year,
-        components)
+        components, command_monthly=command_monthly)
 
     out = pd.DataFrame({"pitcher": pd.unique(train["pitcher"])})
     for component in components:
@@ -405,6 +534,8 @@ def pitcher_rates(seasons_table: pd.DataFrame, partial: pd.DataFrame,
     if as_of is not None:
         out.attrs["stuff_features_through"] = (
             stuff_features_through(as_of).date().isoformat())
+        out.attrs["command_features_through"] = (
+            command_features_through(as_of).date().isoformat())
     return out
 
 
@@ -541,6 +672,7 @@ def build_pitcher_projections(
     lg_ra9: float = 4.30,
     stuff_monthly: pd.DataFrame | None = None,
     stuff_pa_dir=None,
+    command_monthly: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """The live rest-of-season pitcher projection, one row per projected pitcher.
 
@@ -553,13 +685,19 @@ def build_pitcher_projections(
             component whose `LIVE_ENGINE` is `stuff_additive`; a component
             missing it falls back to `marcel_pitcher_tuned` for that build
             alone (`engine_providers`).
-        stuff_pa_dir: the PA-outcomes directory the stuff engine's
-            walk-forward fit trains on (`data/parquet/pa_outcomes`).
+        stuff_pa_dir: the PA-outcomes directory the stuff and command
+            engines' walk-forward fits train on (`data/parquet/pa_outcomes`).
+        command_monthly: `data/features/pitching_command_monthly.parquet`,
+            loaded (`src.data.pitching_command.load_monthly`). Required for
+            any component whose `LIVE_ENGINE` is `command_additive`; a
+            component missing it falls back to `stuff_additive` for that build
+            alone, and to `marcel_pitcher_tuned` if that cannot be built
+            either (`engine_providers`).
 
-    Two provenance entries ride along on `.attrs`: `pitcher_engine_used`
+    Three provenance entries ride along on `.attrs`: `pitcher_engine_used`
     (component -> the engine that actually filled its `marcel` column) and
-    `stuff_features_through` (the last date those features cover — see
-    `stuff_cutoff`).
+    `stuff_features_through` / `command_features_through` (the last date each
+    block's features cover — see `stuff_cutoff` and `command_cutoff`).
     """
     as_of = _as_date(as_of_date)
     partial = partial_season(pa_frame, as_of, season)
@@ -574,7 +712,8 @@ def build_pitcher_projections(
 
     rates = pitcher_rates(seasons_table, partial, season,
                           stuff_monthly=stuff_monthly,
-                          stuff_pa_dir=stuff_pa_dir, as_of=as_of)
+                          stuff_pa_dir=stuff_pa_dir, as_of=as_of,
+                          command_monthly=command_monthly)
     out = workload.merge(rates, on="pitcher", how="left")
 
     # Marcel with no trials at all is the league rate; a pitcher with projected
