@@ -25,7 +25,10 @@ first, the market is the bar, money is the exam.
   served. The level aggregate with stuff as a control (BAS-87) then
   cleared the gate on BB/BF: −4.5% of error vs tuned Marcel and −1.5% on
   top of the served stuff engine at t −3.6, nothing on strikeouts or home
-  runs. Serving it on the pitcher walk rate is pre-registered (BAS-88).
+  runs. Serving it on the pitcher walk rate was tried and withheld (BAS-88):
+  on the 2026 season alone the gain is 1.1% at t −1.1, below the
+  significance bar, so the engine is built and dormant until a served
+  season clears.
 - Defence has no public tracking; that track stays thin.
 
 **Layer 2 — true talent (hierarchical Bayes).** The contested layer.

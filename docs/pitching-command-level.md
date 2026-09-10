@@ -218,3 +218,54 @@ whose command fit cannot be built falls back to `stuff_additive`, logged.
    untouched (K/BF is not re-engined).
 4. **Vacuity:** if the 2026 served fit's command coefficients straddle zero
    (|t| < 2 on `cmd_csw`), the serving is withheld and this section says so.
+
+### Served results (2026-09-10): withheld
+
+**`p_bb_rate` stays on `stuff_additive`.** Both gate clauses of the
+Serving pre-registration say withhold, independently. The engine
+(`command_additive`: `fit_live_command`, `command_provider`, the rung in
+`pitcher_ros`) is built, tested and dormant; the serving map is unchanged.
+Evidence: `data/eval/pitching_command_serving.json`. The 2026 command
+artifact was refreshed walk-forward (`--update-season 2026`) and
+reproduces BAS-87's cells exactly.
+
+The served fit, walk-forward on 2017–2025 (8,231 cells, 1,334 pitchers,
+SE clustered by pitcher): `waste_share` t +7.49, `zone_share` t −2.15,
+**`cmd_csw` t −0.55**; the three command coefficients are jointly
+significant (χ² 118 on 3 df).
+
+1. **FAILS on significance.** On 2026's May/Jul/Aug cutoffs (824 cells)
+   `command_additive` vs `stuff_additive` on BB/BF is −1.11% of MAE at
+   t −1.13. Size clears the 1.0% floor; |t| > 2.0 does not. By cutoff:
+   May −1.64% (t −1.34), July −0.10% (t −0.09), August −1.13% (t −0.95).
+   This reproduces BAS-87's committed 2026 row to the digit, so the
+   apparatus is the arm that was scored; what fails is the single served
+   season, exactly as BAS-87's note anticipated (negative in all five
+   seasons, individually significant only in 2022).
+2. **HOLDS**, counterfactually (682 projected pitchers): 98.4% move by
+   less than 0.010 in BB/BF (bar 80%), median |Δ| 0.0025, max 0.014;
+   BF-weighted league BB/BF +0.00075 (bar 0.002). A re-ranking, as
+   predicted.
+3. **Not scored as written.** With the serving withheld the odds board
+   does not move. Counterfactual team walk rates move at most 0.32
+   points of BB/BF (STL), mean 0.09; K-prop pricing untouched by
+   construction.
+4. **Vacuity clause fires**: `cmd_csw` at |t| 0.55 < 2.
+
+**What complicates the reading.** The clause fires on one coefficient
+while the block is not vacuous (`waste_share` alone is t +7.5). The
+pre-registration wrote "command coefficients straddle zero" and
+operationalised it as `cmd_csw`, which is the one covariate BAS-87 had
+already flagged as unreadable on its own (R² 0.53 on the stuff controls).
+That may have been the wrong operationalisation, and it is a question for
+the next pre-registration, not for this table: prediction 1 fails on its
+own, so the serving would be withheld either way. HR/BF picks up an
+incidental −1.18% (t −2.11) over `stuff_additive` on 2026 alone, against
+BAS-87's pooled −0.26%; a single-season fluctuation on a component the
+gate already withheld, recorded and not acted on.
+
+**What is deliberately not wired** until the map changes: the nightly
+refresh step for the command artifact, its freshness sidecar alarm, and
+the `command_features_through` stamp. A freshness alarm on an artifact
+nothing served reads would mean nothing. They land with the one-line map
+change when a served season clears.
