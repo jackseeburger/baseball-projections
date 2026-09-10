@@ -87,13 +87,13 @@ leaves and carrying the variance.
 │  What CHANGES: it runs on posterior DRAWS instead of point        │
 │  estimates, so uncertainty survives to everything below.          │
 │  STATUS: live on point estimates. Career WAR already does the     │
-│          draw version — see issue #75.                            │
+│          draw version — see issue #75.                           │
 └──────────────────────────────────────────────────────────────────┘
                               │
 ┌─ LAYER 5 · TEAM AND GAME ─────────────────────────── ARITHMETIC ─┐
 │  team runs ──► Pythagenpat ──► team strength                      │
 │  per game: log5 + HFA + starter FIP over his expected innings     │
-│            + availability-weighted pen + posted lineup            │
+│            + availability-weighted pen + posted lineup           │
 │  STATUS: live and gated. Best .24388 vs market .24156.            │
 └───────────────────────────────────────────────────────────────────┘
                               │
@@ -112,8 +112,10 @@ leaves and carrying the variance.
 │  posterior rate ──► prop prices with real tails                  │
 │  posterior edge ──► Kelly that shades for uncertainty            │
 │  posterior WAR  ──► $/WAR ──► contract surplus value             │
-│  STATUS: props and Kelly live on POINT ESTIMATES — both wrong in  │
-│          a known direction. Contract valuation does not exist.    │
+│  STATUS: Beta width SPENT (BAS-70): price unchanged, selection   │
+│          a relabel, Kelly at the mean is right by proof. The     │
+│          hierarchical width is IN FLIGHT (BAS-92). Contract      │
+│          valuation does not exist.                               │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
