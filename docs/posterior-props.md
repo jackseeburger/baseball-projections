@@ -241,6 +241,12 @@ first time anything on the props exam has been positive after the fee at
 the point estimate, and it is worth its own pre-registration on the June
 and July contracts the archive has not yet fetched.
 
+*Followed up (BAS-93, `docs/props-replication.md`): the +9.5% / +12.1% is
+the second half of one month; on the whole August window the same rule is
++3.7% / +7.1% fee-waived and negative as quoted, and on the July
+contracts, fetched and scored with every constant frozen, hits is +0.6%
+fee-waived and −4.7% as quoted. The lead did not replicate.*
+
 **Strikeouts** lose 10–16% under every rule, which is the same finding as
 the original props exam and is consistent with the pitcher-K Beta being an
 approximation stacked on a rate the market prices well.

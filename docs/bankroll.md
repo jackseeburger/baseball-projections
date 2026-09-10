@@ -18,7 +18,7 @@ and [posterior-props.md](posterior-props.md):
 | --- | --- | --- |
 | Moneylines (Kalshi, as quoted) | −11.6% | every model loses; the market has our data and order flow |
 | Props, pooled | −2.7% to −4.0% | the taker fee is the whole loss; break-even with it waived |
-| **Props, hits only** | **+4.3% to +5.5%** | positive at the point estimate, interval crosses zero, **not pre-registered** |
+| **Props, hits only** | **+4.3% to +5.5%** | positive at the point estimate, interval crosses zero, **not pre-registered**; did not replicate on July (BAS-93: +0.6% fee-waived, −4.7% as quoted, and the August figure was a half-window artefact) |
 
 Reinvesting scales an edge. It does not create one. Compounding a −3%
 strategy compounds losses. So the bankroll question is not "how much" — it is
@@ -49,7 +49,11 @@ committed, so the history cannot be edited.
    board, and the one that was not predicted — which is exactly why it needs
    a forward test rather than another look at the same archive. Prediction:
    taker ROI after fees on hits props is **positive**, between +2% and +6%,
-   over the Stage 1 window.
+   over the Stage 1 window. *(Evidence since: BAS-93 scored the July
+   contracts with every constant frozen and found +0.6% fee-waived, −4.7%
+   as quoted; the whole-August figure is negative as quoted too. The
+   prediction stands as written; the prior behind it is now "roughly zero
+   before the fee".)*
 2. **Pooled props are the secondary test.** Prediction: taker ROI after fees
    is **between −4% and 0%** — that is, the pooled strategy does not clear
    the fee, as the archive says.
