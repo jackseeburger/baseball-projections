@@ -13,9 +13,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.data.pitching_command import COUNT_COLUMNS, REGIONS
+from src.data.pitching_command import COUNT_COLUMNS, REGIONS, season_aggregate
 from src.eval.command import (
     FEATURES,
+    LEVEL_FEATURES,
+    LEVEL_FEATURES_WITH_EDGE,
     attach_command_features,
     command_metrics,
     features_at_cutoff,
@@ -163,3 +165,69 @@ def test_a_pitcher_with_no_tracked_pitches_gets_a_zero_covariate(
         assert got.loc[999, f] == 0.0
     assert got.loc[999, "cmd_pitches_raw"] == 0.0
     assert not np.allclose([got.loc[1, f] for f in FEATURES], 0.0)
+
+
+# --- the level block (BAS-87) -------------------------------------------------
+
+def test_the_level_block_is_a_level_not_a_residual():
+    """`cmd_csw` is the location-aware model's own CSW per pitch. The bucket
+    helper writes 0.30 of a CSW per pitch and a residual of `resid` on top of
+    it, so the level must come back 0.30 whatever the residual is."""
+    rows = [bucket(1, 2026, 4, 5000, 0.05, 0.05, 0.4),
+            bucket(2, 2026, 4, 5000, -0.05, -0.05, 0.4)]
+    m = command_metrics(window_counts(pd.DataFrame(rows), "2026-05-01", 2026),
+                        ballast=0.0).set_index("player")
+    assert m.loc[1, "cmd_csw"] == pytest.approx(0.30, abs=1e-9)
+    assert m.loc[2, "cmd_csw"] == pytest.approx(0.30, abs=1e-9)
+    assert m.loc[1, "cmd_resid"] == pytest.approx(0.05, abs=1e-9)
+    assert m.loc[2, "cmd_resid"] == pytest.approx(-0.05, abs=1e-9)
+
+
+def test_the_level_block_obeys_the_same_cutoff_guard(synthetic_monthly):
+    """The level features go through the same `window_counts`, so the May 1
+    guard has to hold for them too — the fixture's May onward is every pitch
+    in the zone, which would move `zone_share` from 0.45 to nearly 1."""
+    z = features_at_cutoff(synthetic_monthly, "2026-05-01", 2026,
+                           features=LEVEL_FEATURES)
+    assert list(z.columns) == ["player", "pitches_raw", *LEVEL_FEATURES]
+    kept = synthetic_monthly[~((synthetic_monthly["season"] == 2026)
+                               & (synthetic_monthly["month"] >= 5))]
+    pd.testing.assert_frame_equal(
+        z, features_at_cutoff(kept, "2026-05-01", 2026,
+                              features=LEVEL_FEATURES))
+
+
+def test_attaching_the_level_block_attaches_only_the_level_block(
+        synthetic_monthly):
+    """Selecting the block changes which columns land on the cells, and an
+    untracked pitcher still gets z = 0 rather than being dropped."""
+    cells = pd.DataFrame({
+        "component": "p_bb_rate", "season": 2026, "cutoff": "2026-05-01",
+        "player": [1, 2, 999], "base": 0.08, "realized_rate": 0.08,
+        "trials": 300.0, "realized_successes": 24.0, "pre_trials": 100.0,
+    })
+    out = attach_command_features(cells, synthetic_monthly,
+                                  features=LEVEL_FEATURES)
+    assert set(LEVEL_FEATURES) <= set(out.columns)
+    assert "cmd_resid" not in out.columns
+    got = out.set_index("player")
+    for f in LEVEL_FEATURES:
+        assert got.loc[999, f] == 0.0
+    wide = attach_command_features(cells, synthetic_monthly,
+                                   features=LEVEL_FEATURES_WITH_EDGE)
+    assert "shadow_share" in wide.columns
+
+
+def test_the_season_aggregate_carries_the_levels_the_vacuity_check_needs():
+    """The vacuity check is re-registered on the levels, so `season_aggregate`
+    has to produce them from the additive sums and not from anything the
+    monthly reduction does not already carry."""
+    rows = [bucket(1, 2025, 4, 1000, 0.02, 0.02, 0.4),
+            bucket(1, 2025, 5, 1000, 0.02, 0.02, 0.4)]
+    g = season_aggregate(pd.DataFrame(rows)).set_index(["pitcher", "season"])
+    assert g.loc[(1, 2025), "pitches"] == 2000
+    assert g.loc[(1, 2025), "cmd_csw"] == pytest.approx(0.30, abs=1e-9)
+    assert g.loc[(1, 2025), "zone_share"] == pytest.approx(0.45, abs=1e-9)
+    # heart is 0.4 of the pitches and the other three split the remaining 0.6.
+    assert g.loc[(1, 2025), "waste_share"] == pytest.approx(0.2, abs=1e-9)
+    assert g.loc[(1, 2025), "heart_share"] == pytest.approx(0.4, abs=1e-9)

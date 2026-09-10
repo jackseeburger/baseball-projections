@@ -367,11 +367,39 @@ VACUITY_MIN_R = 0.45
 
 
 def season_aggregate(monthly: pd.DataFrame) -> pd.DataFrame:
-    """Per pitcher-season command residual per pitch — the vacuity quantity."""
-    g = monthly.groupby(["pitcher", "season"], as_index=False)[
-        ["pitches", "cmd_resid_sum", "takens", "cs_resid_sum"]].sum()
-    g["cmd_resid"] = g["cmd_resid_sum"] / g["pitches"].where(g["pitches"] > 0)
-    g["cs_resid"] = g["cs_resid_sum"] / g["takens"].where(g["takens"] > 0)
+    """Per pitcher-season command aggregates per pitch — the vacuity quantity.
+
+    `cmd_resid` and `cs_resid` are BAS-76's stuff-differenced residuals, the
+    two that failed its 0.45 floor. The **levels** are here too because BAS-87
+    re-registers the check on them: `cmd_csw` (the location-aware model's own
+    CSW probability per pitch), `cs_taken` (called strike per take), and the
+    two region/zone shares its covariate block uses. Every one is a ratio of
+    two sums that are already additive over months, so a season is the sum of
+    its buckets and nothing is re-derived from pitches.
+    """
+    want = ["pitches", "takens", "cmd_csw_sum", "cmd_resid_sum",
+            "cs_taken_sum", "cs_resid_sum", "in_zone",
+            *[f"n_{r}" for r in REGIONS]]
+    # A caller may hand in a frame carrying only the sums it needs, so the
+    # aggregate is whatever those sums support rather than a hard schema.
+    cols = [c for c in want if c in monthly.columns]
+    g = monthly.groupby(["pitcher", "season"], as_index=False)[cols].sum()
+    pitches = g["pitches"].where(g["pitches"] > 0)
+    takens = g["takens"].where(g["takens"] > 0) if "takens" in g else None
+    per_pitch = {"cmd_resid": "cmd_resid_sum", "cmd_csw": "cmd_csw_sum",
+                 "zone_share": "in_zone"}
+    per_take = {"cs_resid": "cs_resid_sum", "cs_taken": "cs_taken_sum"}
+    for name, col in per_pitch.items():
+        if col in g:
+            g[name] = g[col] / pitches
+    for name, col in per_take.items():
+        if col in g and takens is not None:
+            g[name] = g[col] / takens
+    if all(f"n_{r}" in g for r in REGIONS):
+        known = sum(g[f"n_{r}"] for r in REGIONS)
+        known = known.where(known > 0)
+        for r in REGIONS:
+            g[f"{r}_share"] = g[f"n_{r}"] / known
     return g
 
 

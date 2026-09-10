@@ -61,6 +61,18 @@ from src.eval.stuff import (
 FEATURES = ("cmd_resid", "cs_resid", "zone_share", "shadow_share",
             "chase_share", "waste_share")
 
+# BAS-87's block: the **level** aggregates, not the stuff-differenced residual.
+# `cmd_resid` failed BAS-76's own vacuity floor (pooled year-over-year r 0.397
+# against 0.45) while the levels carried fine (`cmd_csw` 0.757, `zone_share`
+# 0.561, `waste_share` 0.650), so the follow-up asks the level question with
+# the served engine's stuff aggregates entered as explicit controls in the same
+# fit — which is what stops a level from being the stuff score under a new
+# name. The artifact has no `edge_share` column; `shadow_share` (within a
+# ball's width of a zone edge) is that quantity under Statcast's own name, and
+# is carried as a labelled sensitivity rather than inside the block.
+LEVEL_FEATURES = ("cmd_csw", "zone_share", "waste_share")
+LEVEL_FEATURES_WITH_EDGE = LEVEL_FEATURES + ("shadow_share",)
+
 # The same grids stuff sweeps, so the two results are comparable and the
 # hyperparameter choice is not quietly a different search.
 COMMAND_WEIGHT_GRID = STUFF_WEIGHT_GRID
@@ -166,6 +178,10 @@ def command_metrics(counts: pd.DataFrame, ballast: float = DEFAULT_COMMAND_BALLA
     return pd.DataFrame({
         "player": counts["player"].to_numpy(),
         "pitches_raw": counts["pitches_raw"].to_numpy(dtype="float64"),
+        # The level: the CSW probability the location-aware `pitching` model
+        # assigns this pitcher's pitches, per pitch. `cmd_resid` below is the
+        # same quantity minus the stuff model's — the difference BAS-76 scored.
+        "cmd_csw": sh("cmd_csw_sum") / pitches,
         "cmd_resid": sh("cmd_resid_sum") / pitches,
         "cs_resid": over(sh("cs_resid_sum"), sh("takens")),
         "zone_share": sh("in_zone") / pitches,
@@ -181,12 +197,19 @@ def features_at_cutoff(
     predict_year: int,
     weights: tuple[float, float, float] = DEFAULT_COMMAND_WEIGHTS,
     ballast: float = DEFAULT_COMMAND_BALLAST,
+    features: tuple[str, ...] = FEATURES,
 ) -> pd.DataFrame:
-    """Standardized command covariates for every pitcher with pre-cutoff pitches."""
+    """Standardized command covariates for every pitcher with pre-cutoff pitches.
+
+    `features` selects the block: `FEATURES` is BAS-76's residual block,
+    `LEVEL_FEATURES` BAS-87's level block. Either way the z-score is computed
+    on the cutoff's own pre-cutoff window, so nothing outside the training
+    data enters it.
+    """
     counts = window_counts(monthly, cutoff, predict_year, weights)
     if counts.empty:
-        return pd.DataFrame(columns=["player", "pitches_raw", *FEATURES])
-    return standardize(command_metrics(counts, ballast), features=FEATURES)
+        return pd.DataFrame(columns=["player", "pitches_raw", *features])
+    return standardize(command_metrics(counts, ballast), features=features)
 
 
 def attach_command_features(
@@ -194,6 +217,7 @@ def attach_command_features(
     weights: tuple[float, float, float] = DEFAULT_COMMAND_WEIGHTS,
     ballast: float = DEFAULT_COMMAND_BALLAST,
     with_exposure: bool = True,
+    features: tuple[str, ...] = FEATURES,
 ) -> pd.DataFrame:
     """Merge the standardized command covariates onto `build_pitcher_cells`'s
     output, one cutoff-cell at a time (the covariates do not depend on the
@@ -203,10 +227,11 @@ def attach_command_features(
     """
     out = []
     for (season, cutoff), g in cells.groupby(["season", "cutoff"]):
-        z = features_at_cutoff(monthly, cutoff, season, weights, ballast)
+        z = features_at_cutoff(monthly, cutoff, season, weights, ballast,
+                               features)
         zi = z.set_index("player").reindex(g["player"].to_numpy())
         g = g.copy()
-        for f in FEATURES:
+        for f in features:
             g[f] = zi[f].fillna(0.0).to_numpy()
         if with_exposure:
             g["cmd_pitches_raw"] = zi["pitches_raw"].fillna(0.0).to_numpy()
@@ -216,6 +241,7 @@ def attach_command_features(
 
 __all__ = [
     "COMMAND_BALLAST_GRID", "COMMAND_WEIGHT_GRID", "DEFAULT_COMMAND_BALLAST",
-    "DEFAULT_COMMAND_WEIGHTS", "FEATURES", "attach_command_features",
+    "DEFAULT_COMMAND_WEIGHTS", "FEATURES", "LEVEL_FEATURES",
+    "LEVEL_FEATURES_WITH_EDGE", "attach_command_features",
     "command_metrics", "features_at_cutoff", "league_profile", "window_counts",
 ]
