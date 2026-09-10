@@ -97,6 +97,49 @@ MAX_LOADING_CORR = 0.95
 
 LOADINGS = ("lambda_barrel", "lambda_ev", "lambda_whiff")
 
+# A measurement fit is UNUSABLE, not merely noisy, when the two chains land on
+# different scales/signs of the same latent. The tell is the pre-registered
+# degeneracy statistic itself: `max_abs_loading_corr` at ~1.0 means every
+# loading on that latent moved together, which is what happens when one chain
+# shrinks the latent and inflates the loadings to compensate.
+#
+# This is not a cosmetic problem with the loading table. The projections are
+# averaged over chains, so a chain whose latent collapsed contributes almost
+# no batter-to-batter spread, and the cell's predictions come out roughly
+# half as spread as a converged cell's -- observed on 2024 as `hr_rate`
+# predicted sd 0.0057 against 0.0115 at every other cutoff. Those cells are
+# scored, so they move the pooled MAE, and a reader who did not know would
+# take a broken fit for a model result.
+#
+# Nothing is dropped silently: every table is reported over all cutoffs (the
+# pre-registered analysis) AND over the converged ones (a sensitivity), and
+# the broken cutoffs are named.
+DEGENERATE_CORR = 0.95
+RHAT_CEILING = 1.2
+
+
+def degenerate_fits(fits: list[dict]) -> dict:
+    """`{cutoff: why}` for measurement fits whose chains did not agree.
+
+    Read off the fit records alone -- no trace needed -- so it costs nothing
+    and works on a checkpoint written by a run that is still going.
+    """
+    out: dict = {}
+    for f in fits:
+        mp = f.get("measurement_params")
+        if not mp:
+            continue
+        why = []
+        corr = mp.get("max_abs_loading_corr")
+        if corr is not None and abs(corr) >= DEGENERATE_CORR:
+            why.append(f"|loading corr| {corr:.3f} >= {DEGENERATE_CORR}")
+        rhat = (f.get("diagnostics") or {}).get("max_rhat")
+        if rhat is not None and rhat > RHAT_CEILING:
+            why.append(f"R-hat {rhat:.3f} > {RHAT_CEILING}")
+        if why:
+            out[f["cutoff"]] = "; ".join(why)
+    return out
+
 
 def cutoff_month(cutoff: str) -> int:
     return int(pd.Timestamp(cutoff).month)
@@ -562,6 +605,33 @@ def main() -> None:
     payload["by_season"] = {
         c: {str(k): v for k, v in by_season(cells, c).items()}
         for c in payload["scope"]["components"]}
+
+    # --- the converged-only sensitivity ---------------------------------
+    bad = degenerate_fits(fits)
+    payload["degenerate_fits"] = bad
+    if bad:
+        clean = cells[~cells["cutoff"].isin(bad)]
+        payload["converged_only"] = {
+            "excluded_cutoffs": sorted(bad),
+            "n_cutoffs_total": int(cells["cutoff"].nunique()),
+            "n_cutoffs_kept": int(clean["cutoff"].nunique()),
+            "comparisons": {c: comparisons(clean, c)
+                            for c in payload["scope"]["components"]},
+            "prediction_2_early_season": score_prediction_2(
+                regime_split(clean, MEASUREMENT_ARM, CONTACT_ARM, "hr_rate")),
+            "prediction_4_coverage": {
+                c: score_prediction_4(clean, c)
+                for c in payload["scope"]["components"]},
+        }
+        print(f"\n!! {len(bad)} measurement fit(s) did not converge; their "
+              f"cells are scored above and excluded below")
+        for cut, why in sorted(bad.items()):
+            print(f"   {cut}  {why}")
+        for component in payload["scope"]["components"]:
+            print(f"\n=== {component}, converged cutoffs only "
+                  f"({payload['converged_only']['n_cutoffs_kept']}"
+                  f"/{payload['converged_only']['n_cutoffs_total']}) ===")
+            print(render(payload["converged_only"]["comparisons"][component]))
 
     for component in payload["scope"]["components"]:
         per = by_season(cells, component)

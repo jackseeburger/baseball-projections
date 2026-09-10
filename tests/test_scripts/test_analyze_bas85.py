@@ -366,6 +366,66 @@ def test_a_grid_mixing_samplers_is_flagged_not_pooled_silently(tmp_path, capsys)
     assert len(payload["provenance"]) == 2
 
 
+# --- the converged-only sensitivity -----------------------------------------
+
+def test_a_chain_disagreement_is_caught_from_the_fit_record_alone():
+    """`max_abs_loading_corr` at ~1 and a high R-hat both say the two chains
+    landed on different scales of the same latent. Read off the record, so it
+    costs nothing and works on a checkpoint a running grid is still writing."""
+    ok = _fit("2024-05-01", "hr_rate", LOADS, max_corr=0.56)
+    ok["diagnostics"] = {"max_rhat": 1.04}
+    ridge = _fit("2024-06-24", "hr_rate", LOADS, max_corr=0.999)
+    ridge["diagnostics"] = {"max_rhat": 1.856}
+    noisy = _fit("2024-07-08", "hr_rate", LOADS, max_corr=0.60)
+    noisy["diagnostics"] = {"max_rhat": 1.9}
+
+    bad = bas85.degenerate_fits([ok, ridge, noisy])
+    assert set(bad) == {"2024-06-24", "2024-07-08"}
+    assert "loading corr" in bad["2024-06-24"] and "R-hat" in bad["2024-06-24"]
+    assert "R-hat" in bad["2024-07-08"]
+
+
+def test_a_broken_fit_is_reported_both_ways_and_never_dropped_silently(
+        tmp_path, capsys):
+    """The pre-registered analysis scores every cutoff. A non-converged fit
+    still moves the pooled MAE -- its projections are averaged over a chain
+    whose latent collapsed, so they carry about half the spread -- so the
+    converged-only table is a *sensitivity* printed beside the headline, with
+    the excluded cutoffs named, not a quiet filter."""
+    good = _cells({5: 0.90})
+    broken = _cells({7: 1.30}, seed=8)
+    pd.concat([good, broken], ignore_index=True).to_parquet(
+        tmp_path / "cells_bayes.parquet", index=False)
+    fits = [_fit("2024-05-01", "hr_rate", LOADS, max_corr=0.5),
+            _fit("2024-07-01", "hr_rate", LOADS, max_corr=0.999)]
+    for f in fits:
+        f["diagnostics"] = {"max_rhat": 1.05}
+    (tmp_path / "bayes_fits.json").write_text(json.dumps(fits))
+
+    sys.argv = ["analyze_bas85.py", "--in-dir", str(tmp_path)]
+    bas85.main()
+    out = capsys.readouterr().out
+    assert "did not converge" in out and "2024-07-01" in out
+
+    payload = json.loads((tmp_path / "analysis_bas85.json").read_text())
+    assert list(payload["degenerate_fits"]) == ["2024-07-01"]
+    assert payload["converged_only"]["excluded_cutoffs"] == ["2024-07-01"]
+    assert payload["converged_only"]["n_cutoffs_kept"] == 1
+    # The headline still carries every cutoff.
+    pooled = [r for r in payload["comparisons"]["hr_rate"]
+              if r["base"] == bas85.CONTACT_ARM][0]
+    assert pooled["n"] > payload["converged_only"]["comparisons"]["hr_rate"][0]["n"]
+
+
+def test_no_degenerate_fits_means_no_sensitivity_section():
+    """A clean grid should not grow a second set of tables saying the same
+    thing as the first."""
+    assert bas85.degenerate_fits([]) == {}
+    ok = _fit("2024-05-01", "hr_rate", LOADS, max_corr=0.5)
+    ok["diagnostics"] = {"max_rhat": 1.02}
+    assert bas85.degenerate_fits([ok]) == {}
+
+
 # --- the whole pass ---------------------------------------------------------
 
 def test_the_script_runs_end_to_end_and_writes_its_verdict(tmp_path, capsys):
