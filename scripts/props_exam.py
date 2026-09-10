@@ -222,6 +222,22 @@ def choose_tau(frame: pd.DataFrame, model: str, sd_col: str, cut: str,
     return float(best.iloc[0]["tau"]), table
 
 
+def scored_rows(frame: pd.DataFrame, cut: str, whole_window: bool,
+                date_col: str = "date") -> tuple:
+    """The rows the selection-rule comparison is scored on, and their label.
+
+    The default is the held-out second half, which is what keeps a tau
+    *chosen* by `choose_tau` off the rows it is scored on. `whole_window`
+    returns everything instead, and is only reachable when the caller fixed
+    tau (and the matchup weight) on the command line — a constant carried in
+    from another window has nothing to hold out from, and halving the sample
+    to protect it would only widen the interval for nothing.
+    """
+    if whole_window:
+        return frame, "whole window"
+    return frame[frame[date_col].astype(str) >= cut], "second half"
+
+
 def matched_threshold(frame: pd.DataFrame, model: str, venue: pnl.Venue,
                       n_target: int, lo: float = 0.0, hi: float = 0.30,
                       iters: int = 40) -> float:
@@ -604,7 +620,30 @@ def main() -> None:
     ap.add_argument("--tau", type=float, default=None,
                     help="skip the walk-forward search and use this tau")
     ap.add_argument("--tau-grid", nargs="+", type=float, default=list(TAU_GRID))
+    ap.add_argument("--whole-window", action="store_true",
+                    help="score the selection-rule comparison on the whole "
+                         "window instead of the held-out second half. Legal "
+                         "only when every free constant is already fixed on "
+                         "the command line (--tau, and --matchup-weight when "
+                         "the matchup arm is on), because the half split is "
+                         "what keeps a *chosen* constant off the rows it is "
+                         "scored on. A replication that freezes the constants "
+                         "at values chosen on a different window has no such "
+                         "constant to protect, and splitting it in half only "
+                         "halves the sample")
     args = ap.parse_args()
+
+    if args.whole_window:
+        # Refuse rather than quietly score a searched constant on its own
+        # training rows: --whole-window removes the only guard there is.
+        if args.tau is None:
+            ap.error("--whole-window needs --tau; without it tau is chosen on "
+                     "the first half and the whole window includes it")
+        if args.matchup != "off" and args.matchup_weight is None \
+                and not args.priced_in:
+            ap.error("--whole-window needs --matchup-weight; without it the "
+                     "weight is chosen on the first half and the whole window "
+                     "includes it")
 
     closes_path = args.closes or default_closes()
     closes = pd.read_parquet(closes_path)
@@ -702,7 +741,6 @@ def main() -> None:
             fee_waived = venue_for(0.0, args.frictionless)
             as_quoted = venue
             train = frame[frame["date"].astype(str) < cut]
-            second = frame[frame["date"].astype(str) >= cut]
             if args.tau is not None:
                 tau, tau_table = args.tau, None
             else:
@@ -714,15 +752,16 @@ def main() -> None:
                 print("\n-- tau grid, first half, fee-waived flat-stake ROI --")
                 print(tau_table.to_string(index=False))
             print(f"chosen tau: {tau}")
+            scored, span = scored_rows(frame, cut, args.whole_window)
             posterior_table = posterior_comparison_by_stat(
-                second, primary, SD_COL, tau, args.headline, fee_waived,
+                scored, primary, SD_COL, tau, args.headline, fee_waived,
                 as_quoted, args.draws, args.seed)
-            print("\n-- second half: threshold @ 2pt vs. posterior @ tau vs. "
+            print(f"\n-- {span}: threshold @ 2pt vs. posterior @ tau vs. "
                   "threshold @ matched bet count (matched is a comparison "
                   "device, not a chosen parameter) --")
             print(posterior_table.to_string(index=False))
             if args.markdown:
-                print("\n### BAS-70 selection comparison, second half\n")
+                print(f"\n### BAS-70 selection comparison, {span}\n")
                 print(posterior_comparison_markdown(posterior_table))
 
     maker = None

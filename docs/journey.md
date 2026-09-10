@@ -120,10 +120,14 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    is moved by terms the chain lacks, not by a better rate table.
 5. **Money** — let the ledger accumulate. Hits props were the one
    after-fee positive and stay the primary test. The Stage 1 gate decides.
-   Meanwhile the July 2026 contracts the archive never fetched are being
-   pulled and scored as a frozen-constant replication of that lead
-   (BAS-93, `docs/props-replication.md`), before Kalshi's candle
-   retention takes them away.
+   The July 2026 contracts the archive never fetched were pulled (47,391
+   closes, the archive is now 750 games) and scored as a frozen-constant
+   replication of that lead (BAS-93, `docs/props-replication.md`). **It
+   did not replicate**: hits +0.6% fee-waived and −4.7% as quoted on July,
+   and BAS-70's number turns out to be the second half of one month (the
+   whole of August is negative as quoted). The market beats our price on
+   every stat on the new month too. The ledger keeps running; its prior
+   is now "roughly zero before the fee".
 
 The honest summary: the measurement layer is real and serving; the talent
 layer is the open question and this week's work puts the hierarchical

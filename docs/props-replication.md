@@ -101,3 +101,96 @@ the posterior columns are computed for completeness and not tested. The
 fee rate 0.07 is second-hand (`docs/props-exam-2026.md`). Kalshi's
 listing before 07-05 returning nothing may be retention rather than
 series inception; either way it is outside the window.
+
+## Results (2026-09-10)
+
+Evidence `data/eval/bas93/props_replication.json` and `.md`; runner
+`scripts/bas93_replication.py`; `scripts/props_exam.py --whole-window`
+(refuses to run unless τ and the matchup weight are fixed); the appended
+archive `data/market/prop_closes_2026.parquet` (78,134 → 125,525 closes,
+07-05 → 09-02, 750 games) and `kalshi_prop_candles_2026.parquet`
+(516,666 → 794,734), every pre-existing row retained.
+
+**Verdict: the hits lead does not replicate, and it was a half-window
+artefact to begin with. Descriptive by the vacuity rule; nothing ships.**
+
+### Fetch
+
+Kalshi lists nothing settled before 2026-07-05 in any of the seven
+series. 07-05 → 07-31: 47,939 traded contracts listed, 47,391 closes
+fetched at ~8 workers with ~1,900 HTTP 429s absorbed by the backoff.
+Retention: 98.1% of listed hits contracts returned a pre-first-pitch
+close; every archived contract has at least one candle. The empty dates
+(07-13 → 07-15) are the All-Star break, not fetch holes. One deviation:
+`--end` bounds a close timestamp at midnight UTC, which would have kept 4
+of 07-30's 10 games; a supplementary 07-30 → 08-01 pass closed that and
+the mirror hole on 07-31 in the original archive (645 → 1,720 contracts
+across the two dates).
+
+### Vacuity check, run before scoring
+
+| check | value | threshold | verdict |
+|---|---|---|---|
+| settled hits contracts | 13,578 | ≥ 10,000 | pass |
+| median candles per contract | **2.0** | ≥ 3 | **fail** |
+| July stat mix vs August, worst ratio | 1.07× | ≤ 1.5× | pass |
+
+So by the pre-registration's own rule every number below is descriptive
+and settles nothing. What the failing leg does and does not mean: the
+median close is still 15 minutes before first pitch (as in August), 99.4%
+settle yes or no, 99.0% of names resolve, every contract has a candle.
+What it tracks is thinner trade: 56.3% of July hits contracts traded
+before first pitch against 66.4% in August, median pre-pitch volume 4
+against 20. The missing hours would damage a maker replay; the taker exam
+scored here uses the close.
+
+### Predictions, descriptive
+
+Frozen constants (matchup weight 1.0, threshold 2 points, τ .65, taker
+rate .07, flat one unit, shared draw streams), whole July window, 37,360
+settled contracts, 292 games, 601 players.
+
+1. **Hits @ 2 pts: fails all three legs.** 4,336 bets, fee-waived
+   **+0.6%** (−4.4%, +6.1%), as quoted **−4.7%**. Floor was +4.0% with the
+   interval excluding zero and as quoted > 0.
+2. **League-rate control: fails on the gap.** 5,520 bets, as quoted
+   −6.8% (negative, as predicted); fee-waived −1.6%, so the model sits
+   +2.2 points above it against ≥ 5 required. The player term buys about
+   two points; the contract shape buys the rest.
+3. **Strikeouts: passes.** 2,631 bets, −6.1% as quoted.
+
+Context, July, edge ≥ 2 pts (fee-waived / as quoted): HR −6.7% / −13.2%;
+TB −1.5% / −5.1%; pooled −1.4% / −5.8%. Posterior rule at τ .65: hits
++2.5% / −3.9%. Brier (ours / matchup / market / league): hits .16708 /
+.16676 / .16562 / .16776; pooled .16586 / .16523 / .16085 / .16745. The
+market wins every stat. A fixed-seed random-edge null returns +6.9%
+fee-waived on July hits, above the model's +0.6%: there is very little
+signal in that cell.
+
+### Where the lead came from
+
+BAS-70's +9.5% / +12.1% is its **second half**; the machinery here
+reproduces those figures exactly (+9.537%, +12.135%, the published
+intervals and bet counts). On the **whole** August window the same rule is
++3.7% / +7.1% fee-waived and **negative as quoted** (−1.8% / −0.2%).
+Scored the way this ticket scores July, August itself would have missed
+prediction 1's floor. The lead was the second half of one month; July is
+the first out-of-sample look at it and lands at +0.6%.
+
+### What this means
+
+- **For the ledger:** nothing changes in serving. The paper ledger
+  (`docs/bankroll.md`, Stage 0.1) keeps running the hits gate with this
+  written next to it; its pre-registered expectation (+2% to +6% after
+  fees over the Stage 1 window) now carries a prior of "the archive says
+  roughly zero fee-waived and negative as quoted".
+- **For the props exam:** the market's price beats ours on every stat on
+  the new month too, and the taker fee remains the whole of the loss and
+  then some.
+- **For the archive:** the July month is in the tracked parquets now, so
+  every future props test has 750 games instead of 457.
+- Caveats: 44% of July hits contracts never traded before first pitch, so
+  their close is a quote midpoint and the fill assumption is more
+  optimistic than August's; the fee rate .07 is second-hand and on hits it
+  is the whole gap between +0.6% and −4.7%; 292 of 312 scheduled games are
+  covered.
