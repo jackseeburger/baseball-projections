@@ -1,5 +1,5 @@
 {
- "generated_at": "2026-09-10T14:06:36.625668+00:00",
+ "generated_at": "2026-09-10T16:22:45.928753+00:00",
  "as_of": "2026-09-10",
  "season": 2026,
  "season_end": "2026-09-27",
@@ -73,8 +73,8 @@
   "triples_per_double": 0.12,
   "note": "FanGraphs 2024 linear weights, same constants as the preseason wOBA on this site."
  },
- "stale": false,
- "stale_reason": null,
+ "stale": true,
+ "stale_reason": "training PA outcomes for [2017, 2018, 2019, 2021, 2022, 2023, 2024, 2025] are not in R2, so the live engines ({'k_rate': 'contact_additive', 'bb_rate': 'contact_additive', 'hr_rate': 'contact_additive', 'babip': 'contact_additive', 'iso': 'contact_additive'}, {'p_k_rate': 'marcel_pitcher_tuned', 'p_bb_rate': 'stuff_additive', 'p_hr_rate': 'stuff_additive', 'p_babip': 'marcel_pitcher_tuned'}) cannot be fitted. Showing the 2026-09-10 projection carried over from latest.json.",
  "players": [
   {
    "batter": 592450,
@@ -30546,5 +30546,6 @@
    "hr_ros": 0.34,
    "fip_ros": 5.31915
   }
- ]
+ ],
+ "requested_as_of": "2026-09-10"
 }
