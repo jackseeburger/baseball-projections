@@ -538,3 +538,133 @@ def test_candle_price_prefers_the_book_over_a_stale_print():
                  "yes_ask": {"close_dollars": "0.0600"}}
     assert backfill.candle_price(one_sided) == (None, None, 0.06, None)
     assert backfill.candle_price({"price": {}, "yes_bid": {}, "yes_ask": {}})[0] is None
+
+
+# ───────── the hierarchical posterior's width (BAS-92) ─────────
+
+def _width_long(cutoff, batters, sds, components=("k_rate", "bb_rate", "hr_rate")):
+    """A `scripts/run_bayes_width.py` frame: long over (batter, component)."""
+    rows = []
+    for b in batters:
+        for c in components:
+            rows.append({"batter": b, "component": c, "cutoff": cutoff,
+                         "predict_year": 2026, "mean": 0.2, "sd": sds[c],
+                         "lower": 0.1, "upper": 0.3, "unseen": False})
+    return pd.DataFrame(rows)
+
+
+def _width(tmp_path, frames):
+    for i, f in enumerate(frames):
+        f.to_parquet(tmp_path / f"bayes_width_{i}.parquet", index=False)
+    return props.BayesWidth.load(tmp_path)
+
+
+def test_bayes_width_moment_matches_the_posterior_sd_and_keeps_the_mean(tmp_path):
+    """The whole design in one assertion: the Beta's mean is still Marcel's
+    served rate, and its standard deviation is now the hierarchical model's."""
+    sds = {"k_rate": 0.020, "bb_rate": 0.011, "hr_rate": 0.0055}
+    bw = _width(tmp_path, [_width_long("2026-08-01", [1, 2], sds)])
+    rates = pd.DataFrame(
+        [_rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=500.0)],
+        index=pd.Index([1], name="batter"))
+    out = bw.apply(rates, "2026-08-15")
+
+    for served, model_comp in (("k", "k_rate"), ("bbhbp", "bb_rate"),
+                               ("hr", "hr_rate")):
+        a = float(out.loc[1, f"alpha_{served}"])
+        b = float(out.loc[1, f"beta_{served}"])
+        m = float(rates.loc[1, f"rate_{served}"])
+        assert a / (a + b) == pytest.approx(m, abs=1e-12)
+        var = a * b / ((a + b) ** 2 * (a + b + 1.0))
+        assert var ** 0.5 == pytest.approx(sds[model_comp], rel=1e-9)
+    # ISO and BABIP have no hierarchical model and keep Marcel's Beta exactly.
+    for served in ("iso", "babip"):
+        assert out.loc[1, f"alpha_{served}"] == rates.loc[1, f"alpha_{served}"]
+        assert out.loc[1, f"beta_{served}"] == rates.loc[1, f"beta_{served}"]
+    assert bw.audit["player_component_applied"] == 3
+    assert bw.audit["floor_bound"] == 0
+
+
+def test_bayes_width_takes_the_most_recent_cutoff_and_never_a_future_one(tmp_path):
+    tight = {"k_rate": 0.005, "bb_rate": 0.005, "hr_rate": 0.005}
+    loose = {"k_rate": 0.050, "bb_rate": 0.050, "hr_rate": 0.050}
+    bw = _width(tmp_path, [_width_long("2026-07-15", [1], tight),
+                           _width_long("2026-08-15", [1], loose)])
+    assert bw.cutoff_for("2026-08-14") == "2026-07-15"
+    assert bw.cutoff_for("2026-08-15") == "2026-08-15"
+    assert bw.cutoff_for("2026-09-30") == "2026-08-15"
+    # Before the first fit there is no hierarchical width, and borrowing the
+    # nearest one from the future would be a leak.
+    assert bw.cutoff_for("2026-07-14") is None
+
+    rates = pd.DataFrame(
+        [_rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=500.0)],
+        index=pd.Index([1], name="batter"))
+    early = bw.apply(rates, "2026-07-01")
+    pd.testing.assert_frame_equal(early, rates)
+    assert bw.audit["dates_without_cutoff"] == 1
+    narrow = bw.apply(rates, "2026-08-01")
+    wide = bw.apply(rates, "2026-08-20")
+    assert (narrow["alpha_k"] + narrow["beta_k"]).iloc[0] > \
+        (wide["alpha_k"] + wide["beta_k"]).iloc[0]
+
+
+def test_bayes_width_falls_back_to_the_beta_for_a_batter_it_has_no_row_for(tmp_path):
+    bw = _width(tmp_path, [_width_long(
+        "2026-08-01", [1], {"k_rate": 0.02, "bb_rate": 0.01, "hr_rate": 0.005})])
+    rates = pd.DataFrame(
+        [_rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=500.0),
+         _rates_row(0.18, 0.11, 0.041, 0.19, 0.310, total=400.0)],
+        index=pd.Index([1, 9], name="batter"))
+    out = bw.apply(rates, "2026-08-05")
+    for c in props.lu_model.COMPONENTS:
+        assert out.loc[9, f"alpha_{c}"] == rates.loc[9, f"alpha_{c}"]
+        assert out.loc[9, f"beta_{c}"] == rates.loc[9, f"beta_{c}"]
+    assert bw.audit["players_without_row"] == 1
+    assert bw.audit["player_component_missing"] == 3
+
+
+def test_bayes_width_floor_binds_only_on_an_impossible_moment_match(tmp_path):
+    """An sd at or past the Bernoulli bound has no proper Beta behind it; the
+    floor is what keeps that from becoming a nan price, and it is counted."""
+    impossible = {"k_rate": 0.9, "bb_rate": 0.9, "hr_rate": 0.9}
+    bw = _width(tmp_path, [_width_long("2026-08-01", [1], impossible)])
+    rates = pd.DataFrame(
+        [_rates_row(0.22, 0.09, 0.032, 0.16, 0.295, total=500.0)],
+        index=pd.Index([1], name="batter"))
+    out = bw.apply(rates, "2026-08-05")
+    assert bw.audit["floor_bound"] == 3
+    total = float(out.loc[1, "alpha_k"] + out.loc[1, "beta_k"])
+    assert total == pytest.approx(props.MIN_BETA_TOTAL)
+    assert out.loc[1, "alpha_k"] > 0 and out.loc[1, "beta_k"] > 0
+
+
+def test_bayes_width_moves_the_posterior_columns_and_nothing_else(tmp_path):
+    """Default off is bit-for-bit the served price; on, only the two
+    posterior columns move."""
+    ctx = _batter_ctx()
+    pitchers = {"season": 2026, "league": {"rate_k": 0.22},
+                "prior_counts": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                      "bbhbp", "hr", "outs"]),
+                "game_logs": pd.DataFrame(columns=["pitcher", "season", "bf", "k",
+                                                   "bbhbp", "hr", "outs", "date"])}
+    closes = pd.DataFrame([
+        {"game_pk": 700001, "game_date": "2026-08-15", "player_id": 2,
+         "prop_stat": "hr", "prop_line": 0.5, "p_over_close": 0.12, "over_hit": True},
+    ])
+    slots = {(700001, 2): 3}
+    served = props.price(closes, ctx, pitchers, slots, stats=("hr",))
+    # Off by default, and passing None explicitly is the same run.
+    pd.testing.assert_frame_equal(
+        served, props.price(closes, ctx, pitchers, slots, stats=("hr",),
+                            bayes_width=None))
+
+    bw = _width(tmp_path, [_width_long(
+        "2026-08-01", [1, 2], {"k_rate": 0.05, "bb_rate": 0.04, "hr_rate": 0.03})])
+    widened = props.price(closes, ctx, pitchers, slots, stats=("hr",),
+                          bayes_width=bw)
+    for col in ("p_model", "p_league", "p_market", "exp_pa"):
+        pd.testing.assert_series_equal(served[col], widened[col])
+    # A far wider HR posterior than the ballast implies has to widen P(over).
+    assert widened.loc[0, "p_over_sd"] > served.loc[0, "p_over_sd"]
+    assert bw.audit["player_component_applied"] == 6

@@ -48,6 +48,7 @@ did not.
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from math import comb, exp, factorial
 
 import numpy as np
@@ -89,6 +90,50 @@ PRICEABLE = ("hits", "hr", "tb", "k")
 UNPRICED = {"rbi": "needs lineup sequencing, not the batter's own rates",
             "sb": "no stolen-base rate in the component table",
             "outs": "start length is a manager decision, not a rate"}
+
+
+# ───────────── the hierarchical posterior's width (BAS-92) ─────────────
+#
+# docs/posterior-width.md. BAS-70 spent Marcel's Beta on the price and found
+# the selection rule worth nothing, and diagnosed why: the Beta's width barely
+# varies across contracts, so `P(edge > 0)` is a monotone relabel of the mean
+# edge. The hierarchical arm (`bayes_walk`, docs/bayes-components.md) has a
+# width that *can* vary — it carries between-season drift and population
+# uncertainty that a ballast on a count structurally cannot — for the three
+# components that are per-PA binomials.
+#
+# This arm swaps only the width. For each batter and each of K, BB and HR the
+# Beta's total pseudo-count is replaced by the method-of-moments total the
+# Bayes posterior sd implies, recentred on the served daily rate:
+#
+#     total = m(1 - m)/s^2 - 1,   alpha = total*m,   beta = total*(1 - m)
+#
+# with `m` the served `rate_<c>` and `s` the Bayes sd. `alpha/(alpha+beta)` is
+# still exactly `m`, so `p_model` and `p_matchup` — the prices actually sold —
+# do not move at all; the Beta's variance is exactly `s^2` wherever the floor
+# below does not bind. Only `p_over_bb` and `p_over_sd`, which are read off
+# the draws, change.
+#
+# Three approximations, named here rather than left implicit:
+#   * the Bayes sd is the fit at the most recent cutoff on or before the game
+#     date, so it is stale relative to the daily mean by up to a cutoff gap;
+#   * a method-of-moments Beta is not the logit-normal posterior the model
+#     actually has, only its first two moments;
+#   * the model's `bb_rate` is BB/PA (`is_bb`) while the served component is
+#     (BB+HBP)/PA, so the width borrowed for `bbhbp` is a walk-rate width
+#     carried onto a slightly larger denominator's mean.
+# BABIP and ISO keep the Beta (no hierarchical model exists for them), and so
+# do pitcher strikeouts (no pitcher-rate hierarchical model).
+
+# Model component -> the `lineups.COMPONENTS` name whose Beta it re-widths.
+BAYES_WIDTH_COMPONENTS = {"k_rate": "k", "bb_rate": "bbhbp", "hr_rate": "hr"}
+# A Beta is proper only for a positive total. `m(1-m)/s^2 - 1` goes
+# non-positive only when the posterior sd reaches the Bernoulli bound for that
+# mean (s^2 >= m(1-m)), which no fitted rate posterior should come near; this
+# floor is the guard that keeps an impossible moment match from producing a
+# `nan` price instead of a loud number, and `BayesWidth.audit` counts every
+# time it fires so "it never fired" is a reported fact and not an assumption.
+MIN_BETA_TOTAL = 1.0
 
 
 # ───────────────────────────── distributions ─────────────────────────────
@@ -244,6 +289,122 @@ MC_DRAWS = 2000
 # player+date (three lines on the same 1+/2+/3+ hits market) share draws
 # rather than independently resampling the same posterior.
 MC_SEED = 20260909
+
+
+@dataclass
+class BayesWidth:
+    """The `bayes_walk` posterior sds, indexed by cutoff, as a Beta re-width.
+
+    Built from the parquet files `scripts/run_bayes_width.py` writes — one per
+    cutoff, long over `(batter, component)` with `mean`, `sd`, `lower`,
+    `upper` and an `unseen` flag. Only `sd` is read: the mean stays Marcel's,
+    which is the whole design (see the module comment above).
+
+    `tables` maps a cutoff date to a frame indexed by batter with one
+    `sd_<component>` column per served component. `audit` accumulates what a
+    report has to be able to state — how many player-dates got a Bayes width,
+    how many fell back to the Beta because the fit had no row for them, and
+    how often `MIN_BETA_TOTAL` bound — across every call to `apply`, so the
+    numbers come from the run that produced the prices rather than from a
+    second pass that might not see the same rows.
+    """
+
+    tables: dict
+    min_total: float = MIN_BETA_TOTAL
+    audit: dict = field(default_factory=lambda: {
+        "dates": 0, "dates_without_cutoff": 0, "player_dates": 0,
+        "player_component_applied": 0, "player_component_missing": 0,
+        "players_without_row": 0, "floor_bound": 0,
+        "cutoff_used": {},
+    })
+
+    @classmethod
+    def load(cls, paths, min_total: float = MIN_BETA_TOTAL) -> "BayesWidth":
+        """Read one frame per cutoff from `paths` (a directory or a list).
+
+        A directory is globbed for `bayes_width_*.parquet`; the cutoff is the
+        frame's own `cutoff` column, never the filename, so a file that was
+        renamed cannot silently re-date a fit.
+        """
+        from pathlib import Path
+
+        paths = [paths] if isinstance(paths, (str, Path)) else list(paths)
+        files = []
+        for p in paths:
+            p = Path(p)
+            files.extend(sorted(p.glob("bayes_width_*.parquet")) if p.is_dir()
+                         else [p])
+        if not files:
+            raise FileNotFoundError(f"no bayes width parquet under {paths}")
+        long = pd.concat([pd.read_parquet(f) for f in files], ignore_index=True)
+        tables = {}
+        for cutoff, grp in long.groupby("cutoff"):
+            wide = pd.DataFrame(index=pd.Index(
+                sorted(grp["batter"].unique()), name="batter", dtype="int64"))
+            for model_comp, served in BAYES_WIDTH_COMPONENTS.items():
+                rows = grp[grp["component"] == model_comp]
+                wide[f"sd_{served}"] = pd.Series(
+                    rows["sd"].to_numpy(dtype=float),
+                    index=rows["batter"].astype("int64").to_numpy(),
+                ).reindex(wide.index)
+            tables[str(cutoff)] = wide
+        logger.info("bayes width: %d cutoffs %s, %d batter rows",
+                    len(tables), sorted(tables), len(long))
+        return cls(tables=tables, min_total=float(min_total))
+
+    @property
+    def cutoffs(self) -> list:
+        return sorted(self.tables)
+
+    def cutoff_for(self, as_of: str) -> str | None:
+        """The most recent cutoff on or before `as_of`, or None.
+
+        A game date before the earliest fit has no hierarchical width at all,
+        and the honest answer there is Marcel's Beta — not the nearest fit
+        from the future, which would leak.
+        """
+        past = [c for c in self.cutoffs if c <= str(as_of)]
+        return past[-1] if past else None
+
+    def apply(self, b_rates: pd.DataFrame, as_of: str) -> pd.DataFrame:
+        """`b_rates` with the K/BB/HR pseudo-counts re-widthed for `as_of`.
+
+        Returns the frame unchanged (a copy) when no fit predates the date.
+        Every batter or component the fit has no finite sd for keeps its
+        Beta, counted in `audit`.
+        """
+        self.audit["dates"] += 1
+        out = b_rates.copy()
+        if out.empty:
+            return out
+        cutoff = self.cutoff_for(as_of)
+        if cutoff is None:
+            self.audit["dates_without_cutoff"] += 1
+            return out
+        self.audit["cutoff_used"][str(as_of)] = cutoff
+        table = self.tables[cutoff].reindex(out.index)
+        self.audit["player_dates"] += len(out)
+        self.audit["players_without_row"] += int(table.isna().all(axis=1).sum())
+
+        for served in BAYES_WIDTH_COMPONENTS.values():
+            m = out[f"rate_{served}"].to_numpy(dtype=float)
+            s = table[f"sd_{served}"].to_numpy(dtype=float)
+            usable = (np.isfinite(s) & (s > 0)
+                      & np.isfinite(m) & (m > 0) & (m < 1))
+            self.audit["player_component_applied"] += int(usable.sum())
+            self.audit["player_component_missing"] += int((~usable).sum())
+            if not usable.any():
+                continue
+            with np.errstate(divide="ignore", invalid="ignore"):
+                total = m * (1.0 - m) / (s * s) - 1.0
+            binds = usable & ~(total > self.min_total)
+            self.audit["floor_bound"] += int(binds.sum())
+            total = np.where(total > self.min_total, total, self.min_total)
+            alpha = out[f"alpha_{served}"].to_numpy(dtype=float)
+            beta = out[f"beta_{served}"].to_numpy(dtype=float)
+            out[f"alpha_{served}"] = np.where(usable, total * m, alpha)
+            out[f"beta_{served}"] = np.where(usable, total * (1.0 - m), beta)
+        return out
 
 
 def _component_draws(rates_row, rng: np.random.Generator,
@@ -447,7 +608,8 @@ def slot_pa(slot: int | None) -> float:
 
 def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
           slots: dict, stats=PRICEABLE, pitcher_bf: str = "fixed",
-          matchup_ctx: dict | None = None) -> pd.DataFrame:
+          matchup_ctx: dict | None = None,
+          bayes_width: "BayesWidth | None" = None) -> pd.DataFrame:
     """Our probability for every archived prop close we can price.
 
     One pass per game date so each date's rate tables are built once. Returns
@@ -478,6 +640,13 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
     `p_over_sd` is the posterior standard deviation of `P(over)` across those
     same draws — the number the vacuity check and the selection rule both
     read by that name.
+
+    `bayes_width` (BAS-92, docs/posterior-width.md; default `None`, off) is a
+    `BayesWidth` holding the hierarchical arm's per-player posterior sds. Given
+    one, the Beta behind those two columns keeps its mean and takes its width
+    from the hierarchical model on K, BB and HR — see the module comment on
+    `BAYES_WIDTH_COMPONENTS`. `p_model`, `p_league` and `p_matchup` are
+    untouched either way: the price sold does not move, only the width.
     """
     wanted = closes[closes["prop_stat"].isin(list(stats))
                     & closes["player_id"].notna()].copy()
@@ -496,6 +665,14 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
     out = []
     for as_of, day in wanted.groupby("game_date", sort=True):
         b_rates = batter_rates(batter_ctx, as_of)
+        # The frame the Monte Carlo draws come from. Identical to `b_rates`
+        # unless the BAS-92 arm is on, in which case its K/BB/HR pseudo-counts
+        # carry the hierarchical posterior's width around the same means. Kept
+        # as its own name so it is visible that only the *draws* see it: every
+        # point price below reads `b_rates`, whose rate columns are the same
+        # numbers either way.
+        draw_rates = (b_rates if bayes_width is None
+                      else bayes_width.apply(b_rates, as_of))
         p_rates = pitcher_rates(pitcher_ctx, as_of)
         bf_lookup = starter_bf(pitcher_ctx, as_of) if pitcher_bf == "own" else {}
         mday = _matchup_day(matchup_ctx, as_of)
@@ -545,9 +722,9 @@ def price(closes: pd.DataFrame, batter_ctx: dict, pitcher_ctx: dict,
                                            per_pa_cache[pid], pa)
                 p_league = batter_prop_prob(row.prop_stat, row.prop_line,
                                             lg_per_pa, pa)
-                has_draws = pid in b_rates.index
+                has_draws = pid in draw_rates.index
                 if has_draws and pid not in batter_draw_cache:
-                    batter_draw_cache[pid] = _component_draws(b_rates.loc[pid], rng)
+                    batter_draw_cache[pid] = _component_draws(draw_rates.loc[pid], rng)
                     batter_per_pa_draws_cache[pid] = _per_pa_draws(
                         batter_draw_cache[pid], lg)
                 if mday is not None:
