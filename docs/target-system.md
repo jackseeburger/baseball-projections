@@ -112,8 +112,10 @@ leaves and carrying the variance.
 │  posterior rate ──► prop prices with real tails                  │
 │  posterior edge ──► Kelly that shades for uncertainty            │
 │  posterior WAR  ──► $/WAR ──► contract surplus value             │
-│  STATUS: props and Kelly live on POINT ESTIMATES — both wrong in  │
-│          a known direction. Contract valuation does not exist.    │
+│  STATUS: Beta width SPENT (BAS-70): price unchanged, selection    │
+│          a relabel, Kelly at the mean is right by proof. The      │
+│          hierarchical width is IN FLIGHT (BAS-92). Contract       │
+│          valuation does not exist.                                │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
