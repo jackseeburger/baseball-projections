@@ -173,8 +173,22 @@ def _run_split(
     )
 
     preds = {}
+    extra_cols: list[str] = []
     for name, provider in providers.items():
-        pred = provider(train, spec, predict_year)[[ident, "predicted"]]
+        raw = provider(train, spec, predict_year)
+        # A provider may carry extra per-batter columns alongside its point
+        # estimate, as long as it names them `pred_*` — the intervals
+        # `docs/bayes-measurement.md`'s prediction 4 scores coverage on
+        # (`pred_q10`, `pred_q90`) are the first. They ride through to the
+        # cell frame and are simply absent for a provider that has none, so
+        # every arm without an interval is untouched and nothing here has to
+        # know which arms those are.
+        extras = [c for c in raw.columns
+                  if c.startswith("pred_") and c != "predicted"]
+        pred = raw[[ident, "predicted", *extras]]
+        for c in extras:
+            if c not in extra_cols:
+                extra_cols.append(c)
         pred = pred.dropna(subset=["predicted"])
         if pred[ident].duplicated().any():
             raise ValueError(f"provider {name!r} returned duplicate {ident}s")
@@ -193,7 +207,8 @@ def _run_split(
         frames.append(joined)
     out = pd.concat(frames, ignore_index=True)
     return out[["component", "model", ident, "predicted",
-                "realized_successes", "realized_rate", "trials"]]
+                "realized_successes", "realized_rate", "trials",
+                *[c for c in extra_cols if c in out.columns]]]
 
 
 def score(results: pd.DataFrame) -> pd.DataFrame:

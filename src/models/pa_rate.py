@@ -1096,6 +1096,7 @@ def _project_unseen(
     n_samples: int,
     already: set[int],
     component: RateComponent | None = None,
+    extra_quantiles: tuple[float, ...] = (),
 ) -> list[dict]:
     """Population-level projections for batters the fit never saw.
 
@@ -1171,6 +1172,8 @@ def _project_unseen(
             comp.career_col: float("nan"),
             "last_season": int(projection_year),
             "unseen": True,
+            **{f"{comp.name}_q{q:g}": float(np.percentile(p, q))
+               for q in extra_quantiles},
         })
     logger.info("Projected %d batters from the fitted population (unseen)", len(rows))
     return rows
@@ -1182,6 +1185,7 @@ def generate_projections(
     projection_year: int = PROJECTION_YEAR,
     recent_seasons: int = 3,
     unseen: pd.DataFrame | None = None,
+    extra_quantiles: tuple[float, ...] = (),
 ) -> pd.DataFrame:
     """Generate rate projections from posterior samples.
 
@@ -1211,6 +1215,11 @@ def generate_projections(
         data: Model data dictionary.
         projection_year: Year to project (default 2026).
         recent_seasons: Include batters active within this many years.
+        extra_quantiles: additional posterior percentiles of the projected
+            rate to write, as `<component>_q<pct>` columns — e.g. `(10, 90)`
+            for the 80% interval `docs/bayes-measurement.md`'s prediction 4
+            scores coverage on. Empty by default, so every existing caller
+            gets the frame it always got, column for column.
         unseen: optional [batter, age, (stand)] frame of batters with no
             training PA — a September call-up at an April cutoff, or anyone
             below `min_pa`. Their ability is drawn from the fitted population,
@@ -1225,6 +1234,12 @@ def generate_projections(
     post = trace.posterior
     comp = get_component(data.get("component"))
     out_cols = comp.out_columns()
+    quantiles = tuple(float(q) for q in extra_quantiles)
+
+    def _extra(p: np.ndarray) -> dict:
+        """`<component>_q10`-style columns for the requested percentiles."""
+        return {f"{comp.name}_q{q:g}": float(np.percentile(p, q))
+                for q in quantiles}
 
     # Extract posterior arrays (chains × draws × ...)
     league_trend = post["league_trend"].values         # (chains, draws, n_seasons)
@@ -1333,6 +1348,7 @@ def generate_projections(
             comp.career_col: float(row[comp.career_col]),
             "last_season": int(row["last_season"]),
             "unseen": False,
+            **_extra(p),
         })
 
     results.extend(_project_unseen(
@@ -1341,6 +1357,7 @@ def generate_projections(
         projection_year, n_samples,
         already={int(r["batter"]) for r in results},
         component=comp,
+        extra_quantiles=quantiles,
     ))
 
     proj_df = pd.DataFrame(results)

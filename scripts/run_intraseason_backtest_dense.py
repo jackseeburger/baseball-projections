@@ -83,6 +83,22 @@ fit per cutoff and not three. Every fit record carries `joint_params`: the
 posterior mean and 95% interval of each pairwise ability correlation and each
 per-component `sigma_step`.
 
+**The measurement model (BAS-85, docs/bayes-measurement.md).** `--variants
+measurement_walk` (alias for `measurement+ability_walk`) fits K% and HR/PA in
+the joint graph and adds three *observed* channels to it: barrels per batted
+ball and mean exit velocity loading on the power latent, whiffs per swing on
+the contact latent (`src.models.pa_measurement`). The channels are read out
+of the committed monthly artifacts under the same month-lagged rule as the
+covariate block, and each carries its own trial count — which is the whole
+difference from BAS-83, where a pooled coefficient multiplied a thin window's
+average at full weight. Two components, not three: the pre-registration names
+K% and HR/PA, and there is no channel that loads on a walk-rate latent. Every
+fit record carries `measurement_params` (each loading's posterior with a 95%
+interval, their pairwise correlation, the latent scales) and `channels` (how
+much exposure each channel actually had). This arm and `bayes_walk` also
+write `pred_q10`/`pred_q90` into the cell parquet, which is what the
+pre-registration's coverage prediction is scored on.
+
 
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
@@ -286,6 +302,13 @@ VARIANT_OWN_PARAMS = {
     # decorative and predictions 1-3 are untestable rather than false.
     "contact": [f"beta_cov_{f}" for f in
                 ("ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean")],
+    # No entry for "measurement" (BAS-85) either, and for the same reason as
+    # "joint": what its pre-registration reads is intervals, not means. The
+    # channel loadings, their pairwise posterior correlation and the latent
+    # scales go into the fit record's `measurement_params`, written by
+    # `src.models.pa_measurement.measurement_param_summary` -- an interval
+    # per loading, because "the loading excludes zero" is the test and a
+    # mean alone cannot answer it.
 }
 
 

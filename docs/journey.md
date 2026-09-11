@@ -79,7 +79,15 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    nothing on HR/PA, and contact quality still beats it, so it is kept as
    the base for the next model and not served), and the measurement model where Statcast is a
    second observation of the same latent talent rather than a regressor
-   (BAS-85, `docs/bayes-measurement.md`). Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
+   (BAS-85, `docs/bayes-measurement.md`): **run on four seasons and it
+   loses everywhere**, every pre-registered prediction failing, HR/PA
+   5% behind the served contact engine and 3% behind the single-component
+   arm, K% 0 of 48 cutoffs. The channels load with stable, physical
+   loadings (2 mph of exit velocity per sd of talent); the joint fit
+   wastes them the way BAS-83's regressor did, and the whiff channel
+   measures the wrong thing for K%. The three-ticket structural arc is
+   closed: a fitted linear correction on Marcel is a better use of contact
+   quality than a latent-variable model at these sample sizes. Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
    real, and useless multiplied onto Marcel because Marcel's inputs already
    carry the park; their place is the hierarchical models' offset, to be
    scored there. After those: time and age as a process. The posterior

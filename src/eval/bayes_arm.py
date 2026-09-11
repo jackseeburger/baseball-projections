@@ -345,16 +345,28 @@ def joint_components(config: BayesArmConfig) -> tuple[str, ...]:
     the model so the cache key, the data load and the graph cannot disagree
     about which components a fit covers.
     """
-    from src.models.pa_joint import JOINT_COMPONENTS
     from src.models.pa_measurement import MEASUREMENT_COMPONENTS
 
-    return MEASUREMENT_COMPONENTS if config.measurement else JOINT_COMPONENTS
+    if config.measurement:
+        return MEASUREMENT_COMPONENTS
+    # Imported only on the joint path: `src.models.pa_joint` pulls pymc in at
+    # module scope, and this function has to answer for a measurement arm in
+    # CI, where pymc is not installed.
+    from src.models.pa_joint import JOINT_COMPONENTS
+
+    return JOINT_COMPONENTS
 
 
 def _measurement_summary(trace, channels) -> dict:
     from src.models.pa_measurement import measurement_param_summary
 
     return measurement_param_summary(trace, channels)
+
+
+def _parameterisation() -> str:
+    from src.models.pa_measurement import PARAMETERISATION
+
+    return PARAMETERISATION
 
 
 # --- the joint arm (BAS-84) ------------------------------------------------
@@ -494,7 +506,16 @@ def fit_joint_rate(
             # Prediction 1 (the channels load) and prediction 5 (the loadings
             # are not degenerate) are read off these, on every fit record.
             **({"measurement_params": _measurement_summary(trace, channels),
-                "channels": channels.summary()} if channels is not None else {}),
+                "channels": channels.summary(),
+                "parameterisation": _parameterisation()}
+               if channels is not None else {}),
+            # Which backend drew this posterior. NumPyro and PyMC do not
+            # agree on this graph -- NumPyro came back with R-hat 2.23 and
+            # the power loadings collapsed onto zero where PyMC found them
+            # comfortably away from it -- so a fit record that does not name
+            # its sampler cannot be read against another one.
+            "sampler": config.nuts_sampler,
+            "target_accept": config.target_accept,
         },
     )
 
@@ -604,9 +625,20 @@ def bayes_k_rate_provider(
         # asked for quantiles, so every other arm returns the two columns it
         # always returned.
         rename = {comp.projected_col: "predicted"}
-        rename.update({f"{comp.name}_q{q:g}": f"pred_q{q:g}"
-                       for q in config.extra_quantiles
-                       if f"{comp.name}_q{q:g}" in fit.projections.columns})
+        if config.extra_quantiles:
+            rename.update({f"{comp.name}_q{q:g}": f"pred_q{q:g}"
+                           for q in config.extra_quantiles
+                           if f"{comp.name}_q{q:g}" in fit.projections.columns})
+            # The posterior sd of the rate goes too. The quantiles above are
+            # an interval on the *rate*; the thing scored against them is a
+            # realised rate over a finite number of trials, which carries
+            # binomial noise the rate's own posterior does not. Reconstructing
+            # a predictive interval needs a scale, and two quantiles are not
+            # one -- so the sd rides along and the scoring pass can report
+            # coverage both ways (`scripts/analyze_bas85.py`) instead of
+            # committing here to a reading of the pre-registration.
+            if comp.out_columns()["std"] in fit.projections.columns:
+                rename[comp.out_columns()["std"]] = "pred_sd"
         out = fit.projections[["batter", *rename]].rename(columns=rename)
         return out[np.isfinite(out["predicted"])]
 

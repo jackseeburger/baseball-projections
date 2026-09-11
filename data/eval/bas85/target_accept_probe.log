@@ -1,0 +1,30 @@
+WARNING:src.models.pa_rate:Park factors not found at /home/user/baseball-projections/.claude/worktrees/agent-a8a972eeb9d54dcb0/data/parquet/park_factors.parquet; using neutral (1.0)
+/usr/local/lib/python3.11/dist-packages/pytensor/link/c/cmodule.py:2986: UserWarning: PyTensor could not link to a BLAS installation. Operations that might benefit from BLAS will be severely degraded.
+This usually happens when PyTensor is installed via pip. We recommend it be installed via conda/mamba/pixi instead.
+Alternatively, you can use an experimental backend such as Numba or JAX that perform their own BLAS optimizations, by setting `pytensor.config.mode == 'NUMBA'` or passing `mode='NUMBA'` when compiling a PyTensor function.
+For more options and details see https://pytensor.readthedocs.io/en/latest/troubleshooting.html#how-do-i-configure-test-my-blas-library
+  warnings.warn(
+ERROR:pymc.stats.convergence:There were 12 divergences after tuning. Increase `target_accept` or reparameterize.
+ERROR:pymc.stats.convergence:The effective sample size per chain is smaller than 100 for some parameters.  A higher number is needed for reliable rhat and ess computation. See https://arxiv.org/abs/1903.08008 for details
+/usr/local/lib/python3.11/dist-packages/arviz/stats/diagnostics.py:596: RuntimeWarning: invalid value encountered in scalar divide
+  (between_chain_variance / within_chain_variance + num_samples - 1) / (num_samples)
+/usr/local/lib/python3.11/dist-packages/arviz/stats/diagnostics.py:596: RuntimeWarning: invalid value encountered in scalar divide
+  (between_chain_variance / within_chain_variance + num_samples - 1) / (num_samples)
+
+numpyro target_accept=0.95: 299s rhat 2.231 (z_ability) ess 3 div 12
+   lambda_barrel   +0.0034 [-0.6123,+0.6098]
+   lambda_ev       -0.0049 [-0.1562,+0.1448]
+   lambda_whiff    +0.3601 [+0.3257,+0.4070]
+   sigma_ability {'k_rate': 0.3675312138116488, 'hr_rate': 0.2370660309929958}
+WARNING:src.models.pa_rate:Park factors not found at /home/user/baseball-projections/.claude/worktrees/agent-a8a972eeb9d54dcb0/data/parquet/park_factors.parquet; using neutral (1.0)
+ERROR:pymc.stats.convergence:The effective sample size per chain is smaller than 100 for some parameters.  A higher number is needed for reliable rhat and ess computation. See https://arxiv.org/abs/1903.08008 for details
+/usr/local/lib/python3.11/dist-packages/arviz/stats/diagnostics.py:596: RuntimeWarning: invalid value encountered in scalar divide
+  (between_chain_variance / within_chain_variance + num_samples - 1) / (num_samples)
+/usr/local/lib/python3.11/dist-packages/arviz/stats/diagnostics.py:596: RuntimeWarning: invalid value encountered in scalar divide
+  (between_chain_variance / within_chain_variance + num_samples - 1) / (num_samples)
+
+numpyro target_accept=0.99: 289s rhat 2.241 (z_step) ess 3 div 0
+   lambda_barrel   +0.0015 [-0.5944,+0.6135]
+   lambda_ev       -0.0014 [-0.1447,+0.1455]
+   lambda_whiff    +0.3890 [+0.3249,+0.4446]
+   sigma_ability {'k_rate': 0.3940788230796045, 'hr_rate': 0.23773558106657305}

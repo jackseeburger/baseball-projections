@@ -8,6 +8,7 @@ baselines cover — because `common_players=True` means an arm with thin
 coverage silently shrinks the player set every other arm is scored on, which
 changes the comparison rather than making it fair.
 """
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -16,6 +17,11 @@ import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+needs_pymc = pytest.mark.skipif(
+    any(importlib.util.find_spec(m) is None for m in ("pymc", "arviz")),
+    reason="MCMC deps (pymc/arviz) are not installed in CI",
+)
 
 from src.eval.backtest import COMPONENTS
 from src.eval.bayes_arm import (
@@ -152,3 +158,112 @@ class TestJointConfig:
     def test_a_joint_config_still_validates_its_component(self):
         with pytest.raises(ValueError):
             BayesArmConfig(joint=True, component="babip").rate_component()
+
+
+class TestMeasurementConfig:
+    """`measurement=True` is BAS-84's structure with the observation channels
+    added (BAS-85, docs/bayes-measurement.md). It implies `joint` — the
+    channels read a latent the joint graph writes — but over the two
+    components the pre-registration names, not three. None of this needs
+    pymc: `src.models.pa_measurement`'s graph builder is imported inside the
+    fit functions like every other model import here.
+    """
+
+    def test_measurement_replaces_joint_in_the_variant_slug(self):
+        """One structure, not two. "measurement+joint" would read as a joint
+        arm that also has channels, and there is no such arm — the channels
+        have nothing to load on without the joint graph."""
+        cfg = BayesArmConfig(measurement=True, joint=True)
+        assert cfg.variant() == "measurement"
+        assert BayesArmConfig(measurement=True, joint=True,
+                              ability_walk=True).variant() == (
+            "measurement+ability_walk")
+
+    def test_the_default_arm_is_unchanged_by_the_new_flag(self):
+        assert BayesArmConfig().measurement is False
+        assert BayesArmConfig().extra_quantiles == ()
+        assert BayesArmConfig().variant() == "flat"
+        assert BayesArmConfig(joint=True).variant() == "joint"
+
+    def test_the_label_says_a_measurement_fit_is_one(self):
+        cfg = BayesArmConfig(measurement=True, joint=True, component="hr_rate")
+        assert "(measurement)" in cfg.label()
+        assert "(joint)" not in cfg.label()
+
+    def test_it_fits_the_two_components_the_pre_registration_names(self):
+        """K% and HR/PA. BB% is not in scope — there is no whiff or barrel
+        channel that loads on a walk-rate latent, and a fit that carried BB%
+        anyway would pay for a third likelihood the ticket cannot read.
+
+        No pymc: a measurement arm's component list must be readable in CI,
+        which is why `joint_components` defers the `pa_joint` import to the
+        joint branch.
+        """
+        from src.eval.bayes_arm import joint_components
+
+        assert joint_components(BayesArmConfig(measurement=True, joint=True)) == (
+            "k_rate", "hr_rate")
+
+    @needs_pymc
+    def test_a_plain_joint_arm_still_fits_three_components(self):
+        """The joint list lives in `src.models.pa_joint`, which needs pymc."""
+        from src.eval.bayes_arm import joint_components
+
+        assert joint_components(BayesArmConfig(joint=True)) == (
+            "k_rate", "bb_rate", "hr_rate")
+
+    def test_the_memo_key_separates_a_measurement_fit_from_a_joint_one(self):
+        """`joint_key` blanks `component` and nothing else, so a flag added
+        to the config cannot be forgotten there — this is that check for
+        `measurement`, whose fit covers different components entirely."""
+        joint = BayesArmConfig(joint=True, component="k_rate")
+        meas = BayesArmConfig(joint=True, measurement=True, component="k_rate")
+        assert joint.joint_key() != meas.joint_key()
+        assert meas.joint_key() == BayesArmConfig(
+            joint=True, measurement=True, component="hr_rate").joint_key()
+
+    def test_the_quantiles_a_coverage_check_needs_ride_on_the_config(self):
+        """docs/bayes-measurement.md's prediction 4 scores the 80% posterior
+        interval, which no arm kept before: `extra_quantiles` is what puts
+        the 10th and 90th percentiles in the projection frame, and it is
+        empty by default so no other arm's frame gains a column."""
+        cfg = BayesArmConfig(measurement=True, joint=True,
+                             extra_quantiles=(10.0, 90.0))
+        assert cfg.extra_quantiles == (10.0, 90.0)
+        assert BayesArmConfig(joint=True).extra_quantiles == ()
+
+    def test_the_provider_renames_the_posterior_columns_it_carries(self):
+        """`<component>_q10` -> `pred_q10`, and the posterior sd along with
+        them, because the harness carries `pred_*` columns and nothing else.
+
+        The sd is there because the quantiles are an interval on the *rate*
+        and the thing scored against them is a realised rate over a finite
+        number of trials; reconstructing a predictive interval needs a scale,
+        and two quantiles are not one.
+        """
+        import numpy as np
+
+        from src.eval.bayes_arm import bayes_k_rate_provider
+        import src.eval.bayes_arm as arm
+
+        config = BayesArmConfig(component="hr_rate", measurement=True,
+                                joint=True, extra_quantiles=(10.0, 90.0))
+        projections = pd.DataFrame({
+            "batter": [1, 2], "projected_hr_rate": [0.03, 0.04],
+            "hr_rate_std": [0.004, 0.005],
+            "hr_rate_q10": [0.02, 0.03], "hr_rate_q90": [0.04, 0.05],
+        })
+        fit = type("F", (), {"projections": projections})()
+        # One fit, handed straight back: the rename is what is under test.
+        arm_module_fit = lambda *a, **k: fit  # noqa: E731
+        old = arm.fit_bayes_k_rate
+        arm.fit_bayes_k_rate = arm_module_fit
+        try:
+            provider = bayes_k_rate_provider("2024-06-01", 2024, config)
+            out = provider(pd.DataFrame({"batter": [1, 2], "season": [2024, 2024]}),
+                           COMPONENTS["hr_rate"], 2024)
+        finally:
+            arm.fit_bayes_k_rate = old
+        assert list(out.columns) == ["batter", "predicted", "pred_q10",
+                                     "pred_q90", "pred_sd"]
+        assert np.allclose(out["pred_sd"], [0.004, 0.005])
