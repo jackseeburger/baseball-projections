@@ -92,6 +92,15 @@ def audit(cells: pd.DataFrame) -> dict:
             a = pair[bas94.WALK_ARM]["pct_of_base_mae"]
             b = pair[NUMPYRO_WALK]["pct_of_base_mae"]
             out[f"{component}_gap_shift_pct"] = float(b - a)
+        # Prediction 2 is scored at the May cutoffs, so the May gap is the one
+        # that has to survive the swap — a pooled figure could hide a sampler
+        # effect concentrated exactly where the prediction lives.
+        out[f"{component}_regime"] = {
+            bas94.WALK_ARM: bas94.regime_split(cells, bas94.ARM_A,
+                                               bas94.WALK_ARM, component),
+            NUMPYRO_WALK: bas94.regime_split(cells, bas94.ARM_A,
+                                             NUMPYRO_WALK, component),
+        }
     return out
 
 
@@ -114,6 +123,13 @@ def main() -> None:
         if shift is not None:
             print(f"  arm A's gap moves {shift:+.2f} points of MAE when the "
                   f"comparator is refit under numpyro")
+        regime = payload.get(f"{component}_regime") or {}
+        for base, split in regime.items():
+            for name, r in split.items():
+                print(f"  {name:<8} vs {base:<20} "
+                      f"{r['pct_of_base_mae']:+7.2f}%  "
+                      f"t {r['clustered_by_player_t']:+.2f}  "
+                      f"{r['arm_wins_cells']}-{r['arm_loses_cells']}")
     args.out.write_text(json.dumps(payload, indent=1, default=float))
     print(f"\n-> {args.out}")
 

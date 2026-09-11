@@ -150,6 +150,31 @@ Scope: seasons [2022, 2024, 2025, 2026], 48 cutoffs, components ['hr_rate', 'k_r
 | `bayes_walk+prior_contact_cur` | `bayes_walk+prior_contact` | 3262 | -0.00155 | -5.06% | -3.88 | -6.89 | 12–0 |
 
 
+## The borrowed comparator's sampler
+
+`bayes_walk` is the BAS-85 grid's own rows, drawn under **pymc**; the prior-mean arms here run under **numpyro**. One season ([2024]) of `bayes_walk` was refit under numpyro to say what that costs. It is not nothing:
+
+- **hr_rate**: arm A's gap against the walk moves -0.85 points of MAE when the comparator is refit under numpyro.
+- **k_rate**: arm A's gap against the walk moves -2.92 points of MAE when the comparator is refit under numpyro.
+
+| arm | base | n | Δ MAE | % of base | t(player) | t(cell) | W–L |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bayes_walk_numpyro` | `bayes_walk` | 3785 | +0.00009 | +0.87% | 0.96 | 2.76 | 2–10 |
+| `bayes_walk+prior_contact` | `bayes_walk` | 3785 | -0.00007 | -0.63% | -0.40 | -2.03 | 8–4 |
+| `bayes_walk+prior_contact` | `bayes_walk_numpyro` | 3785 | -0.00016 | -1.48% | -1.02 | -7.85 | 11–1 |
+| `bayes_walk+prior_contact_cur` | `bayes_walk` | 3785 | -0.00027 | -2.62% | -1.53 | -3.65 | 9–3 |
+| `bayes_walk+prior_contact_cur` | `bayes_walk_numpyro` | 3785 | -0.00036 | -3.46% | -1.98 | -6.18 | 12–0 |
+
+
+| arm | base | n | Δ MAE | % of base | t(player) | t(cell) | W–L |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `bayes_walk_numpyro` | `bayes_walk` | 3785 | +0.00082 | +2.84% | 3.19 | 17.09 | 0–12 |
+| `bayes_walk+prior_contact` | `bayes_walk` | 3785 | +0.00159 | +5.54% | 3.33 | 6.58 | 0–12 |
+| `bayes_walk+prior_contact` | `bayes_walk_numpyro` | 3785 | +0.00077 | +2.62% | 1.93 | 3.00 | 4–8 |
+| `bayes_walk+prior_contact_cur` | `bayes_walk` | 3785 | +0.00064 | +2.24% | 1.59 | 3.37 | 4–8 |
+| `bayes_walk+prior_contact_cur` | `bayes_walk_numpyro` | 3785 | -0.00017 | -0.59% | -0.41 | -0.90 | 8–4 |
+
+
 ## Fit diagnostics
 
 ```

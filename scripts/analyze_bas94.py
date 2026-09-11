@@ -853,6 +853,24 @@ def render_result_md(payload: dict) -> str:
             lines += [f"### {component} — by season", ""]
             for season, rows in sorted(per.items()):
                 lines += [f"**{season}**", "", _md_table(rows), ""]
+    audit = payload.get("sampler_audit")
+    if audit:
+        lines += [
+            "## The borrowed comparator's sampler", "",
+            "`bayes_walk` is the BAS-85 grid's own rows, drawn under **pymc**; "
+            "the prior-mean arms here run under **numpyro**. One season "
+            f"({audit['scope']['seasons']}) of `bayes_walk` was refit under "
+            "numpyro to say what that costs. It is not nothing:", "",
+        ]
+        for component in audit["scope"]["components"]:
+            shift = audit.get(f"{component}_gap_shift_pct")
+            if shift is not None:
+                lines.append(
+                    f"- **{component}**: arm A's gap against the walk moves "
+                    f"{shift:+.2f} points of MAE when the comparator is refit "
+                    f"under numpyro.")
+        lines += ["", _md_table(audit.get("hr_rate", [])), "",
+                  _md_table(audit.get("k_rate", [])), ""]
     lines += ["## Fit diagnostics", "",
               "```", json.dumps(payload["fit_diagnostics"], indent=1), "```", ""]
     if payload.get("nonconverged_fits"):
@@ -1034,6 +1052,14 @@ def main() -> None:
                 c: score_prediction_5(clean, c)
                 for c in payload["scope"]["components"]},
         }
+
+    # The sampler audit rides along when it has been run
+    # (scripts/bas94_sampler_audit.py), so RESULT.md carries the one caveat a
+    # reader of the headline tables cannot see in them: the comparator was
+    # drawn by a different sampler than the arms under test.
+    audit_path = args.in_dir / "sampler_audit.json"
+    if audit_path.exists():
+        payload["sampler_audit"] = json.loads(audit_path.read_text())
 
     payload["verdict"] = verdict(payload)
 
