@@ -268,6 +268,7 @@ def by_season(cells: pd.DataFrame, component: str) -> dict:
         rows = []
         for arm, base in ((ARM_A, WALK_ARM), (ARM_A, CONTACT_ARM),
                           (ARM_A, MARCEL_ARM), (ARM_B, WALK_ARM),
+                          (ARM_B, CONTACT_ARM), (ARM_B, MARCEL_ARM),
                           (ARM_B, ARM_A)):
             r = _compare(g, arm, base, component)
             if r:
