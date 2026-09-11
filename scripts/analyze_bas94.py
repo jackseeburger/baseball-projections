@@ -987,11 +987,23 @@ def main() -> None:
                          "exactly these cells)")
     ap.add_argument("--out", type=Path, default=None)
     ap.add_argument("--result-md", type=Path, default=None)
+    ap.add_argument("--seasons", nargs="+", type=int, default=None,
+                    help="score only these seasons. The interim pass uses it "
+                         "so a run scored after season N covers season N and "
+                         "not the half of season N+1 that a queued shard has "
+                         "already written — a partial season is a different "
+                         "population at every cutoff it is missing")
     args = ap.parse_args()
 
     cells, audit = load_cells(args.in_dir, args.comparator_dir)
     fits_path = args.in_dir / "bayes_fits.json"
     fits = json.loads(fits_path.read_text()) if fits_path.exists() else []
+    if args.seasons:
+        want = set(int(s) for s in args.seasons)
+        cells = cells[cells["season"].isin(want)]
+        fits = [f for f in fits
+                if int(str(f.get("cutoff", "0"))[:4]) in want]
+        audit["scored_seasons"] = sorted(want)
     merged_path = args.in_dir / "cells_scored.parquet"
     cells.to_parquet(merged_path, index=False)
 
