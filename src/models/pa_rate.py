@@ -191,14 +191,29 @@ class ModelOptions:
         is *not* built here — `pa_covariates.attach_covariates` puts it on the
         data dict — so with covariates off nothing about the data pipeline
         changes either. See docs/bayes-covariates.md.
+    prior_mean_covariates: the batter's ability prior *mean* becomes
+        `mu_ability + sum_j gamma_j * x[batter, season, j]` instead of the
+        single league mean, with each `gamma_<feature> ~ Normal(0,
+        GAMMA_SIGMA)` and `x` the standardised prior-season contact profile
+        (`src.models.pa_prior_mean`). Named by set — `"contact"` is arm A
+        (the previous two full seasons only), `"contact_cur"` arm B (those
+        plus the cutoff season through its last month boundary). Under
+        `ability_walk` the prior mean applies to every season's level and the
+        walk's innovations are untouched, so a hitter's shrinkage target
+        moves with his measured profile year to year. `None` is off and is
+        bit-for-bit the model above. The design matrix is *not* built here —
+        `pa_prior_mean.attach_prior_mean` puts it on the data dict, keyed by
+        component because the K% feature set carries whiff share and HR/PA's
+        does not. See docs/bayes-prior-mean.md.
 
-    Both flags default to False and `covariates` to None, which is the model
-    exactly as it existed before any variant — `build_model(data)` with no
-    options is byte-for-byte the old behaviour.
+    Both flags default to False and `covariates` / `prior_mean_covariates` to
+    None, which is the model exactly as it existed before any variant —
+    `build_model(data)` with no options is byte-for-byte the old behaviour.
     """
     ability_walk: bool = False
     constrained_age: bool = False
     covariates: tuple[str, ...] | str | None = None
+    prior_mean_covariates: str | None = None
 
     def covariate_names(self) -> tuple[str, ...]:
         """The aggregates `covariates` selects, resolved and validated."""
@@ -206,16 +221,31 @@ class ModelOptions:
 
         return covariate_names(self.covariates)
 
+    def prior_mean_set(self) -> str | None:
+        """The prior-mean feature set's name, resolved and validated.
+
+        The *features* it selects are component-dependent (whiff share joins
+        the six batted-ball aggregates for K% only), so they are read off the
+        data dict's `pm_names` rather than from here — this says which set,
+        and `build_model` checks that the data dict agrees.
+        """
+        from src.models.pa_prior_mean import prior_mean_set
+
+        return prior_mean_set(self.prior_mean_covariates)
+
     def label(self) -> str:
         cov = self.covariate_names()
+        pm = self.prior_mean_set()
         return (f"ability={'walk' if self.ability_walk else 'flat'}, "
                 f"age={'constrained' if self.constrained_age else 'quadratic'}"
-                + (f", covariates={'+'.join(cov)}" if cov else ""))
+                + (f", covariates={'+'.join(cov)}" if cov else "")
+                + (f", prior_mean={pm}" if pm else ""))
 
     def to_dict(self) -> dict:
         return {"ability_walk": self.ability_walk,
                 "constrained_age": self.constrained_age,
-                "covariates": list(self.covariate_names()) or None}
+                "covariates": list(self.covariate_names()) or None,
+                "prior_mean_covariates": self.prior_mean_set()}
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -682,6 +712,35 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
     the model above unchanged; `tests/test_models/test_pa_rate.py` pins that
     bit-for-bit.
 
+    **`options.prior_mean_covariates` (BAS-94, docs/bayes-prior-mean.md).**
+    Moves the *prior mean* of the batter's ability off the single league
+    value:
+
+        ability[b, s] ~ Normal(mu_ability + gamma . x[b, s], sigma_ability)
+
+    implemented non-centred exactly as the league-mean version is —
+    `ability[b, s] = mu_ability + gamma . x[b, s] + sigma_ability *
+    z_ability[b]`, plus the walk's cumulative innovations when
+    `ability_walk` is on, which are **unchanged**: the profile moves the
+    level each season starts from, not how far a hitter may drift from it.
+    `x` is `data["pm_x"]`, the standardised contact profile measured on
+    *prior* seasons (`src.models.pa_prior_mean`), and each coefficient is its
+    own scalar RV named `gamma_<feature>` so the pre-registration's vacuity
+    check can read one at a time. `prior_mean_effect` is kept as a
+    Deterministic because the other half of that check — the between-player
+    sd of the prior mean against `sigma_ability` — is not computable from the
+    coefficients alone.
+
+    Two notes on what this is and is not. It is **not** `options.covariates`
+    under a new name even though the algebra coincides: that block reads the
+    *current* season's partial contact window, which is the errors-in-
+    variables failure docs/bayes-covariates.md diagnosed, and this one reads
+    two finished seasons. And because `player_ability` gains a season axis
+    whenever the prior mean is on, `generate_projections` needs no change —
+    it already reads the last fitted season of a (batter, season)
+    `player_ability`, which is the horizon-zero convention every other term
+    here uses.
+
     Args:
         data: Dictionary from prepare_model_data().
         options: Structural variants (default: neither — the original model).
@@ -710,6 +769,32 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
             raise ValueError(
                 f"cov_x has shape {np.shape(data['cov_x'])}, expected {expected} "
                 "(batter, season, covariate)")
+
+    pm_set = options.prior_mean_set()
+    pm_names: tuple[str, ...] = ()
+    if pm_set:
+        from src.models.pa_prior_mean import GAMMA_SIGMA
+
+        if data.get("pm_x") is None:
+            raise KeyError(
+                f"options.prior_mean_covariates asks for {pm_set!r} but this "
+                "model data carries no 'pm_x' — call src.models.pa_prior_mean."
+                "attach_prior_mean(data, ...) after prepare_model_data")
+        if data.get("pm_set") != pm_set:
+            raise ValueError(
+                f"model data carries prior-mean set {data.get('pm_set')!r} but "
+                f"the options ask for {pm_set!r} — the design matrix and the "
+                "coefficients would be measured on different windows")
+        pm_names = tuple(data.get("pm_names", ()))
+        if not pm_names:
+            raise ValueError(
+                f"model data carries a 'pm_x' for {pm_set!r} but no "
+                "'pm_names'; the coefficients would be unnamed")
+        expected = (data["n_batters"], data["n_seasons"], len(pm_names))
+        if np.shape(data["pm_x"]) != expected:
+            raise ValueError(
+                f"pm_x has shape {np.shape(data['pm_x'])}, expected {expected} "
+                "(batter, season, prior-mean feature)")
     comp = get_component(data.get("component"))
     league_init_mu = float(data.get("league_init_mu", comp.league_init_mu
                                     if comp.league_init_mu is not None else -1.27))
@@ -725,6 +810,8 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
         coords["pitcher"] = data["pitchers"]
     if cov_names:
         coords["covariate"] = list(cov_names)
+    if pm_names:
+        coords["prior_mean_feature"] = list(pm_names)
     if options.ability_walk:
         # n_seasons - 1 step innovations: one per transition between
         # consecutive seasons, not one per season. Coordinate is the season
@@ -768,6 +855,33 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
         # Non-centered parameterization: z ~ N(0,1), ability = mu + sigma * z
         z_ability = pm.Normal("z_ability", mu=0, sigma=1, dims="batter")
 
+        # ─── The prior's mean as a function of the profile (BAS-94) ───────
+        # `prior_mean_effect[b, s] = sum_j gamma_j * x[b, s, j]` — the amount
+        # by which this batter's shrinkage target sits off the league mean in
+        # season `s`. One scalar RV per feature, named `gamma_<feature>`, for
+        # the same reason BAS-83's coefficients are scalars: the vacuity
+        # check is about one feature's posterior at a time (barrel or EV on
+        # HR/PA, whiff on K%) and a named scalar is what the sweep's
+        # `variant_param_summary` can pick up without knowing a vector's
+        # coordinate order.
+        prior_mean_effect = None
+        if pm_names:
+            pm_x = pm.Data("pm_x", np.asarray(data["pm_x"], dtype="float64"),
+                           dims=("batter", "season", "prior_mean_feature"))
+            gammas = [pm.Normal(f"gamma_{name}", mu=0.0, sigma=GAMMA_SIGMA)
+                      for name in pm_names]
+            gamma_vec = pt.stack(gammas)                 # (prior_mean_feature,)
+            prior_mean_effect = pm.Deterministic(
+                "prior_mean_effect", (pm_x * gamma_vec).sum(axis=-1),
+                dims=("batter", "season"),
+            )
+
+        # `player_ability` gains a season axis whenever the prior mean is on,
+        # even without the walk: the target moves season to season because
+        # the *profile* does, and carrying that on the ability itself is what
+        # lets `generate_projections` read the last fitted season and need no
+        # change at all.
+        ability_by_season = options.ability_walk or prior_mean_effect is not None
         if options.ability_walk:
             # Season-0 level is exactly the flat model's ability. Every later
             # season adds a non-centered innovation; `pt.cumsum` builds the
@@ -785,8 +899,20 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
             # `ability0` broadcast across every season column — the flat
             # model, exactly, not approximately (tests/test_models/
             # test_pa_k_rate_options.py checks this at the graph level).
+            if prior_mean_effect is not None:
+                # The innovations are untouched: the profile moves the level
+                # each season starts from, the walk still says how far a
+                # hitter may drift from it.
+                walk = walk + prior_mean_effect
             player_ability = pm.Deterministic(
                 "player_ability", walk, dims=("batter", "season")
+            )
+        elif prior_mean_effect is not None:
+            player_ability = pm.Deterministic(
+                "player_ability",
+                (mu_ability + sigma_ability * z_ability)[:, None]
+                + prior_mean_effect,
+                dims=("batter", "season"),
             )
         else:
             player_ability = pm.Deterministic(
@@ -887,7 +1013,7 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
 
         # ─── Linear predictor ────────────────────────────────────────────
         ability_term = (
-            player_ability[batter_idx, season_idx] if options.ability_walk
+            player_ability[batter_idx, season_idx] if ability_by_season
             else player_ability[batter_idx]
         )
         if cov_term is not None:
@@ -934,6 +1060,7 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
         + data["n_teams"] - 1    # park_effect (zero-sum = n-1 free)
         + age_params
         + len(cov_names)         # beta_cov_<aggregate>, one scalar each
+        + len(pm_names)          # gamma_<feature>, one scalar each
         + (data["n_pitchers"] + 1 if include_pitcher else 0)  # z_pitcher, sigma
     )
     logger.info(f"Model built [{comp.name}]: ~{n_params:,} free parameters, "
@@ -941,7 +1068,8 @@ def build_model(data: dict, options: ModelOptions | None = None) -> pm.Model:
                 f"{', + pitcher effect' if include_pitcher else ''}"
                 f"{', ability_walk' if options.ability_walk else ''}"
                 f"{', constrained_age' if options.constrained_age else ''}"
-                f"{', covariates=' + '+'.join(cov_names) if cov_names else ''}")
+                f"{', covariates=' + '+'.join(cov_names) if cov_names else ''}"
+                f"{', prior_mean=' + pm_set + '(' + '+'.join(pm_names) + ')' if pm_names else ''}")
     return model
 
 

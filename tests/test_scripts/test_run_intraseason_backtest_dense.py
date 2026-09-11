@@ -411,6 +411,25 @@ class TestVariantParamNamesMatchTheModel:
                     f"in src.models.pa_covariates.CONTACT_COVARIATES"
                 )
                 continue
+            # Same story for the prior-mean coefficients (BAS-94): declared
+            # in a loop over `data["pm_names"]`, so the literal in the model
+            # is the f-string prefix and the names themselves come from
+            # `src.models.pa_prior_mean`. K% carries whiff share and HR/PA
+            # does not, so the union of both components' feature sets is what
+            # a declared name has to be in.
+            if name.startswith("gamma_"):
+                from src.models.pa_prior_mean import prior_mean_features
+
+                assert re.search(r'pm\.Normal\(f"gamma_\{name\}"', source), (
+                    "src/models/pa_rate.py no longer declares gamma_<feature>"
+                )
+                known = set(prior_mean_features("contact", "k_rate")) | set(
+                    prior_mean_features("contact", "hr_rate"))
+                assert name[len("gamma_"):] in known, (
+                    f"{name!r} is in VARIANT_OWN_PARAMS but names no feature "
+                    f"any prior-mean set in src.models.pa_prior_mean selects"
+                )
+                continue
             pattern = rf'pm\.(?:Deterministic|HalfNormal|Normal|Beta)\(\s*"{name}"'
             assert re.search(pattern, source), (
                 f"{name!r} is in VARIANT_OWN_PARAMS but no PyMC variable of that "
