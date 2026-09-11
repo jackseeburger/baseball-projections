@@ -1,0 +1,41 @@
+{
+ "shards": [
+  "2022_hr_rate",
+  "2022_k_rate",
+  "2024_hr_rate",
+  "2024_k_rate",
+  "2025_hr_rate",
+  "2025_k_rate",
+  "2026_hr_rate",
+  "2026_k_rate"
+ ],
+ "rows_per_shard": [
+  34272,
+  34272,
+  34065,
+  34065,
+  32508,
+  32508,
+  29358,
+  29358
+ ],
+ "rows": 260406,
+ "duplicate_rows_dropped": 0,
+ "arms": [
+  "bayes_walk+prior_contact",
+  "bayes_walk+prior_contact_cur",
+  "league_average",
+  "marcel",
+  "marcel_preseason",
+  "marcel_tuned",
+  "marcel_tuned_preseason",
+  "previous_season",
+  "season_to_date"
+ ],
+ "cells": 96,
+ "fits": 192,
+ "fit_arms": [
+  "bayes_walk+prior_contact",
+  "bayes_walk+prior_contact_cur"
+ ]
+}

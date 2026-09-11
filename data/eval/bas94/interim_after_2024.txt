@@ -1,0 +1,218 @@
+scope: seasons [2024], 12 cutoffs, arms ['bayes_walk', 'bayes_walk+prior_contact', 'bayes_walk+prior_contact_cur', 'contact_additive', 'league_average', 'marcel', 'marcel_preseason', 'marcel_tuned', 'marcel_tuned_preseason', 'previous_season', 'season_to_date']
+provenance: {"own_rows": 88605, "own_arms": ["bayes_walk+prior_contact", "bayes_walk+prior_contact_cur", "league_average", "marcel", "marcel_preseason", "marcel_tuned", "marcel_tuned_preseason", "previous_season", "season_to_date"], "comparator_source": "/home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas85/cells_bayes.parquet", "comparator_cells_matched": 31, "comparator_cells_wanted": 31, "comparator_rows": {"bayes_walk": 9845, "contact_additive": 9845}, "marcel_audit": {"n_common": 9845, "max_abs_diff": 0.0, "mean_abs_diff": 0.0, "n_only_here": 0, "n_only_there": 0}, "scored_seasons": [2024]}
+
+=== hr_rate (pooled, all cutoffs) ===
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3785    -0.00007    -0.63       -0.40     -2.03    8-4  
+bayes_walk+prior_contact      contact_additive            3785    +0.00046     4.66        2.32     10.83    0-12 
+bayes_walk+prior_contact      marcel_tuned                3785    -0.00005    -0.49       -0.27     -1.80    9-3  
+bayes_walk+prior_contact_cur  bayes_walk                  3785    -0.00027    -2.62       -1.53     -3.65    9-3  
+bayes_walk+prior_contact_cur  contact_additive            3785    +0.00025     2.56        1.19      6.21    0-12 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3785    -0.00021    -2.01       -1.51     -3.63   11-1  
+bayes_walk                    contact_additive            3785    +0.00053     5.32        2.84      7.57    2-10 
+contact_additive              marcel_tuned                3785    -0.00051    -4.92       -2.51     -9.17   11-1  
+
+=== k_rate (pooled, all cutoffs) ===
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3785    +0.00159     5.54        3.33      6.58    0-12 
+bayes_walk+prior_contact      contact_additive            3785    +0.00228     8.15        3.27      6.79    0-12 
+bayes_walk+prior_contact      marcel_tuned                3785    +0.00210     7.44        2.87      7.64    0-12 
+bayes_walk+prior_contact_cur  bayes_walk                  3785    +0.00064     2.24        1.59      3.37    4-8  
+bayes_walk+prior_contact_cur  contact_additive            3785    +0.00133     4.77        2.48      4.74    2-10 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3785    -0.00095    -3.13       -2.29     -7.63   12-0  
+bayes_walk                    contact_additive            3785    +0.00069     2.47        1.83      6.05    0-12 
+contact_additive              marcel_tuned                3785    -0.00019    -0.66       -0.65     -2.32    7-5  
+
+=== hr_rate: arm A vs bayes_walk, May / August ===
+arm                       base             n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact  bayes_walk    1050    -0.00011    -1.11       -0.61     -3.22    3-0  
+bayes_walk+prior_contact  bayes_walk     500    +0.00022     1.87        0.91      2.76    0-2  
+  may: cutoffs ['2024-05-01', '2024-05-13', '2024-05-27']
+  august: cutoffs ['2024-08-01', '2024-08-05']
+
+-- W-L by cutoff, arm A vs bayes_walk (hr_rate)
+mmdd         W-L   mean diff
+04-15      0-1      +0.00003
+04-29      1-0      -0.00013
+05-01      1-0      -0.00019
+05-13      1-0      -0.00008
+05-27      1-0      -0.00005
+06-10      1-0      -0.00026
+06-24      1-0      -0.00004
+07-01      1-0      -0.00012
+07-08      1-0      -0.00005
+07-22      0-1      +0.00003
+08-01      0-1      +0.00011
+08-05      0-1      +0.00033
+
+=== k_rate: arm A vs bayes_walk, May / August ===
+arm                       base             n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact  bayes_walk    1050    +0.00192     6.96        3.36      6.71    0-3  
+bayes_walk+prior_contact  bayes_walk     500    +0.00045     1.40        0.95      9.62    0-2  
+  may: cutoffs ['2024-05-01', '2024-05-13', '2024-05-27']
+  august: cutoffs ['2024-08-01', '2024-08-05']
+
+-- W-L by cutoff, arm A vs bayes_walk (k_rate)
+mmdd         W-L   mean diff
+04-15      0-1      +0.00270
+04-29      0-1      +0.00234
+05-01      0-1      +0.00231
+05-13      0-1      +0.00219
+05-27      0-1      +0.00115
+06-10      0-1      +0.00116
+06-24      0-1      +0.00066
+07-01      0-1      +0.00088
+07-08      0-1      +0.00105
+07-22      0-1      +0.00052
+08-01      0-1      +0.00052
+08-05      0-1      +0.00038
+
+=== gamma posteriors (arm A) ===
+-- hr_rate
+   gamma_barrel       mean +0.0092  [+0.0038, +0.0161]  excludes zero 0/12
+   gamma_ev90         mean +0.2461  [+0.2304, +0.2629]  excludes zero 12/12
+   gamma_ev_mean      mean +0.0314  [+0.0251, +0.0381]  excludes zero 0/12
+   gamma_hardhit      mean +0.0276  [+0.0220, +0.0334]  excludes zero 0/12
+   gamma_la_mean      mean +0.1649  [+0.1597, +0.1729]  excludes zero 12/12
+   gamma_sweetspot    mean -0.0187  [-0.0224, -0.0142]  excludes zero 3/12
+-- k_rate
+   gamma_barrel       mean -0.0030  [-0.0096, +0.0013]  excludes zero 0/12
+   gamma_ev90         mean +0.0671  [+0.0610, +0.0713]  excludes zero 12/12
+   gamma_ev_mean      mean -0.0395  [-0.0585, -0.0249]  excludes zero 9/12
+   gamma_hardhit      mean -0.0099  [-0.0222, +0.0057]  excludes zero 0/12
+   gamma_la_mean      mean +0.0205  [+0.0179, +0.0231]  excludes zero 11/12
+   gamma_sweetspot    mean +0.0012  [-0.0010, +0.0055]  excludes zero 0/12
+   gamma_whiff        mean +0.1665  [+0.1503, +0.1980]  excludes zero 12/12
+
+=== gamma posteriors (arm B) ===
+-- hr_rate
+   gamma_barrel       mean +0.2387  [+0.2251, +0.2457]  excludes zero 12/12
+   gamma_ev90         mean +0.0556  [+0.0462, +0.0755]  excludes zero 10/12
+   gamma_ev_mean      mean +0.0343  [+0.0245, +0.0437]  excludes zero 0/12
+   gamma_hardhit      mean +0.0734  [+0.0646, +0.0811]  excludes zero 10/12
+   gamma_la_mean      mean +0.1459  [+0.1413, +0.1521]  excludes zero 12/12
+   gamma_sweetspot    mean -0.0263  [-0.0315, -0.0228]  excludes zero 11/12
+-- k_rate
+   gamma_barrel       mean -0.0160  [-0.0211, -0.0128]  excludes zero 0/12
+   gamma_ev90         mean -0.0112  [-0.0185, -0.0057]  excludes zero 0/12
+   gamma_ev_mean      mean -0.0534  [-0.0618, -0.0448]  excludes zero 12/12
+   gamma_hardhit      mean +0.0409  [+0.0265, +0.0550]  excludes zero 7/12
+   gamma_la_mean      mean +0.0266  [+0.0240, +0.0312]  excludes zero 12/12
+   gamma_sweetspot    mean +0.0073  [+0.0009, +0.0105]  excludes zero 0/12
+   gamma_whiff        mean +0.3310  [+0.3274, +0.3356]  excludes zero 12/12
+
+=== vacuity: between-player sd of the prior mean (arm A) ===
+   hr_rate    sd(prior mean) 0.3631  sigma_ability 0.2121  ratio 1.713 [1.666, 1.764]  12/12 at or above 30%
+   k_rate     sd(prior mean) 0.1987  sigma_ability 0.2415  ratio 0.824 [0.733, 0.990]  12/12 at or above 30%
+
+=== coverage (hr_rate) ===
+predictive (coverage scored): target 75%-85%
+  bayes_walk+prior_contact              75.6%  n=3785    low  7.2%  high 17.3%  width 0.03176
+  bayes_walk+prior_contact_may          75.6%  n=1050    low  5.5%  high 18.9%  width 0.02953
+  bayes_walk+prior_contact_cur          72.7%  n=3785    low  8.2%  high 19.1%  width 0.02934
+  bayes_walk+prior_contact_cur_may      73.6%  n=1050    low  6.1%  high 20.3%  width 0.02679
+  bayes_walk                            76.3%  n=3785    low  6.9%  high 16.8%  width 0.03228
+  bayes_walk_may                        75.8%  n=1050    low  5.9%  high 18.3%  width 0.03008
+  contact_additive                     (no interval)
+rate_only (width scored): target 75%-85%
+  bayes_walk+prior_contact              42.3%  n=3785    low 26.0%  high 31.8%  width 0.01530
+  bayes_walk+prior_contact_may          46.1%  n=1050    low 23.2%  high 30.7%  width 0.01573
+  bayes_walk+prior_contact_cur          30.1%  n=3785    low 31.0%  high 38.8%  width 0.01021
+  bayes_walk+prior_contact_cur_may      33.3%  n=1050    low 28.4%  high 38.3%  width 0.01036
+  bayes_walk                            44.1%  n=3785    low 25.0%  high 30.9%  width 0.01622
+  bayes_walk_may                        47.1%  n=1050    low 22.4%  high 30.5%  width 0.01662
+  contact_additive                     (no interval)
+
+=== coverage (k_rate) ===
+predictive (coverage scored): target 75%-85%
+  bayes_walk+prior_contact              76.2%  n=3785    low 10.5%  high 13.3%  width 0.09402
+  bayes_walk+prior_contact_may          75.8%  n=1050    low 11.0%  high 13.1%  width 0.09290
+  bayes_walk+prior_contact_cur          72.1%  n=3785    low 12.9%  high 14.9%  width 0.08468
+  bayes_walk+prior_contact_cur_may      69.3%  n=1050    low 14.6%  high 16.1%  width 0.08135
+  bayes_walk                            76.4%  n=3785    low 10.4%  high 13.2%  width 0.09143
+  bayes_walk_may                        76.5%  n=1050    low 10.5%  high 13.0%  width 0.08956
+  contact_additive                     (no interval)
+rate_only (width scored): target 75%-85%
+  bayes_walk+prior_contact              55.8%  n=3785    low 20.2%  high 24.0%  width 0.06213
+  bayes_walk+prior_contact_may          59.8%  n=1050    low 18.9%  high 21.3%  width 0.06737
+  bayes_walk+prior_contact_cur          46.1%  n=3785    low 25.9%  high 28.0%  width 0.04768
+  bayes_walk+prior_contact_cur_may      48.8%  n=1050    low 25.0%  high 26.2%  width 0.05049
+  bayes_walk                            54.4%  n=3785    low 21.5%  high 24.2%  width 0.05822
+  bayes_walk_may                        59.6%  n=1050    low 18.6%  high 21.8%  width 0.06258
+  contact_additive                     (no interval)
+
+=== fit diagnostics ===
+{
+ "bayes_walk+prior_contact": {
+  "n_fits": 24,
+  "max_rhat": {
+   "median": 1.0252083700891776,
+   "max": 1.034312042575159,
+   "n_above_ceiling": 0
+  },
+  "min_ess_bulk": {
+   "median": 222.16713939628715,
+   "min": 96.70572022121361
+  },
+  "divergences": {
+   "total": 0,
+   "max": 0,
+   "n_fits_with_any": 0
+  },
+  "elapsed_s": {
+   "median": 141.35,
+   "min": 98.6,
+   "max": 188.9,
+   "total_hours": 0.9565277777777778
+  },
+  "samplers": [
+   "numpyro"
+  ]
+ },
+ "bayes_walk+prior_contact_cur": {
+  "n_fits": 24,
+  "max_rhat": {
+   "median": 1.026396145724437,
+   "max": 1.0631877568642225,
+   "n_above_ceiling": 0
+  },
+  "min_ess_bulk": {
+   "median": 161.32084026936505,
+   "min": 23.48218694939975
+  },
+  "divergences": {
+   "total": 0,
+   "max": 0,
+   "n_fits_with_any": 0
+  },
+  "elapsed_s": {
+   "median": 138.2,
+   "min": 94.3,
+   "max": 184.6,
+   "total_hours": 0.9350555555555555
+  },
+  "samplers": [
+   "numpyro"
+  ]
+ }
+}
+
+no fit exceeded R-hat 1.2
+
+=== pre-registered predictions ===
+  prediction_1_vacuity           HOLDS
+  prediction_2_may               FAILS
+  prediction_3_pooled            FAILS
+  prediction_4_mechanism         FAILS
+  prediction_5_calibration[hr_rate]HOLDS
+  prediction_5_calibration[k_rate]FAILS
+
+VERDICT: prediction 1 holds and prediction 2 fails: the prior moves, and shrinking toward similar players does not help where it should. Nothing ships.
+
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/analysis_bas94.json
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/RESULT.md
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/cells_scored.parquet
