@@ -925,7 +925,56 @@ def build_payload(cells: pd.DataFrame, fits: list[dict],
     payload["prediction_4_mechanism"] = score_prediction_4(splits_a)
     payload["prediction_5_calibration"] = {
         c: score_prediction_5(cells, c) for c in components}
+    payload["predictions"] = predictions_block(payload)
     return payload
+
+
+# The pre-registration's own wording, so a reader of the JSON does not have to
+# hold the doc open beside it — and so a prediction that gets reported under a
+# paraphrase is a diff here rather than a quiet re-statement.
+PREDICTION_TEXT = {
+    1: "(Vacuity) The prior moves. gamma on barrel or EV excludes zero for "
+       "HR/PA and on whiff for K% at >= 90% of cutoffs, and the between-player "
+       "sd of the prior mean is >= 30% of sigma_ability.",
+    2: "(Early season.) At the May cutoffs, arm A beats bayes_walk on HR/PA by "
+       ">= 3% of MAE (clustered |t| > 2.5) and on K% by >= 2%.",
+    3: "(Pooled.) Arm A vs bayes_walk pooled over all cutoffs <= -1.5% on "
+       "HR/PA (t < -2) and <= -1% on K%. Arm A vs contact_additive pooled "
+       "within +-1.5% on HR/PA.",
+    4: "(Mechanism.) The gain over bayes_walk shrinks from May to August "
+       "(August gap <= half the May gap).",
+    5: "(Calibration.) The 80% posterior interval covers the realised "
+       "rest-of-season rate 75-85% of the time; arm A's interval is narrower "
+       "than bayes_walk's at May.",
+}
+
+
+def predictions_block(payload: dict) -> dict:
+    """The five predictions in one place: text, numbers, pass/fail.
+
+    A flat block keyed 1-5 so a reader — or the ticket — can check them off
+    against the doc without walking the rest of the payload, and so
+    "prediction 3 failed" always means the same object.
+    """
+    keys = {1: "prediction_1_vacuity", 2: "prediction_2_may",
+            3: "prediction_3_pooled", 4: "prediction_4_mechanism"}
+    out: dict = {}
+    for i, key in keys.items():
+        out[str(i)] = {"text": PREDICTION_TEXT[i],
+                       "holds": bool(payload[key]["holds"]),
+                       "detail": payload[key]}
+    cal = payload["prediction_5_calibration"]
+    out["5"] = {
+        "text": PREDICTION_TEXT[5],
+        # One verdict per component, and the joint one beside it: the
+        # pre-registration states 5 as one claim, and a run where HR/PA is
+        # calibrated and K% is not has to read as a failure of the claim, not
+        # as half a pass.
+        "holds": bool(cal) and all(v["holds"] for v in cal.values()),
+        "by_component": {c: bool(v["holds"]) for c, v in cal.items()},
+        "detail": cal,
+    }
+    return out
 
 
 def main() -> None:

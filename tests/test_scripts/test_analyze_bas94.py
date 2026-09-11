@@ -433,3 +433,26 @@ def test_build_payload_and_result_md_render(tmp_path):
     assert "Verdict:" in md
     # JSON-serialisable with the default the script uses.
     json.dumps(payload, default=float)
+
+    # The two blocks the ticket reads: one entry per pre-registered
+    # prediction, carrying its own wording, and a verdict beside them.
+    assert set(payload["predictions"]) == {"1", "2", "3", "4", "5"}
+    for i, block in payload["predictions"].items():
+        assert block["text"] and isinstance(block["holds"], bool)
+    assert set(payload["verdict"]) >= {"predictions", "ships", "headline"}
+
+
+def test_prediction_5_is_one_claim_across_components():
+    """Stated once in the pre-registration, so a run that is calibrated on
+    HR/PA and not on K% fails it rather than passing half of it."""
+    payload = {
+        "prediction_1_vacuity": {"holds": True},
+        "prediction_2_may": {"holds": True},
+        "prediction_3_pooled": {"holds": True},
+        "prediction_4_mechanism": {"holds": True},
+        "prediction_5_calibration": {"hr_rate": {"holds": True},
+                                     "k_rate": {"holds": False}},
+    }
+    block = bas94.predictions_block(payload)
+    assert block["5"]["holds"] is False
+    assert block["5"]["by_component"] == {"hr_rate": True, "k_rate": False}
