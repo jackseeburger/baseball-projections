@@ -10,7 +10,17 @@
 # job of a season starts first and a season finishes as early as the schedule
 # allows — interims stay in order.
 #
-#   scripts/run_bas94_queue.sh 2025:k_rate 2025:hr_rate 2022:k_rate ...
+# The whole grid, from nothing:
+#
+#   scripts/run_bas94_queue.sh 2024:k_rate 2024:hr_rate 2025:k_rate \
+#       2025:hr_rate 2022:k_rate 2022:hr_rate 2026:k_rate 2026:hr_rate
+#   scripts/bas94_interim.sh 2026 2024 2025 2022 2026
+#
+# and the comparator's sampler audit, which needs the grid to exist first:
+#
+#   scripts/run_bas94_audit_job.sh 2024 hr_rate
+#   scripts/run_bas94_audit_job.sh 2024 k_rate
+#   python scripts/bas94_sampler_audit.py
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
