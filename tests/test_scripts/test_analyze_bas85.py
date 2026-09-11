@@ -417,6 +417,32 @@ def test_a_broken_fit_is_reported_both_ways_and_never_dropped_silently(
     assert pooled["n"] > payload["converged_only"]["comparisons"]["hr_rate"][0]["n"]
 
 
+def test_the_sensitivity_rescores_the_loadings_not_just_the_arms(tmp_path):
+    """Prediction 1 counts cutoffs, so a fit whose chains split contributes
+    an interval spanning both signs and drags the count down. Scored again
+    over the fits that converged it answers a different question -- do the
+    channels load -- and the grid's answer turned on exactly that."""
+    cells = _cells({5: 0.90, 7: 1.10})
+    cells.to_parquet(tmp_path / "cells_bayes.parquet", index=False)
+    good = _fit("2024-05-01", "hr_rate", LOADS, max_corr=0.5)
+    good["diagnostics"] = {"max_rhat": 1.03}
+    split = _fit("2024-07-01", "hr_rate", STRADDLES, max_corr=0.999)
+    split["diagnostics"] = {"max_rhat": 1.85}
+    (tmp_path / "bayes_fits.json").write_text(json.dumps([good, split]))
+
+    sys.argv = ["analyze_bas85.py", "--in-dir", str(tmp_path)]
+    bas85.main()
+    payload = json.loads((tmp_path / "analysis_bas85.json").read_text())
+
+    # Over everything: the straddling cutoff sinks it.
+    assert payload["prediction_1_loadings"]["lambda_ev"]["n_excluding_zero"] == 1
+    assert not payload["prediction_1_loadings"]["holds"]
+    # Over the converged fit alone: it holds.
+    p1c = payload["converged_only"]["prediction_1_loadings"]
+    assert p1c["lambda_ev"]["n_cutoffs"] == 1 and p1c["holds"]
+    assert payload["converged_only"]["prediction_5_vacuity"]["holds"]
+
+
 def test_no_degenerate_fits_means_no_sensitivity_section():
     """A clean grid should not grow a second set of tables saying the same
     thing as the first."""

@@ -611,10 +611,19 @@ def main() -> None:
     payload["degenerate_fits"] = bad
     if bad:
         clean = cells[~cells["cutoff"].isin(bad)]
+        clean_fits = [f for f in fits if f.get("cutoff") not in bad]
         payload["converged_only"] = {
             "excluded_cutoffs": sorted(bad),
             "n_cutoffs_total": int(cells["cutoff"].nunique()),
             "n_cutoffs_kept": int(clean["cutoff"].nunique()),
+            # Prediction 1 is a count over cutoffs, so a fit whose two chains
+            # disagreed about the latent's sign contributes an interval that
+            # spans both signs and drags the count down. Scored again over
+            # the fits that converged, it says whether the channels load --
+            # which is a different question from whether every fit sampled.
+            "prediction_1_loadings": score_prediction_1(
+                loadings_by_cutoff(clean_fits)),
+            "prediction_5_vacuity": score_prediction_5(clean_fits),
             "comparisons": {c: comparisons(clean, c)
                             for c in payload["scope"]["components"]},
             "prediction_2_early_season": score_prediction_2(
@@ -627,6 +636,14 @@ def main() -> None:
               f"cells are scored above and excluded below")
         for cut, why in sorted(bad.items()):
             print(f"   {cut}  {why}")
+        p1c = payload["converged_only"]["prediction_1_loadings"]
+        print(f"   prediction 1 over the converged fits: "
+              f"{'HOLDS' if p1c.get('holds') else 'FAILS'}"
+              + "".join(f"  {n} {p1c[n]['n_excluding_zero']}/"
+                        f"{p1c[n]['n_cutoffs']}" for n in LOADINGS))
+        p5c = payload["converged_only"]["prediction_5_vacuity"]
+        print(f"   prediction 5 over the converged fits: "
+              f"{'HOLDS' if p5c.get('holds') else 'FAILS'}")
         for component in payload["scope"]["components"]:
             print(f"\n=== {component}, converged cutoffs only "
                   f"({payload['converged_only']['n_cutoffs_kept']}"

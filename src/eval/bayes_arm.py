@@ -345,10 +345,16 @@ def joint_components(config: BayesArmConfig) -> tuple[str, ...]:
     the model so the cache key, the data load and the graph cannot disagree
     about which components a fit covers.
     """
-    from src.models.pa_joint import JOINT_COMPONENTS
     from src.models.pa_measurement import MEASUREMENT_COMPONENTS
 
-    return MEASUREMENT_COMPONENTS if config.measurement else JOINT_COMPONENTS
+    if config.measurement:
+        return MEASUREMENT_COMPONENTS
+    # Imported only on the joint path: `src.models.pa_joint` pulls pymc in at
+    # module scope, and this function has to answer for a measurement arm in
+    # CI, where pymc is not installed.
+    from src.models.pa_joint import JOINT_COMPONENTS
+
+    return JOINT_COMPONENTS
 
 
 def _measurement_summary(trace, channels) -> dict:

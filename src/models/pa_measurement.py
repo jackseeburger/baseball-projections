@@ -122,7 +122,13 @@ CHANNELS = ("barrel", "ev", "whiff")
 # is divided by the ability scale to leave the prior predictive where the
 # pre-registration put it. 1 / 0.4 = 2.5.
 LAMBDA_SIGMA_PER_SD = 1.0
-LAMBDA_SIGMA = LAMBDA_SIGMA_PER_SD / 0.4
+# `src.models.pa_joint.ABILITY_SD_PRIOR`, mirrored rather than imported: that
+# module pulls pymc in at module scope and this constant has to be readable in
+# CI, where pymc is not installed. `test_the_mirrored_ability_scale_still_
+# matches_the_joint_model` pins the two together wherever pymc does exist, so
+# the copy cannot drift silently.
+ABILITY_SD_PRIOR_REF = 0.4
+LAMBDA_SIGMA = LAMBDA_SIGMA_PER_SD / ABILITY_SD_PRIOR_REF
 # Prior scale on each channel intercept. Wide: the intercept absorbs the
 # league's own barrel rate and whiff rate, which the latent must not have to.
 ALPHA_SIGMA = 2.0

@@ -8,6 +8,7 @@ baselines cover — because `common_players=True` means an arm with thin
 coverage silently shrinks the player set every other arm is scored on, which
 changes the comparison rather than making it fair.
 """
+import importlib.util
 import sys
 from pathlib import Path
 
@@ -16,6 +17,11 @@ import pandas as pd
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+needs_pymc = pytest.mark.skipif(
+    any(importlib.util.find_spec(m) is None for m in ("pymc", "arviz")),
+    reason="MCMC deps (pymc/arviz) are not installed in CI",
+)
 
 from src.eval.backtest import COMPONENTS
 from src.eval.bayes_arm import (
@@ -187,11 +193,22 @@ class TestMeasurementConfig:
     def test_it_fits_the_two_components_the_pre_registration_names(self):
         """K% and HR/PA. BB% is not in scope — there is no whiff or barrel
         channel that loads on a walk-rate latent, and a fit that carried BB%
-        anyway would pay for a third likelihood the ticket cannot read."""
+        anyway would pay for a third likelihood the ticket cannot read.
+
+        No pymc: a measurement arm's component list must be readable in CI,
+        which is why `joint_components` defers the `pa_joint` import to the
+        joint branch.
+        """
         from src.eval.bayes_arm import joint_components
 
         assert joint_components(BayesArmConfig(measurement=True, joint=True)) == (
             "k_rate", "hr_rate")
+
+    @needs_pymc
+    def test_a_plain_joint_arm_still_fits_three_components(self):
+        """The joint list lives in `src.models.pa_joint`, which needs pymc."""
+        from src.eval.bayes_arm import joint_components
+
         assert joint_components(BayesArmConfig(joint=True)) == (
             "k_rate", "bb_rate", "hr_rate")
 

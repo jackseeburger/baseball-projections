@@ -450,11 +450,27 @@ def test_sigma_ability_is_not_in_a_denominator_anywhere(built):
 def test_the_loading_prior_matches_the_pre_registration_at_the_ability_scale():
     """The graph carries the loading per logit, the pre-registration states
     it per sd. The prior scale has to be divided by the ability scale or the
-    reparameterisation would quietly tighten (or loosen) the prior."""
-    from src.models.pa_joint import ABILITY_SD_PRIOR
-    from src.models.pa_measurement import LAMBDA_SIGMA, LAMBDA_SIGMA_PER_SD
+    reparameterisation would quietly tighten (or loosen) the prior.
 
-    assert LAMBDA_SIGMA == pytest.approx(LAMBDA_SIGMA_PER_SD / ABILITY_SD_PRIOR)
+    No pymc: this is the arithmetic, and it has to hold in CI.
+    """
+    from src.models.pa_measurement import (
+        ABILITY_SD_PRIOR_REF, LAMBDA_SIGMA, LAMBDA_SIGMA_PER_SD,
+    )
+
+    assert LAMBDA_SIGMA == pytest.approx(
+        LAMBDA_SIGMA_PER_SD / ABILITY_SD_PRIOR_REF)
+
+
+@needs_pymc
+def test_the_mirrored_ability_scale_still_matches_the_joint_model():
+    """`pa_measurement` copies `pa_joint`'s ability prior scale rather than
+    importing it, because importing would drag pymc into CI. The copy is
+    pinned here, where pymc exists, so it cannot drift in silence."""
+    from src.models.pa_joint import ABILITY_SD_PRIOR
+    from src.models.pa_measurement import ABILITY_SD_PRIOR_REF
+
+    assert ABILITY_SD_PRIOR_REF == ABILITY_SD_PRIOR
 
 
 def test_the_summary_converts_the_loadings_back_to_per_sd_units():
