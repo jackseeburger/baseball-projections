@@ -87,7 +87,12 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    wastes them the way BAS-83's regressor did, and the whiff channel
    measures the wrong thing for K%. The three-ticket structural arc is
    closed: a fitted linear correction on Marcel is a better use of contact
-   quality than a latent-variable model at these sample sizes. Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
+   quality than a latent-variable model at these sample sizes. One
+   structure remains untested, and it is the one every arm so far shared:
+   the prior shrinks every player to one league mean. BAS-94
+   (`docs/bayes-prior-mean.md`) makes the prior's mean a function of the
+   player's prior-season Statcast profile, so a thin sample shrinks toward
+   players who hit the ball like this. Pre-registered; running. Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
    real, and useless multiplied onto Marcel because Marcel's inputs already
    carry the park; their place is the hierarchical models' offset, to be
    scored there. After those: time and age as a process. The posterior
