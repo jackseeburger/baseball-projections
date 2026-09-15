@@ -1,61 +1,60 @@
 {
- "as_of": "2026-09-14T20:27:43+00:00",
- "n_records": 14707,
+ "as_of": "2026-09-15T01:24:15+00:00",
+ "n_records": 13320,
  "stats": {
-  "ts": "2026-09-14T20:27:43+00:00",
-  "kalshi_markets": 1967,
-  "kalshi_settled_props": 6566,
-  "polymarket_events": 388,
-  "polymarket_markets": 6174,
+  "ts": "2026-09-15T01:24:15+00:00",
+  "kalshi_markets": 2668,
+  "kalshi_settled_props": 4470,
+  "polymarket_events": 342,
+  "polymarket_markets": 6182,
   "props": {
-   "prop_markets": 9664,
-   "named": 9664,
-   "resolved": 9560,
-   "unresolved_names": 6,
-   "players": 416,
-   "resolution_rate": 0.9892,
+   "prop_markets": 8351,
+   "named": 8351,
+   "resolved": 8277,
+   "unresolved_names": 5,
+   "players": 371,
+   "resolution_rate": 0.9911,
    "by_stat": {
     "hits": {
-     "markets": 2463,
-     "resolved": 2436
+     "markets": 2130,
+     "resolved": 2112
     },
     "hr": {
-     "markets": 1458,
-     "resolved": 1441
+     "markets": 1339,
+     "resolved": 1326
     },
     "k": {
-     "markets": 640,
-     "resolved": 640
+     "markets": 508,
+     "resolved": 508
     },
     "outs": {
-     "markets": 140,
-     "resolved": 140
+     "markets": 117,
+     "resolved": 117
     },
     "rbi": {
-     "markets": 1263,
-     "resolved": 1245
+     "markets": 1073,
+     "resolved": 1060
     },
     "sb": {
-     "markets": 532,
-     "resolved": 526
+     "markets": 458,
+     "resolved": 452
     },
     "tb": {
-     "markets": 3168,
-     "resolved": 3132
+     "markets": 2726,
+     "resolved": 2702
     }
    },
    "unresolved_sample": [
     "Jos\u00e9 Ferm\u00edn",
     "Leonardo Bernal",
-    "Max Muncy",
     "Max Muncy (ATH)",
     "Max Muncy (LAD)",
     "T.J. Rumfield"
    ]
   },
   "mapping": {
-   "game_markets": 11935,
-   "mapped": 11757,
+   "game_markets": 10668,
+   "mapped": 10490,
    "swapped": 0,
    "day_shift": 0,
    "unmapped": 178
@@ -68,10 +67,10 @@
    "home_id": 141,
    "away_id": 116,
    "game_start": "2026-09-14T23:07:00+00:00",
-   "kalshi_p_home": 0.565,
-   "kalshi_volume": 104787.03,
-   "polymarket_p_home": 0.565,
-   "polymarket_volume": 90794.57195299998
+   "kalshi_p_home": 0.345,
+   "kalshi_volume": 548371.78,
+   "polymarket_p_home": 0.325,
+   "polymarket_volume": 452818.408483
   },
   {
    "game_pk": 823006,
@@ -79,10 +78,10 @@
    "home_id": 138,
    "away_id": 137,
    "game_start": "2026-09-14T23:45:00+00:00",
-   "kalshi_p_home": 0.575,
-   "kalshi_volume": 89012.03,
-   "polymarket_p_home": 0.575,
-   "polymarket_volume": 8277.930874
+   "kalshi_p_home": 0.765,
+   "kalshi_volume": 302982.77,
+   "polymarket_p_home": 0.795,
+   "polymarket_volume": 45075.22148999999
   },
   {
    "game_pk": 823575,
@@ -90,10 +89,10 @@
    "home_id": 121,
    "away_id": 110,
    "game_start": "2026-09-14T23:10:00+00:00",
-   "kalshi_p_home": 0.575,
-   "kalshi_volume": 90184.03,
-   "polymarket_p_home": 0.575,
-   "polymarket_volume": 299092.405851
+   "kalshi_p_home": 0.605,
+   "kalshi_volume": 522007.99,
+   "polymarket_p_home": 0.535,
+   "polymarket_volume": 494422.8801389998
   },
   {
    "game_pk": 823656,
@@ -101,10 +100,10 @@
    "home_id": 142,
    "away_id": 147,
    "game_start": "2026-09-14T23:40:00+00:00",
-   "kalshi_p_home": 0.465,
-   "kalshi_volume": 54443.97,
-   "polymarket_p_home": 0.465,
-   "polymarket_volume": 42235.38087800001
+   "kalshi_p_home": 0.54,
+   "kalshi_volume": 384710.8,
+   "polymarket_p_home": 0.325,
+   "polymarket_volume": 322899.26618000004
   },
   {
    "game_pk": 823981,
@@ -112,10 +111,10 @@
    "home_id": 108,
    "away_id": 136,
    "game_start": "2026-09-15T01:38:00+00:00",
-   "kalshi_p_home": 0.495,
-   "kalshi_volume": 31898.22,
-   "polymarket_p_home": 0.495,
-   "polymarket_volume": 63609.369773
+   "kalshi_p_home": 0.505,
+   "kalshi_volume": 107995.91,
+   "polymarket_p_home": 0.505,
+   "polymarket_volume": 286958.26390399993
   },
   {
    "game_pk": 824308,
@@ -123,10 +122,10 @@
    "home_id": 115,
    "away_id": 135,
    "game_start": "2026-09-15T00:40:00+00:00",
-   "kalshi_p_home": 0.345,
-   "kalshi_volume": 98959.24,
-   "polymarket_p_home": 0.345,
-   "polymarket_volume": 69492.409856
+   "kalshi_p_home": 0.08,
+   "kalshi_volume": 306154.28,
+   "polymarket_p_home": 0.085,
+   "polymarket_volume": 270389.16468400013
   },
   {
    "game_pk": 824386,
@@ -134,21 +133,10 @@
    "home_id": 114,
    "away_id": 145,
    "game_start": "2026-09-14T22:40:00+00:00",
-   "kalshi_p_home": 0.595,
-   "kalshi_volume": 100021.26,
-   "polymarket_p_home": 0.595,
-   "polymarket_volume": 36976.71850699999
-  },
-  {
-   "game_pk": 824465,
-   "date": "2026-09-14",
-   "home_id": 113,
-   "away_id": 119,
-   "game_start": "2026-09-14T22:40:00+00:00",
-   "kalshi_p_home": 0.335,
-   "kalshi_volume": 39453.49,
-   "polymarket_p_home": 0.345,
-   "polymarket_volume": 231769.179067
+   "kalshi_p_home": 0.015,
+   "kalshi_volume": 1160666.58,
+   "polymarket_p_home": 0.0145,
+   "polymarket_volume": 390403.05414400034
   },
   {
    "game_pk": 824629,
@@ -156,10 +144,10 @@
    "home_id": 112,
    "away_id": 144,
    "game_start": "2026-09-14T23:40:00+00:00",
-   "kalshi_p_home": 0.545,
-   "kalshi_volume": 30531.4,
-   "polymarket_p_home": 0.555,
-   "polymarket_volume": 18401.452788
+   "kalshi_p_home": 0.995,
+   "kalshi_volume": 441767.88,
+   "polymarket_p_home": 0.986,
+   "polymarket_volume": 92053.13376300006
   },
   {
    "game_pk": 825034,
@@ -167,10 +155,10 @@
    "home_id": 109,
    "away_id": 146,
    "game_start": "2026-09-15T01:40:00+00:00",
-   "kalshi_p_home": 0.545,
-   "kalshi_volume": 40064.01,
-   "polymarket_p_home": 0.545,
-   "polymarket_volume": 40244.190977000006
+   "kalshi_p_home": 0.555,
+   "kalshi_volume": 123393.93,
+   "polymarket_p_home": 0.555,
+   "polymarket_volume": 210580.516188
   },
   {
    "game_pk": 822683,
@@ -178,10 +166,10 @@
    "home_id": 120,
    "away_id": 143,
    "game_start": "2026-09-15T22:45:00+00:00",
-   "kalshi_p_home": 0.355,
-   "kalshi_volume": 613.78,
-   "polymarket_p_home": 0.36,
-   "polymarket_volume": 540.387078
+   "kalshi_p_home": 0.345,
+   "kalshi_volume": 725.91,
+   "polymarket_p_home": 0.355,
+   "polymarket_volume": 1311.2970779999998
   },
   {
    "game_pk": 822762,
@@ -189,10 +177,10 @@
    "home_id": 141,
    "away_id": 116,
    "game_start": "2026-09-15T23:07:00+00:00",
-   "kalshi_p_home": 0.555,
-   "kalshi_volume": 380.07,
+   "kalshi_p_home": 0.565,
+   "kalshi_volume": 2930.09,
    "polymarket_p_home": 0.555,
-   "polymarket_volume": 169.036103
+   "polymarket_volume": 189.036103
   },
   {
    "game_pk": 822849,
@@ -200,8 +188,8 @@
    "home_id": 140,
    "away_id": 111,
    "game_start": "2026-09-16T00:05:00+00:00",
-   "kalshi_p_home": 0.485,
-   "kalshi_volume": 658.18,
+   "kalshi_p_home": 0.475,
+   "kalshi_volume": 1378.39,
    "polymarket_p_home": 0.465,
    "polymarket_volume": 527.97
   },
@@ -212,9 +200,9 @@
    "away_id": 133,
    "game_start": "2026-09-15T22:40:00+00:00",
    "kalshi_p_home": 0.685,
-   "kalshi_volume": 1378.2,
+   "kalshi_volume": 1674.71,
    "polymarket_p_home": 0.685,
-   "polymarket_volume": 731.704011
+   "polymarket_volume": 736.0518359999999
   },
   {
    "game_pk": 823007,
@@ -223,8 +211,8 @@
    "away_id": 137,
    "game_start": "2026-09-15T23:45:00+00:00",
    "kalshi_p_home": 0.595,
-   "kalshi_volume": 218.88,
-   "polymarket_p_home": 0.585,
+   "kalshi_volume": 403.96,
+   "polymarket_p_home": 0.595,
    "polymarket_volume": 118.558621
   },
   {
@@ -233,10 +221,10 @@
    "home_id": 134,
    "away_id": 158,
    "game_start": "2026-09-15T22:40:00+00:00",
-   "kalshi_p_home": 0.325,
-   "kalshi_volume": 1497.78,
-   "polymarket_p_home": 0.325,
-   "polymarket_volume": 507.826194
+   "kalshi_p_home": 0.315,
+   "kalshi_volume": 1709.19,
+   "polymarket_p_home": 0.315,
+   "polymarket_volume": 1653.266018
   },
   {
    "game_pk": 823574,
@@ -244,10 +232,10 @@
    "home_id": 121,
    "away_id": 110,
    "game_start": "2026-09-15T23:10:00+00:00",
-   "kalshi_p_home": 0.535,
-   "kalshi_volume": 106.53,
+   "kalshi_p_home": 0.545,
+   "kalshi_volume": 1599.04,
    "polymarket_p_home": 0.545,
-   "polymarket_volume": 18.181817
+   "polymarket_volume": 23.636363
   },
   {
    "game_pk": 823654,
@@ -255,10 +243,10 @@
    "home_id": 142,
    "away_id": 147,
    "game_start": "2026-09-15T23:40:00+00:00",
-   "kalshi_p_home": 0.395,
-   "kalshi_volume": 1139.88,
-   "polymarket_p_home": 0.385,
-   "polymarket_volume": 256.238291
+   "kalshi_p_home": 0.375,
+   "kalshi_volume": 1532.67,
+   "polymarket_p_home": 0.375,
+   "polymarket_volume": 1127.2892419999998
   },
   {
    "game_pk": 823980,
@@ -266,10 +254,10 @@
    "home_id": 108,
    "away_id": 136,
    "game_start": "2026-09-16T01:38:00+00:00",
-   "kalshi_p_home": 0.405,
-   "kalshi_volume": 539.61,
-   "polymarket_p_home": 0.405,
-   "polymarket_volume": 1402.9412710000001
+   "kalshi_p_home": 0.395,
+   "kalshi_volume": 1605.46,
+   "polymarket_p_home": 0.395,
+   "polymarket_volume": 1449.1412710000002
   },
   {
    "game_pk": 824143,
@@ -278,9 +266,9 @@
    "away_id": 118,
    "game_start": "2026-09-16T00:10:00+00:00",
    "kalshi_p_home": 0.595,
-   "kalshi_volume": 1012.05,
-   "polymarket_p_home": 0.585,
-   "polymarket_volume": 1065.48
+   "kalshi_volume": 1116.67,
+   "polymarket_p_home": 0.595,
+   "polymarket_volume": 1110.694
   },
   {
    "game_pk": 824307,
@@ -288,10 +276,10 @@
    "home_id": 115,
    "away_id": 135,
    "game_start": "2026-09-16T00:40:00+00:00",
-   "kalshi_p_home": 0.41,
-   "kalshi_volume": 36.99,
-   "polymarket_p_home": 0.415,
-   "polymarket_volume": 973.15
+   "kalshi_p_home": 0.395,
+   "kalshi_volume": 129.12,
+   "polymarket_p_home": 0.4,
+   "polymarket_volume": 978.15
   },
   {
    "game_pk": 824384,
@@ -299,10 +287,10 @@
    "home_id": 114,
    "away_id": 145,
    "game_start": "2026-09-15T22:40:00+00:00",
-   "kalshi_p_home": 0.54,
-   "kalshi_volume": 166.64,
-   "polymarket_p_home": 0.545,
-   "polymarket_volume": 189.756604
+   "kalshi_p_home": 0.535,
+   "kalshi_volume": 4379.56,
+   "polymarket_p_home": 0.535,
+   "polymarket_volume": 8138.728733999999
   },
   {
    "game_pk": 824466,
@@ -310,10 +298,10 @@
    "home_id": 113,
    "away_id": 119,
    "game_start": "2026-09-15T22:40:00+00:00",
-   "kalshi_p_home": 0.345,
-   "kalshi_volume": 95.94,
-   "polymarket_p_home": 0.355,
-   "polymarket_volume": 109.30769
+   "kalshi_p_home": 0.325,
+   "kalshi_volume": 241.59,
+   "polymarket_p_home": 0.335,
+   "polymarket_volume": 1384.717218
   },
   {
    "game_pk": 824627,
@@ -321,10 +309,10 @@
    "home_id": 112,
    "away_id": 144,
    "game_start": "2026-09-15T23:40:00+00:00",
-   "kalshi_p_home": 0.555,
-   "kalshi_volume": 541.53,
-   "polymarket_p_home": 0.545,
-   "polymarket_volume": 28.601816999999997
+   "kalshi_p_home": 0.565,
+   "kalshi_volume": 796.46,
+   "polymarket_p_home": 0.565,
+   "polymarket_volume": 222.96029299999998
   },
   {
    "game_pk": 825030,
@@ -332,10 +320,10 @@
    "home_id": 109,
    "away_id": 146,
    "game_start": "2026-09-16T01:40:00+00:00",
-   "kalshi_p_home": 0.57,
-   "kalshi_volume": 100.99,
-   "polymarket_p_home": 0.555,
-   "polymarket_volume": 5.454546
+   "kalshi_p_home": 0.58,
+   "kalshi_volume": 293.2,
+   "polymarket_p_home": 0.575,
+   "polymarket_volume": 907.8282670000001
   },
   {
    "game_pk": 822680,
@@ -344,9 +332,9 @@
    "away_id": 143,
    "game_start": "2026-09-16T22:45:00+00:00",
    "kalshi_p_home": 0.455,
-   "kalshi_volume": 11.92,
-   "polymarket_p_home": 0.465,
-   "polymarket_volume": null
+   "kalshi_volume": 25.92,
+   "polymarket_p_home": 0.455,
+   "polymarket_volume": 8.05
   },
   {
    "game_pk": 822763,
@@ -354,9 +342,9 @@
    "home_id": 141,
    "away_id": 116,
    "game_start": "2026-09-16T19:07:00+00:00",
-   "kalshi_p_home": 0.535,
-   "kalshi_volume": 37.56,
-   "polymarket_p_home": 0.53,
+   "kalshi_p_home": 0.52,
+   "kalshi_volume": 38.16,
+   "polymarket_p_home": 0.525,
    "polymarket_volume": null
   },
   {
@@ -365,7 +353,7 @@
    "home_id": 140,
    "away_id": 111,
    "game_start": "2026-09-17T00:05:00+00:00",
-   "kalshi_p_home": 0.54,
+   "kalshi_p_home": 0.535,
    "kalshi_volume": 82.66,
    "polymarket_p_home": 0.54,
    "polymarket_volume": null
@@ -398,7 +386,7 @@
    "home_id": 134,
    "away_id": 158,
    "game_start": "2026-09-16T22:40:00+00:00",
-   "kalshi_p_home": 0.455,
+   "kalshi_p_home": 0.45,
    "kalshi_volume": 2.0,
    "polymarket_p_home": 0.445,
    "polymarket_volume": 142.741965
@@ -420,10 +408,10 @@
    "home_id": 142,
    "away_id": 147,
    "game_start": "2026-09-16T17:40:00+00:00",
-   "kalshi_p_home": 0.415,
-   "kalshi_volume": 0.73,
+   "kalshi_p_home": 0.405,
+   "kalshi_volume": 56.4,
    "polymarket_p_home": 0.41,
-   "polymarket_volume": 176.542632
+   "polymarket_volume": 219.255964
   },
   {
    "game_pk": 823979,
@@ -431,7 +419,7 @@
    "home_id": 108,
    "away_id": 136,
    "game_start": "2026-09-17T01:38:00+00:00",
-   "kalshi_p_home": 0.475,
+   "kalshi_p_home": 0.47,
    "kalshi_volume": 1.91,
    "polymarket_p_home": 0.475,
    "polymarket_volume": null
@@ -453,10 +441,10 @@
    "home_id": 115,
    "away_id": 135,
    "game_start": "2026-09-17T00:40:00+00:00",
-   "kalshi_p_home": 0.375,
-   "kalshi_volume": 19.62,
+   "kalshi_p_home": 0.365,
+   "kalshi_volume": 70.13,
    "polymarket_p_home": 0.365,
-   "polymarket_volume": 71.75999999999999
+   "polymarket_volume": 79.76
   },
   {
    "game_pk": 824382,
@@ -465,7 +453,7 @@
    "away_id": 145,
    "game_start": "2026-09-16T17:10:00+00:00",
    "kalshi_p_home": 0.57,
-   "kalshi_volume": 93.56,
+   "kalshi_volume": 155.84,
    "polymarket_p_home": 0.565,
    "polymarket_volume": null
   },
@@ -477,8 +465,8 @@
    "game_start": "2026-09-16T22:40:00+00:00",
    "kalshi_p_home": 0.385,
    "kalshi_volume": 429.85,
-   "polymarket_p_home": 0.405,
-   "polymarket_volume": 79.82
+   "polymarket_p_home": 0.395,
+   "polymarket_volume": 159.18
   },
   {
    "game_pk": 824626,
@@ -486,9 +474,9 @@
    "home_id": 112,
    "away_id": 144,
    "game_start": "2026-09-16T23:40:00+00:00",
-   "kalshi_p_home": 0.505,
-   "kalshi_volume": 7.0,
-   "polymarket_p_home": 0.505,
+   "kalshi_p_home": 0.515,
+   "kalshi_volume": 29.27,
+   "polymarket_p_home": 0.51,
    "polymarket_volume": null
   },
   {
@@ -508,7 +496,9 @@
    "home_id": 140,
    "away_id": 111,
    "game_start": "2026-09-18T00:05:00+00:00",
-   "polymarket_p_home": 0.2495,
+   "kalshi_p_home": 0.46,
+   "kalshi_volume": 3.2,
+   "polymarket_p_home": 0.3125,
    "polymarket_volume": 57.624333
   },
   {
@@ -517,10 +507,10 @@
    "home_id": 139,
    "away_id": 133,
    "game_start": "2026-09-17T17:10:00+00:00",
-   "kalshi_p_home": 0.71,
-   "kalshi_volume": 13.5,
-   "polymarket_p_home": 0.6905,
-   "polymarket_volume": 193.89314799999997
+   "kalshi_p_home": 0.72,
+   "kalshi_volume": 14.23,
+   "polymarket_p_home": 0.6995,
+   "polymarket_volume": 204.91314799999998
   },
   {
    "game_pk": 823334,
@@ -530,7 +520,7 @@
    "game_start": "2026-09-17T16:35:00+00:00",
    "kalshi_p_home": 0.435,
    "kalshi_volume": 0.0,
-   "polymarket_p_home": 0.444,
+   "polymarket_p_home": 0.4435,
    "polymarket_volume": 67.584333
   },
   {
@@ -539,8 +529,10 @@
    "home_id": 121,
    "away_id": 143,
    "game_start": "2026-09-17T23:15:00+00:00",
-   "polymarket_p_home": 0.485,
-   "polymarket_volume": 119.74
+   "kalshi_p_home": 0.55,
+   "kalshi_volume": 0.0,
+   "polymarket_p_home": 0.545,
+   "polymarket_volume": 134.10999999999999
   },
   {
    "game_pk": 823978,
@@ -557,7 +549,9 @@
    "home_id": 117,
    "away_id": 118,
    "game_start": "2026-09-17T23:15:00+00:00",
-   "polymarket_p_home": 0.5465,
+   "kalshi_p_home": 0.545,
+   "kalshi_volume": 4.84,
+   "polymarket_p_home": 0.5485,
    "polymarket_volume": 561.464333
   },
   {
@@ -567,8 +561,8 @@
    "away_id": 135,
    "game_start": "2026-09-17T19:10:00+00:00",
    "kalshi_p_home": 0.395,
-   "kalshi_volume": 0.0,
-   "polymarket_p_home": 0.395,
+   "kalshi_volume": 0.01,
+   "polymarket_p_home": 0.402,
    "polymarket_volume": 63.184332999999995
   },
   {
@@ -577,7 +571,7 @@
    "home_id": 113,
    "away_id": 119,
    "game_start": "2026-09-17T16:40:00+00:00",
-   "kalshi_p_home": 0.42,
+   "kalshi_p_home": 0.415,
    "kalshi_volume": 0.0,
    "polymarket_p_home": 0.395,
    "polymarket_volume": 257.64
@@ -588,7 +582,9 @@
    "home_id": 145,
    "away_id": 116,
    "game_start": "2026-09-17T23:40:00+00:00",
-   "polymarket_p_home": 0.54,
+   "kalshi_p_home": 0.56,
+   "kalshi_volume": 0.0,
+   "polymarket_p_home": 0.555,
    "polymarket_volume": 103.08
   },
   {
@@ -597,7 +593,7 @@
    "home_id": 140,
    "away_id": 141,
    "game_start": "2026-09-19T00:05:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.485,
    "polymarket_volume": null
   },
   {
@@ -606,7 +602,7 @@
    "home_id": 139,
    "away_id": 111,
    "game_start": "2026-09-18T23:10:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.515,
    "polymarket_volume": null
   },
   {
@@ -624,7 +620,7 @@
    "home_id": 135,
    "away_id": 146,
    "game_start": "2026-09-19T01:40:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.495,
    "polymarket_volume": null
   },
   {
@@ -633,7 +629,7 @@
    "home_id": 134,
    "away_id": 118,
    "game_start": "2026-09-18T22:40:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.585,
    "polymarket_volume": null
   },
   {
@@ -642,7 +638,7 @@
    "home_id": 121,
    "away_id": 143,
    "game_start": "2026-09-18T23:15:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.465,
    "polymarket_volume": null
   },
   {
@@ -651,7 +647,7 @@
    "home_id": 119,
    "away_id": 137,
    "game_start": "2026-09-19T02:15:00+00:00",
-   "polymarket_p_home": 0.58,
+   "polymarket_p_home": 0.605,
    "polymarket_volume": null
   },
   {
@@ -669,7 +665,7 @@
    "home_id": 117,
    "away_id": 144,
    "game_start": "2026-09-19T00:10:00+00:00",
-   "polymarket_p_home": 0.505,
+   "polymarket_p_home": 0.5,
    "polymarket_volume": null
   },
   {
@@ -687,7 +683,7 @@
    "home_id": 114,
    "away_id": 133,
    "game_start": "2026-09-18T23:10:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.625,
    "polymarket_volume": null
   },
   {
@@ -696,7 +692,7 @@
    "home_id": 113,
    "away_id": 112,
    "game_start": "2026-09-18T22:40:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.475,
    "polymarket_volume": null
   },
   {
@@ -705,7 +701,7 @@
    "home_id": 145,
    "away_id": 116,
    "game_start": "2026-09-18T23:40:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.535,
    "polymarket_volume": null
   },
   {
@@ -714,7 +710,7 @@
    "home_id": 110,
    "away_id": 158,
    "game_start": "2026-09-18T23:05:00+00:00",
-   "polymarket_p_home": 0.5,
+   "polymarket_p_home": 0.455,
    "polymarket_volume": null
   },
   {
@@ -723,7 +719,7 @@
    "home_id": 109,
    "away_id": 147,
    "game_start": "2026-09-19T01:40:00+00:00",
-   "polymarket_p_home": 0.505,
+   "polymarket_p_home": 0.5,
    "polymarket_volume": null
   },
   {
@@ -831,7 +827,7 @@
    "home_id": 113,
    "away_id": 112,
    "game_start": "2026-09-19T22:40:00+00:00",
-   "polymarket_p_home": 0.505,
+   "polymarket_p_home": 0.5,
    "polymarket_volume": null
   },
   {
@@ -849,7 +845,7 @@
    "home_id": 110,
    "away_id": 158,
    "game_start": "2026-09-19T20:05:00+00:00",
-   "polymarket_p_home": 0.47,
+   "polymarket_p_home": 0.285,
    "polymarket_volume": 2.0609
   },
   {
@@ -1003,7 +999,7 @@
    "away_id": 139,
    "game_start": "2026-09-22T17:05:00+00:00",
    "polymarket_p_home": 0.575,
-   "polymarket_volume": 250985.05642700006
+   "polymarket_volume": 251016.5164270002
   }
  ],
  "futures": {
@@ -1056,13 +1052,13 @@
     "kalshi": 0.01
    },
    "LAD": {
-    "kalshi": 0.21
+    "kalshi": 0.24
    },
    "MIA": {
     "kalshi": 0.01
    },
    "MIL": {
-    "kalshi": 0.71
+    "kalshi": 0.625
    },
    "MIN": {
     "kalshi": 0.01
@@ -1110,8 +1106,8 @@
     "polymarket": 0.0
    },
    "ATL": {
-    "kalshi": 0.965,
-    "polymarket": 0.9665
+    "kalshi": 0.975,
+    "polymarket": 0.976
    },
    "AZ": {
     "kalshi": 0.01,
@@ -1122,8 +1118,8 @@
     "polymarket": 0.0
    },
    "BOS": {
-    "kalshi": 0.01,
-    "polymarket": 0.004
+    "kalshi": 0.02,
+    "polymarket": 0.011
    },
    "CHC": {
     "kalshi": 0.01,
@@ -1134,24 +1130,24 @@
     "polymarket": 0.0
    },
    "CLE": {
-    "kalshi": 0.465,
-    "polymarket": 0.465
+    "kalshi": 0.29,
+    "polymarket": 0.3
    },
    "COL": {
     "kalshi": 0.01,
     "polymarket": 0.0
    },
    "CWS": {
-    "kalshi": 0.535,
-    "polymarket": 0.5385
+    "kalshi": 0.67,
+    "polymarket": 0.683
    },
    "DET": {
     "kalshi": 0.01,
     "polymarket": 0.0035
    },
    "HOU": {
-    "kalshi": 0.695,
-    "polymarket": 0.697
+    "kalshi": 0.705,
+    "polymarket": 0.6975
    },
    "KC": {
     "kalshi": 0.01,
@@ -1162,8 +1158,8 @@
     "polymarket": 0.0
    },
    "LAD": {
-    "kalshi": 0.985,
-    "polymarket": 0.983
+    "kalshi": 0.99,
+    "polymarket": 0.9845
    },
    "MIA": {
     "kalshi": 0.01,
@@ -1171,35 +1167,35 @@
    },
    "MIL": {
     "kalshi": 0.995,
-    "polymarket": 0.9905
+    "polymarket": 0.976
    },
    "MIN": {
     "kalshi": 0.01,
-    "polymarket": 0.0095
+    "polymarket": 0.018
    },
    "NYM": {
     "kalshi": 0.01,
     "polymarket": 0.0
    },
    "NYY": {
-    "kalshi": 0.12,
-    "polymarket": 0.115
+    "kalshi": 0.11,
+    "polymarket": 0.105
    },
    "PHI": {
-    "kalshi": 0.025,
-    "polymarket": 0.0325
+    "kalshi": 0.035,
+    "polymarket": 0.0245
    },
    "PIT": {
     "kalshi": 0.01,
     "polymarket": 0.0
    },
    "SD": {
-    "kalshi": 0.02,
-    "polymarket": 0.0095
+    "kalshi": 0.01,
+    "polymarket": 0.011
    },
    "SEA": {
     "kalshi": 0.035,
-    "polymarket": 0.0355
+    "polymarket": 0.0455
    },
    "SF": {
     "kalshi": 0.01,
@@ -1210,12 +1206,12 @@
     "polymarket": 0.0
    },
    "TB": {
-    "kalshi": 0.875,
-    "polymarket": 0.867
+    "kalshi": 0.88,
+    "polymarket": 0.8665
    },
    "TEX": {
-    "kalshi": 0.245,
-    "polymarket": 0.24
+    "kalshi": 0.235,
+    "polymarket": 0.235
    },
    "TOR": {
     "kalshi": 0.01,
@@ -1232,7 +1228,7 @@
     "polymarket": 0.0
    },
    "ATL": {
-    "kalshi": 0.12,
+    "kalshi": 0.135,
     "polymarket": 0.125
    },
    "AZ": {
@@ -1257,7 +1253,7 @@
    },
    "CLE": {
     "kalshi": 0.085,
-    "polymarket": 0.0795
+    "polymarket": 0.086
    },
    "COL": {
     "kalshi": 0.01,
@@ -1265,7 +1261,7 @@
    },
    "CWS": {
     "kalshi": 0.105,
-    "polymarket": 0.106
+    "polymarket": 0.1055
    },
    "DET": {
     "kalshi": 0.01,
@@ -1273,7 +1269,7 @@
    },
    "HOU": {
     "kalshi": 0.085,
-    "polymarket": 0.0985
+    "polymarket": 0.1
    },
    "KC": {
     "kalshi": 0.01,
@@ -1293,7 +1289,7 @@
    },
    "MIL": {
     "kalshi": 0.235,
-    "polymarket": 0.24
+    "polymarket": 0.2375
    },
    "MIN": {
     "kalshi": 0.01,
@@ -1304,7 +1300,7 @@
     "polymarket": 0.0005
    },
    "NYY": {
-    "kalshi": 0.265,
+    "kalshi": 0.255,
     "polymarket": 0.255
    },
    "PHI": {
@@ -1316,12 +1312,12 @@
     "polymarket": 0.0015
    },
    "SD": {
-    "kalshi": 0.055,
-    "polymarket": 0.055
+    "kalshi": 0.065,
+    "polymarket": 0.0635
    },
    "SEA": {
     "kalshi": 0.01,
-    "polymarket": 0.0135
+    "polymarket": 0.0125
    },
    "SF": {
     "kalshi": 0.01,
@@ -1332,8 +1328,8 @@
     "polymarket": 0.0005
    },
    "TB": {
-    "kalshi": 0.245,
-    "polymarket": 0.2295
+    "kalshi": 0.255,
+    "polymarket": 0.2325
    },
    "TEX": {
     "kalshi": 0.035,
@@ -1359,47 +1355,47 @@
    },
    "AZ": {
     "kalshi": 0.255,
-    "polymarket": 0.235
+    "polymarket": 0.24
    },
    "BAL": {
-    "kalshi": 0.025,
-    "polymarket": 0.0115
+    "kalshi": 0.015,
+    "polymarket": 0.015
    },
    "BOS": {
     "kalshi": 0.995,
-    "polymarket": 0.9975
+    "polymarket": 0.9985
    },
    "CHC": {
-    "kalshi": 0.985,
-    "polymarket": 0.9845
+    "kalshi": 0.975,
+    "polymarket": 0.976
    },
    "CIN": {
     "kalshi": 0.01,
-    "polymarket": 0.0015
+    "polymarket": 0.0025
    },
    "CLE": {
-    "kalshi": 0.655,
-    "polymarket": 0.645
+    "kalshi": 0.56,
+    "polymarket": 0.565
    },
    "COL": {
     "kalshi": 0.01,
     "polymarket": 0.0
    },
    "CWS": {
-    "kalshi": 0.775,
-    "polymarket": 0.78
+    "kalshi": 0.825,
+    "polymarket": 0.81
    },
    "DET": {
     "kalshi": 0.015,
-    "polymarket": 0.0055
+    "polymarket": 0.006
    },
    "HOU": {
-    "kalshi": 0.735,
-    "polymarket": 0.735
+    "kalshi": 0.745,
+    "polymarket": 0.73
    },
    "KC": {
     "kalshi": 0.01,
-    "polymarket": 0.007
+    "polymarket": 0.008
    },
    "LAA": {
     "kalshi": 0.01,
@@ -1411,7 +1407,7 @@
    },
    "MIA": {
     "kalshi": 0.01,
-    "polymarket": 0.006
+    "polymarket": 0.0115
    },
    "MIL": {
     "kalshi": 0.995,
@@ -1419,31 +1415,31 @@
    },
    "MIN": {
     "kalshi": 0.015,
-    "polymarket": 0.0055
+    "polymarket": 0.0155
    },
    "NYM": {
     "kalshi": 0.01,
-    "polymarket": 0.002
+    "polymarket": 0.0025
    },
    "NYY": {
     "kalshi": 0.995,
-    "polymarket": 0.9995
+    "polymarket": 0.9915
    },
    "PHI": {
     "kalshi": 0.965,
-    "polymarket": 0.97
+    "polymarket": 0.9665
    },
    "PIT": {
     "kalshi": 0.015,
     "polymarket": 0.0025
    },
    "SD": {
-    "kalshi": 0.785,
-    "polymarket": 0.79
+    "kalshi": 0.825,
+    "polymarket": 0.81
    },
    "SEA": {
     "kalshi": 0.035,
-    "polymarket": 0.0395
+    "polymarket": 0.0415
    },
    "SF": {
     "kalshi": 0.01,
@@ -1451,19 +1447,19 @@
    },
    "STL": {
     "kalshi": 0.01,
-    "polymarket": 0.0045
+    "polymarket": 0.009
    },
    "TB": {
     "kalshi": 0.995,
     "polymarket": 0.9975
    },
    "TEX": {
-    "kalshi": 0.315,
-    "polymarket": 0.315
+    "kalshi": 0.295,
+    "polymarket": 0.295
    },
    "TOR": {
-    "kalshi": 0.385,
-    "polymarket": 0.415
+    "kalshi": 0.425,
+    "polymarket": 0.44
    },
    "WSH": {
     "kalshi": 0.01,
@@ -1478,7 +1474,7 @@
     "polymarket": 0.96
    },
    "AZ": {
-    "polymarket": 0.935
+    "polymarket": 0.94
    },
    "BAL": {
     "polymarket": 0.0
@@ -1487,7 +1483,7 @@
     "polymarket": 0.76
    },
    "CHC": {
-    "polymarket": 0.9635
+    "polymarket": 0.963
    },
    "CIN": {
     "polymarket": 0.075
@@ -1514,10 +1510,10 @@
     "polymarket": 0.0
    },
    "LAD": {
-    "polymarket": 0.33
+    "polymarket": 0.335
    },
    "MIA": {
-    "polymarket": 0.9765
+    "polymarket": 0.9875
    },
    "MIL": {
     "polymarket": 0.9995
@@ -1532,7 +1528,7 @@
     "polymarket": 0.96
    },
    "PHI": {
-    "polymarket": 0.785
+    "polymarket": 0.73
    },
    "PIT": {
     "polymarket": 0.0995
@@ -1553,10 +1549,10 @@
     "polymarket": 0.9995
    },
    "TEX": {
-    "polymarket": 0.4
+    "polymarket": 0.405
    },
    "TOR": {
-    "polymarket": 0.0695
+    "polymarket": 0.0805
    },
    "WSH": {
     "polymarket": 0.9995
@@ -1568,11 +1564,11 @@
     "polymarket": 0.0
    },
    "ATL": {
-    "kalshi": 0.0615,
+    "kalshi": 0.061,
     "polymarket": 0.057
    },
    "AZ": {
-    "kalshi": 0.0065,
+    "kalshi": 0.005,
     "polymarket": 0.0065
    },
    "BAL": {
@@ -1580,27 +1576,27 @@
     "polymarket": 0.0005
    },
    "BOS": {
-    "kalshi": 0.0465,
-    "polymarket": 0.0455
+    "kalshi": 0.0425,
+    "polymarket": 0.0485
    },
    "CHC": {
-    "kalshi": 0.0415,
-    "polymarket": 0.0435
+    "kalshi": 0.0405,
+    "polymarket": 0.043
    },
    "CIN": {
     "kalshi": 0.001,
     "polymarket": 0.0005
    },
    "CLE": {
-    "kalshi": 0.0265,
-    "polymarket": 0.0235
+    "kalshi": 0.024,
+    "polymarket": 0.0215
    },
    "COL": {
     "kalshi": 0.001,
     "polymarket": 0.0
    },
    "CWS": {
-    "kalshi": 0.0265,
+    "kalshi": 0.027,
     "polymarket": 0.0285
    },
    "DET": {
@@ -1608,8 +1604,8 @@
     "polymarket": 0.0005
    },
    "HOU": {
-    "kalshi": 0.0275,
-    "polymarket": 0.0315
+    "kalshi": 0.0235,
+    "polymarket": 0.0295
    },
    "KC": {
     "kalshi": 0.001,
@@ -1620,7 +1616,7 @@
     "polymarket": 0.0
    },
    "LAD": {
-    "kalshi": 0.3,
+    "kalshi": 0.3005,
     "polymarket": 0.305
    },
    "MIA": {
@@ -1628,7 +1624,7 @@
     "polymarket": 0.0005
    },
    "MIL": {
-    "kalshi": 0.172,
+    "kalshi": 0.173,
     "polymarket": 0.157
    },
    "MIN": {
@@ -1640,11 +1636,11 @@
     "polymarket": 0.0005
    },
    "NYY": {
-    "kalshi": 0.119,
+    "kalshi": 0.1215,
     "polymarket": 0.095
    },
    "PHI": {
-    "kalshi": 0.0555,
+    "kalshi": 0.055,
     "polymarket": 0.0615
    },
    "PIT": {
@@ -1652,11 +1648,11 @@
     "polymarket": 0.0005
    },
    "SD": {
-    "kalshi": 0.036,
+    "kalshi": 0.0355,
     "polymarket": 0.0285
    },
    "SEA": {
-    "kalshi": 0.002,
+    "kalshi": 0.0015,
     "polymarket": 0.0005
    },
    "SF": {
@@ -1672,12 +1668,12 @@
     "polymarket": 0.0885
    },
    "TEX": {
-    "kalshi": 0.0115,
+    "kalshi": 0.0125,
     "polymarket": 0.0105
    },
    "TOR": {
-    "kalshi": 0.0155,
-    "polymarket": 0.0135
+    "kalshi": 0.0165,
+    "polymarket": 0.0195
    },
    "WSH": {
     "kalshi": 0.001,
