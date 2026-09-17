@@ -1,17 +1,17 @@
 {
  "season": 2026,
  "as_of": "2026-09-17",
- "generated_at": "2026-09-17T14:22:11.684219+00:00",
+ "generated_at": "2026-09-17T16:54:57.897400+00:00",
  "n_sims": 20000,
  "seed": 260,
  "hfa": 0.5338310779281381,
  "games_played": 2286,
  "games_remaining": 145,
- "n_games_with_starters": 21,
+ "n_games_with_starters": 24,
  "starter_window_days": 7,
  "n_teams_with_rotation": 30,
  "rotation_size": 4,
- "n_games_with_lineups": 3,
+ "n_games_with_lineups": 4,
  "run_env_blend_weight": 0.5,
  "method": "Bottom-up team run environment (the hitters taking the plate appearances and the rotation and pen actually pitching, blended half and half with the regressed season-to-date rates) into Pythagenpat, log5 + HFA, MLB tiebreakers; every remaining game with both probables posted repriced through the full per-game chain \u2014 the starter's regressed FIP over his own expected innings, the availability-weighted bullpen over the rest, and the posted lineup where a card exists; every postseason series game priced off the club's regressed-FIP rotation",
  "teams": [
@@ -23,7 +23,7 @@
    "strength": 0.6079536808,
    "wins": 92,
    "losses": 60,
-   "mean_wins": 98.25395,
+   "mean_wins": 98.3175,
    "wins_p5": 96.0,
    "wins_p25": 97.0,
    "wins_p50": 98.0,
@@ -31,10 +31,10 @@
    "wins_p95": 101.0,
    "p_playoffs": 1.0,
    "p_division": 1.0,
-   "p_bye": 0.966,
+   "p_bye": 0.96765,
    "p_wild_card": 0.0,
-   "p_pennant": 0.4003,
-   "p_ws": 0.28175,
+   "p_pennant": 0.4014,
+   "p_ws": 0.2835,
    "division": "NL West"
   },
   {
@@ -45,7 +45,7 @@
    "strength": 0.5708983758,
    "wins": 95,
    "losses": 57,
-   "mean_wins": 100.4812,
+   "mean_wins": 100.4713,
    "wins_p5": 98.0,
    "wins_p25": 99.0,
    "wins_p50": 100.0,
@@ -55,8 +55,8 @@
    "p_division": 1.0,
    "p_bye": 0.99865,
    "p_wild_card": 0.0,
-   "p_pennant": 0.31165,
-   "p_ws": 0.19205,
+   "p_pennant": 0.3103,
+   "p_ws": 0.19125,
    "division": "NL Central"
   },
   {
@@ -67,18 +67,18 @@
    "strength": 0.541022513,
    "wins": 92,
    "losses": 59,
-   "mean_wins": 97.5071,
+   "mean_wins": 97.51225,
    "wins_p5": 95.0,
    "wins_p25": 96.0,
    "wins_p50": 98.0,
    "wins_p75": 99.0,
    "wins_p95": 100.0,
    "p_playoffs": 1.0,
-   "p_division": 0.933,
-   "p_bye": 0.933,
-   "p_wild_card": 0.067,
-   "p_pennant": 0.3029,
-   "p_ws": 0.1251,
+   "p_division": 0.9332,
+   "p_bye": 0.9332,
+   "p_wild_card": 0.0668,
+   "p_pennant": 0.3013,
+   "p_ws": 0.12505,
    "division": "AL East"
   },
   {
@@ -96,11 +96,11 @@
    "wins_p75": 95.0,
    "wins_p95": 96.0,
    "p_playoffs": 1.0,
-   "p_division": 0.067,
-   "p_bye": 0.067,
-   "p_wild_card": 0.933,
-   "p_pennant": 0.21825,
-   "p_ws": 0.10125,
+   "p_division": 0.0668,
+   "p_bye": 0.0668,
+   "p_wild_card": 0.9332,
+   "p_pennant": 0.2189,
+   "p_ws": 0.10075,
    "division": "AL East"
   },
   {
@@ -121,8 +121,8 @@
    "p_division": 0.0088,
    "p_bye": 0.0,
    "p_wild_card": 0.97845,
-   "p_pennant": 0.0972,
-   "p_ws": 0.0534,
+   "p_pennant": 0.097,
+   "p_ws": 0.05265,
    "division": "NL East"
   },
   {
@@ -143,8 +143,8 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.9995,
-   "p_pennant": 0.1248,
-   "p_ws": 0.0509,
+   "p_pennant": 0.1241,
+   "p_ws": 0.05025,
    "division": "AL East"
   },
   {
@@ -163,10 +163,10 @@
    "wins_p95": 96.0,
    "p_playoffs": 1.0,
    "p_division": 0.9912,
-   "p_bye": 0.03535,
+   "p_bye": 0.0337,
    "p_wild_card": 0.0088,
-   "p_pennant": 0.0928,
-   "p_ws": 0.04775,
+   "p_pennant": 0.0937,
+   "p_ws": 0.04825,
    "division": "NL East"
   },
   {
@@ -187,8 +187,8 @@
    "p_division": 0.4709,
    "p_bye": 0.34305,
    "p_wild_card": 0.29915,
-   "p_pennant": 0.1167,
-   "p_ws": 0.037,
+   "p_pennant": 0.11755,
+   "p_ws": 0.0379,
    "division": "AL Central"
   },
   {
@@ -209,8 +209,8 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.99935,
-   "p_pennant": 0.07125,
-   "p_ws": 0.0366,
+   "p_pennant": 0.07045,
+   "p_ws": 0.03595,
    "division": "NL Central"
   },
   {
@@ -231,8 +231,8 @@
    "p_division": 0.52795,
    "p_bye": 0.3963,
    "p_wild_card": 0.2565,
-   "p_pennant": 0.0925,
-   "p_ws": 0.0244,
+   "p_pennant": 0.09365,
+   "p_ws": 0.02485,
    "division": "AL Central"
   },
   {
@@ -253,8 +253,8 @@
    "p_division": 0.40615,
    "p_bye": 0.0965,
    "p_wild_card": 0.10125,
-   "p_pennant": 0.06185,
-   "p_ws": 0.0173,
+   "p_pennant": 0.06225,
+   "p_ws": 0.01725,
    "division": "AL West"
   },
   {
@@ -275,8 +275,8 @@
    "p_division": 0.59145,
    "p_bye": 0.16395,
    "p_wild_card": 0.05985,
-   "p_pennant": 0.06115,
-   "p_ws": 0.01685,
+   "p_pennant": 0.0606,
+   "p_ws": 0.0167,
    "division": "AL West"
   },
   {
@@ -287,7 +287,7 @@
    "strength": 0.5132828936,
    "wins": 83,
    "losses": 69,
-   "mean_wins": 87.9065,
+   "mean_wins": 87.90675,
    "wins_p5": 85.0,
    "wins_p25": 87.0,
    "wins_p50": 88.0,
@@ -297,8 +297,8 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.89265,
-   "p_pennant": 0.0221,
-   "p_ws": 0.0082,
+   "p_pennant": 0.0227,
+   "p_ws": 0.00835,
    "division": "NL West"
   },
   {
@@ -341,8 +341,8 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.1206,
-   "p_pennant": 0.0047,
-   "p_ws": 0.00205,
+   "p_pennant": 0.00445,
+   "p_ws": 0.0018,
    "division": "NL West"
   },
   {
@@ -363,8 +363,8 @@
    "p_division": 0.0,
    "p_bye": 0.0,
    "p_wild_card": 0.06615,
-   "p_pennant": 0.00455,
-   "p_ws": 0.00085,
+   "p_pennant": 0.0044,
+   "p_ws": 0.001,
    "division": "AL East"
   },
   {
@@ -386,7 +386,7 @@
    "p_bye": 0.00015,
    "p_wild_card": 0.00295,
    "p_pennant": 0.00065,
-   "p_ws": 0.00035,
+   "p_ws": 0.0003,
    "division": "AL Central"
   },
   {
@@ -463,7 +463,7 @@
    "strength": 0.4785957463,
    "wins": 67,
    "losses": 85,
-   "mean_wins": 71.6914,
+   "mean_wins": 71.61195,
    "wins_p5": 69.0,
    "wins_p25": 71.0,
    "wins_p50": 72.0,
@@ -485,7 +485,7 @@
    "strength": 0.4515608327,
    "wins": 56,
    "losses": 96,
-   "mean_wins": 60.49375,
+   "mean_wins": 60.4935,
    "wins_p5": 58.0,
    "wins_p25": 59.0,
    "wins_p50": 60.0,
@@ -529,8 +529,8 @@
    "strength": 0.4879018678,
    "wins": 65,
    "losses": 89,
-   "mean_wins": 68.8789,
-   "wins_p5": 67.0,
+   "mean_wins": 68.81535,
+   "wins_p5": 66.0,
    "wins_p25": 68.0,
    "wins_p50": 69.0,
    "wins_p75": 70.0,
@@ -551,7 +551,7 @@
    "strength": 0.5184453375,
    "wins": 75,
    "losses": 77,
-   "mean_wins": 80.2615,
+   "mean_wins": 80.35085,
    "wins_p5": 78.0,
    "wins_p25": 79.0,
    "wins_p50": 80.0,
@@ -583,7 +583,7 @@
    "p_division": 0.0024,
    "p_bye": 0.0,
    "p_wild_card": 5e-05,
-   "p_pennant": 0.0001,
+   "p_pennant": 5e-05,
    "p_ws": 0.0,
    "division": "AL West"
   },
@@ -595,7 +595,7 @@
    "strength": 0.4489726625,
    "wins": 61,
    "losses": 91,
-   "mean_wins": 65.3795,
+   "mean_wins": 65.37435,
    "wins_p5": 63.0,
    "wins_p25": 64.0,
    "wins_p50": 65.0,
