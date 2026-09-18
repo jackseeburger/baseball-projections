@@ -1,6 +1,6 @@
 {
- "generated_at": "2026-09-18T14:40:23.907134+00:00",
- "git_sha": "0c97457d87994f9b4e6fc7c081b4a80c76a7bcd2",
+ "generated_at": "2026-09-18T19:10:54.305327+00:00",
+ "git_sha": "b233e23595ab080cc166c0aec2f00d404dd9f674",
  "title": "Paper ledger \u2014 Stage 0",
  "source": "scripts/paper_ledger.py",
  "engine": "marcel_partial + matchup",
@@ -18,36 +18,36 @@
   "fee": "Kalshi taker, round_up_to_cent(0.07\u00b7C\u00b7P\u00b7(1\u2212P)); Polymarket taker 0; maker ledger fee waived"
  },
  "snapshots": {
-  "n": 47,
+  "n": 48,
   "first": "2026-09-02T22:46:14+00:00",
-  "last": "2026-09-18T14:37:59+00:00"
+  "last": "2026-09-18T19:08:41+00:00"
  },
  "counts": {
-  "tickets": 14841,
+  "tickets": 15047,
   "settled": 7779,
-  "open": 7062,
+  "open": 7268,
   "void": 125,
   "game_days": 17,
-  "posterior_tickets": 14756,
-  "maker_filled": 1202,
-  "maker_fill_rate": 0.08099184691058554,
+  "posterior_tickets": 14960,
+  "maker_filled": 1242,
+  "maker_fill_rate": 0.0825413703728318,
   "by_venue": {
-   "kalshi": 11165,
-   "polymarket": 3676
+   "kalshi": 11332,
+   "polymarket": 3715
   },
   "by_stat": {
-   "tb": 6746,
-   "k": 4646,
-   "hits": 2840,
-   "hr": 609
+   "tb": 6791,
+   "k": 4782,
+   "hits": 2854,
+   "hr": 620
   },
   "by_context_source": {
    "posted_card": 5719,
-   "probable_starter": 4646,
-   "club_card": 4476
+   "probable_starter": 4782,
+   "club_card": 4546
   },
   "by_rule_version": {
-   "stage0.1": 14271,
+   "stage0.1": 14477,
    "stage0": 570
   }
  },
@@ -64,7 +64,7 @@
   "bankroll": -348.6465732417764,
   "total_staked": 19651.000331749667,
   "exposure_multiple": 19.651000331749668,
-  "snapshots_after_ruin": 46,
+  "snapshots_after_ruin": 47,
   "amended_by": "Amendment 1 (2026-09-09)",
   "note": "The paper bankroll went through zero on 2026-09-03. The pre-registered rule sizes every ticket at up to 5% of bankroll and a prop slate offers hundreds of them at once, so the tickets in this ledger stake 19,651 units against a 1,000-unit bankroll \u2014 19.7x exposure in a single evening. Emission stops at ruin because a non-positive bankroll has no Kelly stake. Nothing was re-tuned after seeing this: the per-ticket cap and the 1,000-ticket Stage 1 gate in docs/bankroll.md are not compatible on this book, and that is a question for the pre-registration, not for the code. That question was answered on 2026-09-09 by Amendment 1: the total stake across one slate is capped at 20% of bankroll, the sizing changes and nothing else does, the Stage 1 window restarts at the amendment, and these tickets stay in the ledger flagged `stage0` without counting toward the gate."
  },
@@ -808,7 +808,7 @@
      "max_drawdown": 9.032249145639607
     }
    },
-   "tickets": 14271,
+   "tickets": 14477,
    "scored_by_the_gate": true
   }
  },
