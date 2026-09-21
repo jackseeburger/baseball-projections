@@ -1,6 +1,6 @@
 {
- "generated_at": "2026-09-21T01:04:20.924134+00:00",
- "git_sha": "d0b2c476efc42bb5f3059d3a9ad371bf49bcd779",
+ "generated_at": "2026-09-21T16:37:20.835172+00:00",
+ "git_sha": "21602e1e7dbd63b6460787ef765ef00f335a9288",
  "title": "Paper ledger \u2014 Stage 0",
  "source": "scripts/paper_ledger.py",
  "engine": "marcel_partial + matchup",
@@ -18,36 +18,36 @@
   "fee": "Kalshi taker, round_up_to_cent(0.07\u00b7C\u00b7P\u00b7(1\u2212P)); Polymarket taker 0; maker ledger fee waived"
  },
  "snapshots": {
-  "n": 55,
+  "n": 56,
   "first": "2026-09-02T22:46:14+00:00",
-  "last": "2026-09-21T01:02:36+00:00"
+  "last": "2026-09-21T16:34:59+00:00"
  },
  "counts": {
-  "tickets": 16686,
-  "settled": 9514,
-  "open": 7172,
+  "tickets": 16713,
+  "settled": 9534,
+  "open": 7179,
   "void": 131,
-  "game_days": 19,
-  "posterior_tickets": 16592,
+  "game_days": 20,
+  "posterior_tickets": 16618,
   "maker_filled": 1313,
-  "maker_fill_rate": 0.07868872108354309,
+  "maker_fill_rate": 0.07856159875545982,
   "by_venue": {
-   "kalshi": 12786,
-   "polymarket": 3900
+   "kalshi": 12805,
+   "polymarket": 3908
   },
   "by_stat": {
    "tb": 7556,
-   "k": 5322,
+   "k": 5349,
    "hits": 3126,
    "hr": 682
   },
   "by_context_source": {
    "posted_card": 6770,
-   "probable_starter": 5322,
+   "probable_starter": 5349,
    "club_card": 4594
   },
   "by_rule_version": {
-   "stage0.1": 16116,
+   "stage0.1": 16143,
    "stage0": 570
   }
  },
@@ -64,7 +64,7 @@
   "bankroll": -348.6465732417764,
   "total_staked": 19651.000331749667,
   "exposure_multiple": 19.651000331749668,
-  "snapshots_after_ruin": 54,
+  "snapshots_after_ruin": 55,
   "amended_by": "Amendment 1 (2026-09-09)",
   "note": "The paper bankroll went through zero on 2026-09-03. The pre-registered rule sizes every ticket at up to 5% of bankroll and a prop slate offers hundreds of them at once, so the tickets in this ledger stake 19,651 units against a 1,000-unit bankroll \u2014 19.7x exposure in a single evening. Emission stops at ruin because a non-positive bankroll has no Kelly stake. Nothing was re-tuned after seeing this: the per-ticket cap and the 1,000-ticket Stage 1 gate in docs/bankroll.md are not compatible on this book, and that is a question for the pre-registration, not for the code. That question was answered on 2026-09-09 by Amendment 1: the total stake across one slate is capped at 20% of bankroll, the sizing changes and nothing else does, the Stage 1 window restarts at the amendment, and these tickets stay in the ledger flagged `stage0` without counting toward the gate."
  },
@@ -184,9 +184,9 @@
    },
    {
     "date": "2026-09-21",
-    "profit": 37.51294694440186,
-    "n": 542,
-    "bankroll": 679.1395837418406,
+    "profit": 28.24483000264863,
+    "n": 562,
+    "bankroll": 669.8714668000875,
     "rule_version": "stage0.1"
    }
   ],
@@ -305,9 +305,9 @@
    },
    {
     "date": "2026-09-21",
-    "profit": 37.88831789265299,
-    "n": 538,
-    "bankroll": 657.6173839739354,
+    "profit": 28.620200950899758,
+    "n": 558,
+    "bankroll": 648.3492670321821,
     "rule_version": "stage0.1"
    }
   ],
@@ -408,13 +408,13 @@
  "roi": {
   "taker": {
    "all": {
-    "n": 9383,
-    "staked": 14582.230268845464,
-    "profit": -1669.5069894999358,
-    "roi": -0.11448913909052663,
-    "roi_lo": -0.1763239772792006,
-    "roi_hi": -0.03963431641708891,
-    "hit_rate": 0.5738036875199829,
+    "n": 9403,
+    "staked": 14593.62412853248,
+    "profit": -1678.775106441689,
+    "roi": -0.11503483244847043,
+    "roi_lo": -0.17511440776487427,
+    "roi_hi": -0.0368444897550781,
+    "hit_rate": 0.5729022652344996,
     "max_drawdown": 1807.9716640870452
    },
    "hits": {
@@ -438,13 +438,13 @@
     "max_drawdown": 139.28598256719886
    },
    "k": {
-    "n": 3177,
-    "staked": 3400.8775373311546,
-    "profit": -359.48118430081706,
-    "roi": -0.10570247836178207,
-    "roi_lo": -0.2242135376761599,
-    "roi_hi": 0.028007620966442496,
-    "hit_rate": 0.5489455461126849,
+    "n": 3197,
+    "staked": 3412.2713970181703,
+    "profit": -368.7493012425703,
+    "roi": -0.10806564259947309,
+    "roi_lo": -0.22528054319542262,
+    "roi_hi": 0.02407537705345737,
+    "hit_rate": 0.5464497966843916,
     "max_drawdown": 484.62485187692744
    },
    "tb": {
@@ -460,13 +460,13 @@
   },
   "taker_posterior": {
    "all": {
-    "n": 9318,
-    "staked": 14504.092071254972,
-    "profit": -1691.0291892678413,
-    "roi": -0.11658979968964885,
-    "roi_lo": -0.17864161562733658,
-    "roi_hi": -0.04110545344350738,
-    "hit_rate": 0.5738355870358446,
+    "n": 9338,
+    "staked": 14515.485930941988,
+    "profit": -1700.2973062095946,
+    "roi": -0.11713678166193181,
+    "roi_lo": -0.17880152969519558,
+    "roi_hi": -0.04542615774138172,
+    "hit_rate": 0.572927821803384,
     "max_drawdown": 1829.7417284931034
    },
    "hits": {
@@ -490,13 +490,13 @@
     "max_drawdown": 139.28598256719886
    },
    "k": {
-    "n": 3112,
-    "staked": 3322.739339740665,
-    "profit": -381.0033840687223,
-    "roi": -0.11466544471660516,
-    "roi_lo": -0.23254600142667475,
-    "roi_hi": 0.010531103610265996,
-    "hit_rate": 0.5485218508997429,
+    "n": 3132,
+    "staked": 3334.1331994276807,
+    "profit": -390.27150101047556,
+    "roi": -0.1170533621984471,
+    "roi_lo": -0.23288641113200179,
+    "roi_hi": 0.015554018041414729,
+    "hit_rate": 0.5459770114942529,
     "max_drawdown": 506.3949162829857
    },
    "tb": {
@@ -717,13 +717,13 @@
   "stage0.1": {
    "taker": {
     "all": {
-     "n": 9133,
-     "staked": 5512.81384940213,
-     "profit": -320.8604162581594,
-     "roi": -0.05820265748551568,
-     "roi_lo": -0.12160233473209338,
-     "roi_hi": 0.00853715659660998,
-     "hit_rate": 0.574072046425052,
+     "n": 9153,
+     "staked": 5524.207709089145,
+     "profit": -330.12853319991257,
+     "roi": -0.05976034041166522,
+     "roi_lo": -0.1265156591117241,
+     "roi_hi": 0.00856117856890415,
+     "hit_rate": 0.5731454168032339,
      "max_drawdown": 384.1357332286799
     },
     "hits": {
@@ -747,13 +747,13 @@
      "max_drawdown": 14.715262530722987
     },
     "k": {
-     "n": 3153,
-     "staked": 2465.315667511441,
-     "profit": -150.36696258756888,
-     "roi": -0.06099298542946978,
-     "roi_lo": -0.19008896279964035,
-     "roi_hi": 0.06986608395116034,
-     "hit_rate": 0.5490009514747859,
+     "n": 3173,
+     "staked": 2476.7095271984567,
+     "profit": -159.6350795293221,
+     "roi": -0.06445450214337173,
+     "roi_lo": -0.19914866758524113,
+     "roi_hi": 0.07168847396467325,
+     "hit_rate": 0.5464859754175859,
      "max_drawdown": 221.45049617539746
     },
     "tb": {
@@ -769,13 +769,13 @@
    },
    "taker_posterior": {
     "all": {
-     "n": 9068,
-     "staked": 5434.67565181164,
-     "profit": -342.3826160260646,
-     "roi": -0.06299964118593387,
-     "roi_lo": -0.1258945222103492,
-     "roi_hi": 0.0010810683091477538,
-     "hit_rate": 0.5741067490074989,
+     "n": 9088,
+     "staked": 5446.069511498656,
+     "profit": -351.6507329678178,
+     "roi": -0.06456963728159433,
+     "roi_lo": -0.12562405573460428,
+     "roi_hi": -0.00011646853410447943,
+     "hit_rate": 0.5731734154929577,
      "max_drawdown": 405.90579763473795
     },
     "hits": {
@@ -799,13 +799,13 @@
      "max_drawdown": 14.715262530722987
     },
     "k": {
-     "n": 3088,
-     "staked": 2387.1774699209504,
-     "profit": -171.88916235547418,
-     "roi": -0.07200518793484012,
-     "roi_lo": -0.2037011707485904,
-     "roi_hi": 0.051648840466039354,
-     "hit_rate": 0.5485751295336787,
+     "n": 3108,
+     "staked": 2398.5713296079666,
+     "profit": -181.1572792972274,
+     "roi": -0.0755271594640617,
+     "roi_lo": -0.20271634243257342,
+     "roi_hi": 0.05308745631259078,
+     "hit_rate": 0.546010296010296,
      "max_drawdown": 244.2649736085856
     },
     "tb": {
@@ -871,7 +871,7 @@
      "max_drawdown": 9.032249145639607
     }
    },
-   "tickets": 16116,
+   "tickets": 16143,
    "scored_by_the_gate": true
   }
  },
