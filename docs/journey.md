@@ -92,7 +92,14 @@ covariate earns ≥ 1.0% of MAE on its own. Every model decision from
    the prior shrinks every player to one league mean. BAS-94
    (`docs/bayes-prior-mean.md`) makes the prior's mean a function of the
    player's prior-season Statcast profile, so a thin sample shrinks toward
-   players who hit the ball like this. Pre-registered; running. Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
+   players who hit the ball like this. **Run and lost**: the prior moves
+   (the profile loads at every cutoff) and the projection does not
+   improve, HR/PA +1.1% and K% +5.7% behind the single-component arm,
+   +3.8% and +9.2% behind the served contact engine. The model hands the
+   profile too much of the between-player variance and the outcomes
+   cannot pull it back. That closes the structural track on public data
+   at these sample sizes: five hierarchical structures, one verdict, the
+   two-stage engine wins. Park factors now exist (BAS-86, `docs/park-factors.md`): persistent,
    real, and useless multiplied onto Marcel because Marcel's inputs already
    carry the park; their place is the hierarchical models' offset, to be
    scored there. After those: time and age as a process. The posterior

@@ -97,13 +97,16 @@ def test_model_options_label_and_to_dict():
     assert default.ability_walk is False and default.constrained_age is False
     assert "flat" in default.label() and "quadratic" in default.label()
     assert default.covariates is None
+    assert default.prior_mean_covariates is None
     assert default.to_dict() == {"ability_walk": False, "constrained_age": False,
-                                 "covariates": None}
+                                 "covariates": None,
+                                 "prior_mean_covariates": None}
 
     both = ModelOptions(ability_walk=True, constrained_age=True)
     assert "walk" in both.label() and "constrained" in both.label()
     assert both.to_dict() == {"ability_walk": True, "constrained_age": True,
-                              "covariates": None}
+                              "covariates": None,
+                              "prior_mean_covariates": None}
 
     cov = ModelOptions(ability_walk=True, covariates="contact")
     assert "covariates=" in cov.label() and "barrel" in cov.label()

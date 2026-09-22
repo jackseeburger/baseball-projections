@@ -1,0 +1,302 @@
+scope: seasons [2022, 2024, 2025, 2026], 48 cutoffs, arms ['bayes_walk', 'bayes_walk+prior_contact', 'bayes_walk+prior_contact_cur', 'contact_additive', 'league_average', 'marcel', 'marcel_preseason', 'marcel_tuned', 'marcel_tuned_preseason', 'previous_season', 'season_to_date']
+provenance: {"own_rows": 260406, "own_arms": ["bayes_walk+prior_contact", "bayes_walk+prior_contact_cur", "league_average", "marcel", "marcel_preseason", "marcel_tuned", "marcel_tuned_preseason", "previous_season", "season_to_date"], "comparator_source": "/home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas85/cells_bayes.parquet", "comparator_cells_matched": 96, "comparator_cells_wanted": 96, "comparator_rows": {"bayes_walk": 28934, "contact_additive": 28934}, "marcel_audit": {"n_common": 28934, "max_abs_diff": 0.0, "mean_abs_diff": 0.0, "n_only_here": 0, "n_only_there": 0}, "scored_seasons": [2022, 2024, 2025, 2026]}
+
+=== hr_rate (pooled, all cutoffs) ===
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                 14467    +0.00012     1.14        1.49      3.49   18-30 
+bayes_walk+prior_contact      contact_additive           14467    +0.00038     3.83        3.73      8.91    7-41 
+bayes_walk+prior_contact      marcel_tuned               14467    +0.00013     1.30        1.31      3.69   16-32 
+bayes_walk+prior_contact_cur  bayes_walk                 14467    -0.00001    -0.06       -0.07     -0.14   20-28 
+bayes_walk+prior_contact_cur  contact_additive           14467    +0.00026     2.60        2.43      3.94   12-36 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact   14467    -0.00012    -1.18       -1.76     -3.41   36-12 
+bayes_walk                    contact_additive           14467    +0.00026     2.66        2.59      4.18   13-35 
+contact_additive              marcel_tuned               14467    -0.00025    -2.44       -2.22     -4.17   35-13 
+
+=== k_rate (pooled, all cutoffs) ===
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                 14467    +0.00165     5.69        7.39      9.89    0-48 
+bayes_walk+prior_contact      contact_additive           14467    +0.00258     9.18        7.68     10.96    0-48 
+bayes_walk+prior_contact      marcel_tuned               14467    +0.00198     6.92        5.43     11.27    2-46 
+bayes_walk+prior_contact_cur  bayes_walk                 14467    +0.00064     2.19        2.72      6.20   15-33 
+bayes_walk+prior_contact_cur  contact_additive           14467    +0.00156     5.57        5.67     10.47    5-43 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact   14467    -0.00101    -3.30       -4.45     -8.15   44-4  
+bayes_walk                    contact_additive           14467    +0.00093     3.31        4.21     10.83    3-45 
+contact_additive              marcel_tuned               14467    -0.00059    -2.07       -3.95     -7.26   39-9  
+
+=== hr_rate by season ===
+-- 2022
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3808    +0.00036     3.80        2.15      9.17    0-12 
+bayes_walk+prior_contact      contact_additive            3808    +0.00017     1.72        0.70      1.68    5-7  
+bayes_walk+prior_contact      marcel_tuned                3808    +0.00035     3.71        1.70      5.58    0-12 
+bayes_walk+prior_contact_cur  bayes_walk                  3808    +0.00010     1.09        0.55      2.17    1-11 
+bayes_walk+prior_contact_cur  contact_additive            3808    -0.00009    -0.93       -0.35     -0.62    8-4  
+bayes_walk+prior_contact_cur  marcel_tuned                3808    +0.00009     1.00        0.47      3.18    2-10 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3808    -0.00025    -2.61       -1.57     -3.39   12-0  
+-- 2024
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3785    -0.00007    -0.63       -0.40     -2.03    8-4  
+bayes_walk+prior_contact      contact_additive            3785    +0.00046     4.66        2.32     10.83    0-12 
+bayes_walk+prior_contact      marcel_tuned                3785    -0.00005    -0.49       -0.27     -1.80    9-3  
+bayes_walk+prior_contact_cur  bayes_walk                  3785    -0.00027    -2.62       -1.53     -3.65    9-3  
+bayes_walk+prior_contact_cur  contact_additive            3785    +0.00025     2.56        1.19      6.21    0-12 
+bayes_walk+prior_contact_cur  marcel_tuned                3785    -0.00026    -2.49       -1.30     -3.62   10-2  
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3785    -0.00021    -2.01       -1.51     -3.63   11-1  
+-- 2025
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3612    +0.00010     0.93        0.57      1.89    3-9  
+bayes_walk+prior_contact      contact_additive            3612    +0.00039     3.85        1.94     13.62    0-12 
+bayes_walk+prior_contact      marcel_tuned                3612    -0.00001    -0.07       -0.03     -0.20    6-6  
+bayes_walk+prior_contact_cur  bayes_walk                  3612    +0.00003     0.31        0.19      0.84    3-9  
+bayes_walk+prior_contact_cur  contact_additive            3612    +0.00032     3.22        1.61      6.11    1-11 
+bayes_walk+prior_contact_cur  marcel_tuned                3612    -0.00007    -0.68       -0.34     -1.52    7-5  
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3612    -0.00006    -0.61       -0.52     -1.79    9-3  
+-- 2026
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3262    +0.00005     0.49        0.36      0.95    7-5  
+bayes_walk+prior_contact      contact_additive            3262    +0.00056     5.44        2.92      5.71    2-10 
+bayes_walk+prior_contact      marcel_tuned                3262    +0.00026     2.43        1.49      5.19    1-11 
+bayes_walk+prior_contact_cur  bayes_walk                  3262    +0.00015     1.39        0.94      1.79    7-5  
+bayes_walk+prior_contact_cur  contact_additive            3262    +0.00065     6.39        3.20      5.15    3-9  
+bayes_walk+prior_contact_cur  marcel_tuned                3262    +0.00035     3.35        1.93      4.81    2-10 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3262    +0.00010     0.89        0.64      2.67    4-8  
+
+=== k_rate by season ===
+-- 2022
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3808    +0.00247     8.55        4.77      7.21    0-12 
+bayes_walk+prior_contact      contact_additive            3808    +0.00368    13.27        4.78      7.76    0-12 
+bayes_walk+prior_contact      marcel_tuned                3808    +0.00255     8.82        3.11      7.30    0-12 
+bayes_walk+prior_contact_cur  bayes_walk                  3808    +0.00128     4.41        2.35     10.65    0-12 
+bayes_walk+prior_contact_cur  contact_additive            3808    +0.00248     8.96        3.85      9.86    0-12 
+bayes_walk+prior_contact_cur  marcel_tuned                3808    +0.00135     4.68        2.00      9.43    0-12 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3808    -0.00120    -3.81       -2.47     -5.07   12-0  
+-- 2024
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3785    +0.00159     5.54        3.33      6.58    0-12 
+bayes_walk+prior_contact      contact_additive            3785    +0.00228     8.15        3.27      6.79    0-12 
+bayes_walk+prior_contact      marcel_tuned                3785    +0.00210     7.44        2.87      7.64    0-12 
+bayes_walk+prior_contact_cur  bayes_walk                  3785    +0.00064     2.24        1.59      3.37    4-8  
+bayes_walk+prior_contact_cur  contact_additive            3785    +0.00133     4.77        2.48      4.74    2-10 
+bayes_walk+prior_contact_cur  marcel_tuned                3785    +0.00115     4.08        2.03      5.33    2-10 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3785    -0.00095    -3.13       -2.29     -7.63   12-0  
+-- 2025
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3612    +0.00089     3.03        2.30      4.40    0-12 
+bayes_walk+prior_contact      contact_additive            3612    +0.00143     4.98        2.20      4.59    0-12 
+bayes_walk+prior_contact      marcel_tuned                3612    +0.00100     3.43        1.44      4.82    2-10 
+bayes_walk+prior_contact_cur  bayes_walk                  3612    +0.00043     1.47        0.99      4.15    3-9  
+bayes_walk+prior_contact_cur  contact_additive            3612    +0.00097     3.38        1.96      6.06    3-9  
+bayes_walk+prior_contact_cur  marcel_tuned                3612    +0.00054     1.86        0.98      4.67    1-11 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3612    -0.00046    -1.52       -1.00     -1.80    8-4  
+-- 2026
+arm                           base                           n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact      bayes_walk                  3262    +0.00157     5.40        3.90      6.85    0-12 
+bayes_walk+prior_contact      contact_additive            3262    +0.00292    10.52        4.18      8.76    0-12 
+bayes_walk+prior_contact      marcel_tuned                3262    +0.00233     8.21        3.14      7.73    0-12 
+bayes_walk+prior_contact_cur  bayes_walk                  3262    +0.00002     0.07        0.05      0.14    8-4  
+bayes_walk+prior_contact_cur  contact_additive            3262    +0.00137     4.93        2.47      8.44    0-12 
+bayes_walk+prior_contact_cur  marcel_tuned                3262    +0.00077     2.74        1.33      6.26    0-12 
+bayes_walk+prior_contact_cur  bayes_walk+prior_contact    3262    -0.00155    -5.06       -3.88     -6.89   12-0  
+
+=== hr_rate: arm A vs bayes_walk, May / August ===
+arm                       base             n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact  bayes_walk    4055    +0.00007     0.66        0.73      1.32    6-6  
+bayes_walk+prior_contact  bayes_walk    1824    +0.00030     2.59        3.01      3.01    2-6  
+  may: cutoffs ['2022-05-01', '2022-05-13', '2022-05-27', '2024-05-01', '2024-05-13', '2024-05-27', '2025-05-01', '2025-05-13', '2025-05-27', '2026-05-01', '2026-05-13', '2026-05-27']
+  august: cutoffs ['2022-08-01', '2022-08-05', '2024-08-01', '2024-08-05', '2025-08-01', '2025-08-05', '2026-08-01', '2026-08-05']
+
+-- W-L by cutoff, arm A vs bayes_walk (hr_rate)
+mmdd         W-L   mean diff
+04-15      1-3      +0.00016
+04-29      2-2      +0.00009
+05-01      1-3      +0.00010
+05-13      2-2      +0.00007
+05-27      3-1      +0.00000
+06-10      2-2      +0.00001
+06-24      1-3      +0.00011
+07-01      2-2      +0.00010
+07-08      2-2      +0.00015
+07-22      0-4      +0.00021
+08-01      1-3      +0.00019
+08-05      1-3      +0.00028
+
+=== k_rate: arm A vs bayes_walk, May / August ===
+arm                       base             n        diff   % base   t(player)   t(cell)       W-L
+-------------------------------------------------------------------------------------------------
+bayes_walk+prior_contact  bayes_walk    4055    +0.00196     6.93        7.19      9.51    0-12 
+bayes_walk+prior_contact  bayes_walk    1824    +0.00079     2.48        3.16      4.60    0-8  
+  may: cutoffs ['2022-05-01', '2022-05-13', '2022-05-27', '2024-05-01', '2024-05-13', '2024-05-27', '2025-05-01', '2025-05-13', '2025-05-27', '2026-05-01', '2026-05-13', '2026-05-27']
+  august: cutoffs ['2022-08-01', '2022-08-05', '2024-08-01', '2024-08-05', '2025-08-01', '2025-08-05', '2026-08-01', '2026-08-05']
+
+-- W-L by cutoff, arm A vs bayes_walk (k_rate)
+mmdd         W-L   mean diff
+04-15      0-4      +0.00278
+04-29      0-4      +0.00242
+05-01      0-4      +0.00230
+05-13      0-4      +0.00195
+05-27      0-4      +0.00153
+06-10      0-4      +0.00102
+06-24      0-4      +0.00067
+07-01      0-4      +0.00078
+07-08      0-4      +0.00071
+07-22      0-4      +0.00065
+08-01      0-4      +0.00077
+08-05      0-4      +0.00075
+
+=== gamma posteriors (arm A) ===
+-- hr_rate
+   gamma_barrel       mean +0.0238  [-0.0430, +0.0774]  excludes zero 29/48
+   gamma_ev90         mean +0.2010  [+0.1397, +0.2629]  excludes zero 48/48
+   gamma_ev_mean      mean +0.0492  [-0.0119, +0.1076]  excludes zero 24/48
+   gamma_hardhit      mean +0.0414  [+0.0005, +0.1120]  excludes zero 12/48
+   gamma_la_mean      mean +0.1549  [+0.1199, +0.1807]  excludes zero 48/48
+   gamma_sweetspot    mean -0.0246  [-0.0333, -0.0142]  excludes zero 35/48
+-- k_rate
+   gamma_barrel       mean +0.0114  [-0.0096, +0.0334]  excludes zero 4/48
+   gamma_ev90         mean +0.0341  [-0.0687, +0.0789]  excludes zero 46/48
+   gamma_ev_mean      mean -0.0173  [-0.0585, +0.0006]  excludes zero 9/48
+   gamma_hardhit      mean -0.0094  [-0.0448, +0.0304]  excludes zero 11/48
+   gamma_la_mean      mean +0.0030  [-0.0327, +0.0231]  excludes zero 35/48
+   gamma_sweetspot    mean -0.0096  [-0.0253, +0.0055]  excludes zero 24/48
+   gamma_whiff        mean +0.1613  [+0.1212, +0.2282]  excludes zero 48/48
+
+=== gamma posteriors (arm B) ===
+-- hr_rate
+   gamma_barrel       mean +0.2327  [+0.1625, +0.2668]  excludes zero 48/48
+   gamma_ev90         mean +0.0559  [+0.0068, +0.1081]  excludes zero 29/48
+   gamma_ev_mean      mean +0.0472  [+0.0194, +0.0873]  excludes zero 13/48
+   gamma_hardhit      mean +0.0642  [+0.0319, +0.0990]  excludes zero 24/48
+   gamma_la_mean      mean +0.1468  [+0.1262, +0.1728]  excludes zero 48/48
+   gamma_sweetspot    mean -0.0263  [-0.0346, -0.0143]  excludes zero 41/48
+-- k_rate
+   gamma_barrel       mean -0.0197  [-0.0465, +0.0090]  excludes zero 22/48
+   gamma_ev90         mean -0.0226  [-0.0735, +0.0074]  excludes zero 12/48
+   gamma_ev_mean      mean -0.0389  [-0.0618, -0.0250]  excludes zero 44/48
+   gamma_hardhit      mean +0.0343  [+0.0092, +0.0550]  excludes zero 21/48
+   gamma_la_mean      mean +0.0147  [-0.0103, +0.0312]  excludes zero 36/48
+   gamma_sweetspot    mean +0.0037  [-0.0128, +0.0166]  excludes zero 12/48
+   gamma_whiff        mean +0.3364  [+0.3224, +0.3600]  excludes zero 48/48
+
+=== vacuity: between-player sd of the prior mean (arm A) ===
+   hr_rate    sd(prior mean) 0.3634  sigma_ability 0.2024  ratio 1.815 [1.600, 2.265]  48/48 at or above 30%
+   k_rate     sd(prior mean) 0.1929  sigma_ability 0.2503  ratio 0.772 [0.636, 0.990]  48/48 at or above 30%
+
+=== coverage (hr_rate) ===
+predictive (coverage scored): target 75%-85%
+  bayes_walk+prior_contact              77.5%  n=14467   low  6.8%  high 15.6%  width 0.03280
+  bayes_walk+prior_contact_may          76.5%  n=4055    low  5.8%  high 17.7%  width 0.03048
+  bayes_walk+prior_contact_cur          73.6%  n=14467   low  8.6%  high 17.9%  width 0.02966
+  bayes_walk+prior_contact_cur_may      71.4%  n=4055    low  7.6%  high 20.9%  width 0.02684
+  bayes_walk                            78.5%  n=14467   low  6.6%  high 14.9%  width 0.03310
+  bayes_walk_may                        76.9%  n=4055    low  6.0%  high 17.1%  width 0.03088
+  contact_additive                     (no interval)
+rate_only (width scored): target 75%-85%
+  bayes_walk+prior_contact              45.9%  n=14467   low 24.5%  high 29.6%  width 0.01670
+  bayes_walk+prior_contact_may          48.9%  n=4055    low 20.5%  high 30.5%  width 0.01705
+  bayes_walk+prior_contact_cur          30.3%  n=14467   low 31.4%  high 38.3%  width 0.01038
+  bayes_walk+prior_contact_cur_may      31.3%  n=4055    low 28.0%  high 40.7%  width 0.01015
+  bayes_walk                            48.1%  n=14467   low 23.5%  high 28.4%  width 0.01717
+  bayes_walk_may                        50.9%  n=4055    low 19.9%  high 29.2%  width 0.01762
+  contact_additive                     (no interval)
+
+=== coverage (k_rate) ===
+predictive (coverage scored): target 75%-85%
+  bayes_walk+prior_contact              76.3%  n=14467   low 10.8%  high 12.9%  width 0.09564
+  bayes_walk+prior_contact_may          75.9%  n=4055    low 11.4%  high 12.8%  width 0.09493
+  bayes_walk+prior_contact_cur          71.8%  n=14467   low 13.5%  high 14.7%  width 0.08480
+  bayes_walk+prior_contact_cur_may      70.1%  n=4055    low 14.7%  high 15.1%  width 0.08159
+  bayes_walk                            76.9%  n=14467   low 10.7%  high 12.5%  width 0.09313
+  bayes_walk_may                        77.0%  n=4055    low 10.9%  high 12.1%  width 0.09181
+  contact_additive                     (no interval)
+rate_only (width scored): target 75%-85%
+  bayes_walk+prior_contact              56.9%  n=14467   low 20.6%  high 22.5%  width 0.06387
+  bayes_walk+prior_contact_may          60.8%  n=4055    low 19.6%  high 19.6%  width 0.06950
+  bayes_walk+prior_contact_cur          45.7%  n=14467   low 27.2%  high 27.0%  width 0.04733
+  bayes_walk+prior_contact_cur_may      48.8%  n=4055    low 26.6%  high 24.6%  width 0.05013
+  bayes_walk                            56.0%  n=14467   low 21.7%  high 22.4%  width 0.06020
+  bayes_walk_may                        59.8%  n=4055    low 20.4%  high 19.8%  width 0.06508
+  contact_additive                     (no interval)
+
+=== fit diagnostics ===
+{
+ "bayes_walk+prior_contact": {
+  "n_fits": 96,
+  "max_rhat": {
+   "median": 1.0253760823769011,
+   "max": 1.05713885936231,
+   "n_above_ceiling": 0
+  },
+  "min_ess_bulk": {
+   "median": 238.2544918302413,
+   "min": 71.44116324856981
+  },
+  "divergences": {
+   "total": 0,
+   "max": 0,
+   "n_fits_with_any": 0
+  },
+  "elapsed_s": {
+   "median": 159.89999999999998,
+   "min": 96.0,
+   "max": 473.5,
+   "total_hours": 4.55
+  },
+  "samplers": [
+   "numpyro"
+  ]
+ },
+ "bayes_walk+prior_contact_cur": {
+  "n_fits": 96,
+  "max_rhat": {
+   "median": 1.0264686506726348,
+   "max": 1.097451742136189,
+   "n_above_ceiling": 0
+  },
+  "min_ess_bulk": {
+   "median": 155.92630519245478,
+   "min": 15.987645564155999
+  },
+  "divergences": {
+   "total": 0,
+   "max": 0,
+   "n_fits_with_any": 0
+  },
+  "elapsed_s": {
+   "median": 158.2,
+   "min": 92.0,
+   "max": 466.0,
+   "total_hours": 4.4447222222222225
+  },
+  "samplers": [
+   "numpyro"
+  ]
+ }
+}
+
+no fit exceeded R-hat 1.2
+
+=== pre-registered predictions ===
+  prediction_1_vacuity           HOLDS
+  prediction_2_may               FAILS
+  prediction_3_pooled            FAILS
+  prediction_4_mechanism         FAILS
+  prediction_5_calibration[hr_rate]HOLDS
+  prediction_5_calibration[k_rate]FAILS
+
+VERDICT: prediction 1 holds and prediction 2 fails: the prior moves, and shrinking toward similar players does not help where it should. Nothing ships.
+
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/analysis_bas94.json
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/RESULT.md
+-> /home/user/baseball-projections/.claude/worktrees/agent-ae22e5b4c4b3a85e5/data/eval/bas94/cells_scored.parquet

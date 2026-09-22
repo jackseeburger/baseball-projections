@@ -99,6 +99,25 @@ much exposure each channel actually had). This arm and `bayes_walk` also
 write `pred_q10`/`pred_q90` into the cell parquet, which is what the
 pre-registration's coverage prediction is scored on.
 
+**The prior's mean (BAS-94, docs/bayes-prior-mean.md).** `--bayes-prior-mean
+contact contact_cur` re-keys every requested variant to its prior-mean twins
+— `ability_walk` becomes `ability_walk+prior_contact` (arm
+`bayes_walk+prior_contact`) and `ability_walk+prior_contact_cur` — and scores
+them in the same cell as the plain arm, exactly as the covariate twins are.
+Where `--bayes-covariates` adds the aggregates to the *likelihood*, this
+moves the *prior mean* a batter is shrunk toward:
+`ability ~ Normal(mu + gamma . x, sigma_ability)` with `x` the standardised
+contact profile measured on the **previous two full seasons** (`contact`, arm
+A) or on those plus the cutoff season through its last month boundary
+(`contact_cur`, arm B), plus whiff share per swing for K%. Every fit record
+carries the `gamma_<feature>` posteriors and `prior_mean_params`: the
+between-player sd of the prior mean against `sigma_ability`, which is the
+vacuity test a coefficient's interval alone cannot answer. These arms also
+write `pred_q10`/`pred_q90`. Naming a prior-mean variant in `--variants`
+directly (`ability_walk+prior_contact`) fits the twin without refitting the
+plain arm, which is what a run that reuses an existing `bayes_walk` grid
+wants.
+
 
 Usage:
     # one-time data prep (writes gitignored data/parquet/pa_outcomes/*)
@@ -227,6 +246,38 @@ VARIANT_ARM_NAMES.update({
     covariate_variant(v, c): covariate_arm_name(v, c)
     for v in list(VARIANT_ARM_NAMES) for c in COVARIATE_SETS
 })
+
+# ─── the prior's mean as a function of the profile (BAS-94) ───
+# `--bayes-prior-mean contact` re-keys every requested variant to its
+# prior-mean twin: "ability_walk" becomes "ability_walk+prior_contact" (arm
+# `bayes_walk+prior_contact`), scored alongside — never in place of — the
+# plain arm, since the whole comparison is one against the other. Two sets:
+# "contact" is the pre-registration's arm A (prior seasons only) and
+# "contact_cur" its arm B (prior seasons plus the cutoff season through its
+# last month boundary, ballasted by the prior profile's own exposure).
+#
+# The `prior_` prefix on the slug is what keeps BAS-83's block and this one
+# apart in a results table: `bayes_walk+contact` puts the aggregates in the
+# likelihood, `bayes_walk+prior_contact` puts them in the shrinkage target,
+# and the two are different models with the same six features. Derived from
+# the base names rather than hand-written so a variant added above cannot be
+# silently missing its prior-mean twin.
+PRIOR_MEAN_SETS = ("contact", "contact_cur")
+
+
+def prior_mean_variant(variant: str, prior_mean: str | None) -> str:
+    return f"{variant}+prior_{prior_mean}" if prior_mean else variant
+
+
+def prior_mean_arm_name(variant: str, prior_mean: str | None) -> str:
+    base = VARIANT_ARM_NAMES[variant]
+    return f"{base}+prior_{prior_mean}" if prior_mean else base
+
+
+VARIANT_ARM_NAMES.update({
+    prior_mean_variant(v, p): prior_mean_arm_name(v, p)
+    for v in list(VARIANT_ARM_NAMES) for p in PRIOR_MEAN_SETS
+})
 ARM_NAME_VARIANT = {arm: variant for variant, arm in VARIANT_ARM_NAMES.items()}
 # Spellings `--variants` accepts for the joint arms, because "joint_walk" is
 # what docs/bayes-joint.md calls the arm and "joint+ability_walk" is what
@@ -302,6 +353,18 @@ VARIANT_OWN_PARAMS = {
     # decorative and predictions 1-3 are untestable rather than false.
     "contact": [f"beta_cov_{f}" for f in
                 ("ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean")],
+    # BAS-94: one scalar per prior-mean feature, named exactly as
+    # `src.models.pa_rate.build_model` names it. `whiff` is in the list for
+    # both sets even though only the K% fits carry it — a name absent from a
+    # trace is skipped, which is what makes one list serve both components.
+    # The pre-registration's prediction 1 reads these (barrel or EV on
+    # HR/PA, whiff on K%) *and* the between-player sd of the prior mean,
+    # which is not a scalar in the trace and rides on the fit record's
+    # `prior_mean_params` instead (src.models.pa_prior_mean).
+    **{name: [f"gamma_{f}" for f in
+              ("ev_mean", "ev90", "barrel", "hardhit", "sweetspot", "la_mean",
+               "whiff")]
+       for name in ("prior_contact", "prior_contact_cur")},
     # No entry for "measurement" (BAS-85) either, and for the same reason as
     # "joint": what its pre-registration reads is intervals, not means. The
     # channel loadings, their pairwise posterior correlation and the latent
@@ -534,19 +597,27 @@ def _variant_config(variant: str, **kwargs):
     if len(cov) > 1:
         raise ValueError(f"variant {variant!r} names more than one covariate "
                          f"set ({cov}); one block per arm")
+    prior_mean = sorted(t[len("prior_"):] for t in on
+                        if t.startswith("prior_")
+                        and t[len("prior_"):] in PRIOR_MEAN_SETS)
+    if len(prior_mean) > 1:
+        raise ValueError(f"variant {variant!r} names more than one prior-mean "
+                         f"set ({prior_mean}); one shrinkage target per arm")
     measurement = "measurement" in on
     config = BayesArmConfig(
         ability_walk="ability_walk" in on, constrained_age="constrained_age" in on,
         covariates=(cov[0] if cov else None),
+        prior_mean=(prior_mean[0] if prior_mean else None),
         joint="joint" in on or measurement,
         measurement=measurement,
-        # docs/bayes-measurement.md prediction 4 scores the 80% posterior
-        # interval's coverage, so the measurement arm and the `bayes_walk`
-        # it is read against both keep the 10th and 90th percentiles of the
-        # projected rate. Nothing else does, so no other arm's projection
-        # frame gains a column.
+        # docs/bayes-measurement.md prediction 4 and docs/bayes-prior-mean.md
+        # prediction 5 both score the 80% posterior interval's coverage, so
+        # those arms and the `bayes_walk` they are read against keep the 10th
+        # and 90th percentiles of the projected rate. Nothing else does, so
+        # no other arm's projection frame gains a column.
         extra_quantiles=(COVERAGE_QUANTILES
-                         if measurement or variant == "ability_walk" else ()),
+                         if measurement or prior_mean or variant == "ability_walk"
+                         else ()),
         **kwargs,
     )
     assert config.variant() == variant, (
@@ -579,6 +650,8 @@ def variant_param_summary(trace, config) -> dict:
     on = [n for n in ("ability_walk", "constrained_age") if getattr(config, n)]
     if getattr(config, "covariates", None):
         on.append(config.covariates)
+    if getattr(config, "prior_mean", None):
+        on.append(f"prior_{config.prior_mean}")
     names = [p for n in on for p in VARIANT_OWN_PARAMS.get(n, [])]
     out: dict = {}
     posterior = getattr(trace, "posterior", None) if trace is not None else None
@@ -766,6 +839,7 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
              variants: list[str] | None = None,
              components: list[str] | None = None,
              covariates: str | None = None,
+             prior_mean: list[str] | str | None = None,
              seasons_table_for_contact: pd.DataFrame | None = None,
              monthly: pd.DataFrame | None = None,
              contact_arm: bool = False,
@@ -812,6 +886,20 @@ def run_bayes(seasons_table: pd.DataFrame, pa_by_year: dict[int, pd.DataFrame],
         # them on two different common-player sets — and the whole question
         # is what the covariate adds to that arm, on the same hitters.
         variants = variants + [covariate_variant(v, covariates) for v in variants]
+    if prior_mean:
+        # Same rule as the covariate twins above, and for the same reason:
+        # both arms in the SAME cell so `backtest()` pairs them on one
+        # common-player set. `prior_mean` is a *list* because the
+        # pre-registration runs two arms (A and B) that must be scored beside
+        # each other and beside the plain arm, not in three separate runs.
+        sets = [prior_mean] if isinstance(prior_mean, str) else list(prior_mean)
+        unknown_pm = [p for p in sets if p not in PRIOR_MEAN_SETS]
+        if unknown_pm:
+            raise ValueError(f"unknown prior-mean set(s) {unknown_pm}; known: "
+                             f"{list(PRIOR_MEAN_SETS)}")
+        base_variants = list(variants)
+        variants = variants + [prior_mean_variant(v, p)
+                               for p in sets for v in base_variants]
     unknown = [v for v in variants if v not in VARIANT_ARM_NAMES]
     if unknown:
         raise ValueError(f"unknown bayes variant(s) {unknown}; "
@@ -1504,6 +1592,17 @@ def main() -> None:
                     help="layer-1 covariate block to add to every requested "
                          "variant (BAS-83, docs/bayes-covariates.md); default "
                          "off, which is the sweep exactly as it ran before")
+    ap.add_argument("--bayes-prior-mean", nargs="+", default=None,
+                    choices=list(PRIOR_MEAN_SETS),
+                    help="prior-mean feature set(s) to add to every requested "
+                         "variant (BAS-94, docs/bayes-prior-mean.md): "
+                         "`contact` is arm A (prior seasons only), "
+                         "`contact_cur` arm B (prior seasons plus the cutoff "
+                         "season through its last month boundary). Default "
+                         "off, which is the sweep exactly as it ran before. "
+                         "Name a prior-mean variant in --variants directly "
+                         "(e.g. ability_walk+prior_contact) to fit the twin "
+                         "without refitting the plain arm")
     ap.add_argument("--contact-arm", action="store_true",
                     help="also score `contact_additive` — Marcel plus the same "
                          "contact aggregates, the served shape — at every "
@@ -1567,7 +1666,7 @@ def main() -> None:
             tuple(sorted(set(available) | set(args.bayes_seasons))), args.pa_dir)
         monthly = None
         contact_fits: list[dict] = []
-        if args.contact_arm or args.bayes_covariates:
+        if args.contact_arm or args.bayes_covariates or args.bayes_prior_mean:
             from src.data.contact_quality import load_monthly
 
             monthly = load_monthly()
@@ -1580,6 +1679,7 @@ def main() -> None:
                                 variants=variants,
                                 components=args.bayes_components,
                                 covariates=args.bayes_covariates,
+                                prior_mean=args.bayes_prior_mean,
                                 seasons_table_for_contact=seasons_table,
                                 monthly=monthly,
                                 contact_arm=args.contact_arm,
@@ -1589,7 +1689,8 @@ def main() -> None:
                 json.dumps(contact_fits, indent=1))
         print(f"bayes sweep: {len(bayes)} rows, {len(fits)} fits, "
              f"components {args.bayes_components}, variants {variants}, "
-             f"covariates {args.bayes_covariates} "
+             f"covariates {args.bayes_covariates}, "
+             f"prior_mean {args.bayes_prior_mean} "
              f"-> {bayes_ckpt}")
 
     if args.stage in ("analyze", "all"):

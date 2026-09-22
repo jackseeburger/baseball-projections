@@ -70,6 +70,15 @@ class BayesArmConfig:
     # `src.data.contact_quality.load_monthly` unless one is handed in.
     covariates: str | None = None
     monthly_path: Path | None = None
+    # The prior's mean as a function of the profile (BAS-94,
+    # docs/bayes-prior-mean.md). `None` is off and is the arm exactly as
+    # every earlier sweep ran it; "contact" is arm A (the previous two full
+    # seasons only) and "contact_cur" arm B (those plus the cutoff season
+    # through its last month boundary). Unlike `covariates`, which adds a
+    # term to the likelihood, this moves the *prior mean* a batter is shrunk
+    # toward — and it reads finished seasons, not the thin current window
+    # that cost BAS-83 its predictions.
+    prior_mean: str | None = None
     # Fit all three per-PA components at once, with a per-batter ability
     # vector and an LKJ correlation between components (BAS-84,
     # docs/bayes-joint.md, `src.models.pa_joint`). `component` still says
@@ -117,7 +126,8 @@ class BayesArmConfig:
 
         return ModelOptions(ability_walk=self.ability_walk,
                             constrained_age=self.constrained_age,
-                            covariates=self.covariates)
+                            covariates=self.covariates,
+                            prior_mean_covariates=self.prior_mean)
 
     def joint_key(self) -> tuple:
         """Everything about a joint fit *except* which component it is asked
@@ -161,18 +171,27 @@ class BayesArmConfig:
         # "flat" stays "flat" and "ability_walk" stays "ability_walk" —
         # every variant name already on the board keeps meaning what it did,
         # and the covariate arms read as the same structure plus a covariate.
-        return f"{slug}+{self.covariates}" if self.covariates else slug
+        if self.covariates:
+            slug = f"{slug}+{self.covariates}"
+        # The prior-mean block is the same shape of suffix, spelled
+        # `prior_<set>` so an arm name says *where* the profile entered:
+        # `bayes_walk+contact` puts it in the likelihood (BAS-83),
+        # `bayes_walk+prior_contact` in the shrinkage target (BAS-94). It
+        # also sorts immediately after `bayes_walk` in a checkpoint listing,
+        # which is where a reader looks for it.
+        return f"{slug}+prior_{self.prior_mean}" if self.prior_mean else slug
 
     def label(self) -> str:
         pitch = "pitcher" if self.include_pitcher else "no-pitcher"
         ability = "ability=walk" if self.ability_walk else "ability=flat"
         age = "age=constrained" if self.constrained_age else "age=quadratic"
         cov = f", covariates={self.covariates}" if self.covariates else ""
+        pmean = f", prior_mean={self.prior_mean}" if self.prior_mean else ""
         kind = (" (measurement)" if self.measurement
                 else " (joint)" if self.joint else "")
         return (f"{self.component}{kind}, "
                 f"{self.chains}x{self.draws} draws (tune {self.tune}), "
-                f"{self.nuts_sampler}, {pitch}, {ability}, {age}{cov}"
+                f"{self.nuts_sampler}, {pitch}, {ability}, {age}{cov}{pmean}"
                 + (f", <={self.max_batters} batters" if self.max_batters else ""))
 
 
@@ -304,6 +323,25 @@ def fit_bayes_k_rate(
         monthly = load_monthly(config.monthly_path) if config.monthly_path \
             else load_monthly()
         attach_covariates(data, config.covariates, monthly, cutoff_date)
+    if config.prior_mean:
+        # The prior-mean design matrix: prior-season contact (and, for K%,
+        # whiff share) standardised per season. Attached after
+        # `prepare_model_data` for the same reason the covariate block is —
+        # with the prior mean off, not one line of `pa_prior_mean` runs.
+        from src.data.contact_quality import load_monthly
+        from src.models.pa_prior_mean import attach_prior_mean, WHIFF, \
+            prior_mean_features
+
+        monthly = (load_monthly(config.monthly_path) if config.monthly_path
+                   else load_monthly())
+        swing = None
+        if WHIFF in prior_mean_features(config.prior_mean, comp.name):
+            from src.data.swing_decisions import load_monthly as load_swing
+
+            swing = (load_swing(config.swing_path) if config.swing_path
+                     else load_swing())
+        attach_prior_mean(data, config.prior_mean, monthly, swing, cutoff_date,
+                          component=comp.name)
     model = build_model(data, config.model_options())
     trace = sample_model(model, **config.sampler_kwargs())
     diagnostics = model_diagnostics(trace)
@@ -324,6 +362,19 @@ def fit_bayes_k_rate(
             **exposure,
             "component": comp.name,
             "covariates": list(data.get("cov_names", ())) or None,
+            "prior_mean": data.get("pm_set"),
+            "prior_mean_features": list(data.get("pm_names", ())) or None,
+            # docs/bayes-prior-mean.md's prediction 1 is read off this: every
+            # `gamma`'s 90% interval, and the between-player sd of the prior
+            # mean against `sigma_ability`. Written per fit so a vacuity
+            # table is a read of the records rather than a second MCMC pass.
+            **({"prior_mean_params": _prior_mean_summary(trace, data)}
+               if data.get("pm_set") else {}),
+            # Which backend drew this posterior. BAS-85 found numpyro and
+            # pymc disagreeing on a neighbouring graph, so a fit record that
+            # does not name its sampler cannot be read against another one.
+            "sampler": config.nuts_sampler,
+            "target_accept": config.target_accept,
             "league_init_mu": float(data["league_init_mu"]),
             "n_cells": int(data["n_obs"]),
             "n_pa": int(data["n_pa"]),
@@ -355,6 +406,12 @@ def joint_components(config: BayesArmConfig) -> tuple[str, ...]:
     from src.models.pa_joint import JOINT_COMPONENTS
 
     return JOINT_COMPONENTS
+
+
+def _prior_mean_summary(trace, data) -> dict:
+    from src.models.pa_prior_mean import prior_mean_summary
+
+    return prior_mean_summary(trace, data)
 
 
 def _measurement_summary(trace, channels) -> dict:
