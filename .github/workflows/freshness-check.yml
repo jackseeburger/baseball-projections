@@ -31,10 +31,7 @@ name: Freshness check
 #   13:23 — after nightly odds (09:23 / 12:07 backup)
 #   21:47 — after the 16:37 market snapshot and the 14:53 last-chance nightly
 on:
-  schedule:
-    - cron: "53 5 * * *"
-    - cron: "23 13 * * *"
-    - cron: "47 21 * * *"
+  # schedule removed 2026-09-25: project parked. Restore the cron lines from git history to resume.
   workflow_dispatch:
 
 # Read the checkout, write the alarm issue. Nothing else.
