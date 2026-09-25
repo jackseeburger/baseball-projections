@@ -28,8 +28,7 @@ name: Schedule watchdog
 # nightly job that loses its 09:23 slot and every slot after it is reported by
 # 16:43 the same day.
 on:
-  schedule:
-    - cron: "43 */2 * * *"
+  # schedule removed 2026-09-25: project parked. Restore the cron lines from git history to resume.
   workflow_dispatch:
     inputs:
       grace_hours:

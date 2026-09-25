@@ -9,9 +9,7 @@ name: Modal refit
 # gRPC and the session proxy does not pass gRPC. This workflow is the
 # supported path, plus a laptop.
 on:
-  schedule:
-    # Odd minute on purpose — see nightly-odds.yml.
-    - cron: "29 7 * * 1"     # Mondays 07:29 UTC — weekly refit
+  # schedule removed 2026-09-25: project parked. Restore the cron lines from git history to resume.
   workflow_dispatch:
     inputs:
       component:
